@@ -1,41 +1,30 @@
-RASM86=pcdev_rasm86
-LINK86=pcdev_linkcmd
+ASM86=cpm86_asm86
+GENCMD=cpm86_gencmd
 
 TOOLS=function.cmd funcorg.cmd
-
-SNIPPETS=
-
-all: $(TOOLS) $(SNIPPETS)
-
-function.obj: function.a86
-
-functorg.obj: funcorg.a86
-
-# function is an 8080-model CMD: one CODE group holding code, data and stack,
-# with the base page at 0-0FFh.  Collapsing the data group keeps it that way.
-# LINK86 pads the output past the end of the group, so cut it back to the
-# length the header declares (128-byte header + LEN paragraphs).
-%.cmd: %.obj
-	$(LINK86) $* '[$$sz, cod[ori[0]], dat[ori[0],max[0]]]'
-	@python3 -c "f='$@';d=open(f,'rb').read();open(f,'wb').write(d[:128+int.from_bytes(d[1:3],'little')*16])"
-	cmdinfo $@
-
-# RASM-86 exits 0 and still writes an .obj when it reports errors, so neither
-# the exit status nor the file's existence can be trusted; check the count.
-%.obj: %.a86
-	unix2dos $<
-	rm -f $@
-	@$(RASM86) $< $$ pz sz > $*.log 2>&1; cat $*.log
-	@grep -qE 'Number of errors: +0\.' $*.log || \
-	  { echo "*** $<: assembly errors"; rm -f $@; exit 1; }
-
-# The reconstruction reproduces the shipped binary exactly; keep it that way.
 REF=../../base/function.cmd
 
-check: funcorg.cmd
-	cmp $< $(REF)
-	@echo "PASS: function.cmd is byte-identical to $(REF)"
+.PHONY: all check clean
+all: $(TOOLS)
+
+# This CCP/M version has separate CODE, DATA and STACK groups. ASM86/GENCMD
+# preserve their exact lengths; LINK86 adds 40h bytes to the DATA group.
+%.cmd: %.h86
+	$(GENCMD) $<
+	# GENCMD leaves an empty EXTRA descriptor before STACK. The original CMD
+	# packs its descriptors; compact the header without changing any payload.
+	@python3 -c "from pathlib import Path; p=Path('$@'); d=p.read_bytes(); h=d[:128]; g=b''.join(h[i:i+9] for i in range(0,72,9) if h[i]); p.write_bytes(g.ljust(72,b'\0')+h[72:]+d[128:])"
+	@cmdinfo $@
+
+%.h86: %.a86
+	$(ASM86) $<
+
+# funcorg is the invariant reconstruction. The maintained copy initially
+# reproduces it too; compare whole files, including group headers and padding.
+check: $(TOOLS)
+	cmp funcorg.cmd $(REF)
+	cmp function.cmd $(REF)
+	@echo "PASS: both FUNCTION builds are byte-identical to $(REF)"
 
 clean:
-	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn
-	rm -f *.loc *.mp? *.lnk *.log
+	rm -f *.cmd *.obj *.h86 *.sym *.lst *.prn *.log

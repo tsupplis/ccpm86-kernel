@@ -16,10 +16,10 @@ SYSTEM_COMMANDS = ../commands/chset/chset.cmd ../commands/date/date.cmd \
     ../commands/submit/submit.cmd \
     ../commands/tod/tod.cmd ../commands/type/type.cmd \
     ../commands/vcmode/vcmode.cmd ../commands/sysdisk/sysdisk.cmd \
-    ../commands/setdef/setdef.cmd
+    ../commands/setdef/setdef.cmd ../commands/batch/batch.cmd
 
-# SYSDISK is source-built; other base files are selected explicitly.
-BASE_SYSTEM_COMMANDS = ../base/batch.cmd ../base/pcetime.cmd
+# Remaining original system utilities are selected explicitly.
+BASE_SYSTEM_COMMANDS = ../base/pcetime.cmd
 
 WINDOW_COMMANDS = ../base/window.cmd ../base/wmenu.cmd
 WINDOW_SAMPLES = ../base/carddeck.sub ../base/clear.sub \
@@ -36,8 +36,8 @@ EXT_COMMANDS = ../commands/putget/put.cmd ../commands/putget/get.cmd \
 
 MAINT_COMMANDS = ../commands/dskmaint/dskmaint.cmd ../commands/dskmaint/dform.cmd \
     ../commands/disk/dcopy.cmd ../commands/disk/dcomp.cmd \
-    ../base/hdmaint.cmd ../commands/initdir/initdir.cmd ../commands/tod/tod.cmd \
-    ../base/config.cmd ../base/function.cmd ../base/setup.cmd ../commands/systat/systat.cmd
+    ../commands/hdmaint/hdmaint.cmd ../commands/initdir/initdir.cmd ../commands/tod/tod.cmd \
+    ../base/config.cmd ../commands/function/function.cmd ../base/setup.cmd ../commands/systat/systat.cmd
 
 # Native and DOS development tools each occupy a data-only disk.
 DEV_COMMANDS = ../dev/rasm86.cmd ../dev/link86.cmd ../dev/lib86.cmd \

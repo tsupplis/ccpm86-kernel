@@ -177,6 +177,7 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | Tool | Purpose | Binary (`base/`) | Source (`commands/`) | BDOS 2.2 Compat. |
 | --- | --- | --- | --- | :---: |
 | `asm86` | 8086 assembler | — | 3.1 | ✓ |
+| `batch` | Run PC-MODE BAT command files | Original | Reverse engineered from CCP/M-86 |  |
 | `cls` | Clear the terminal screen | — | TMP built-in; VT52 ESC-E |  |
 | `chset` | Inspect or change CMD header flags | — | Recompiled from CCP/M-86 3.1 and adapted |  |
 | `config` | Configure serial ports | Original | — |  |
@@ -189,12 +190,12 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `dskmaint` | Format, verify and copy diskettes | Original | Reverse engineered from CCP/M-86 |  |
 | `ed` | Line-oriented text editor | — | Recompiled from CCP/M-86 3.1 and adapted | ✓ |
 | `era` / `eraq` | Erase files, optionally with confirmation | — | Recompiled from CCP/M-86 3.1 and adapted |  |
-| `function` | Program function keys | Original | — |  |
+| `function` | Program function keys | — | Reverse engineered from CCP/M-86 |  |
 | `gencmd` | Convert H86 output into CMD executables | — | Recompiled from CCP/M-86 3.1 and adapted | ✓ |
 | `genccpm` | Generate and configure the system image | — | Recompiled from CCP/M-86 3.1 and adapted; flag-table fix |  |
 | `gentab` | Generate disassembler opcode tables | — | Recompiled from CCP/M-86 3.1 and adapted |  |
 | `get` | Feed a program's console input from a text file (`GET [file{,E\|EI}] cmd`) | — | New; shares the `putget.lib` engine with PUT and RDR |  |
-| `hdmaint` | Hard-disk maintenance | Original | — |  |
+| `hdmaint` | Hard-disk maintenance | Original | Reverse engineered from CCP/M-86 |  |
 | `help` / `help.hlp` | Browse indexed command help | — | Recompiled from CCP/M-86 3.1 and adapted; indexed from `help.dat` | ✓ |
 | `initdir` | Enable directory date/time stamps | — | Recompiled from CCP/M-86 3.1 and adapted |  |
 | `pcetime` | Synchronize time with the PCE host | Original | — |  |

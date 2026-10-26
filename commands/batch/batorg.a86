@@ -1,0 +1,2113 @@
+;-----------------------------------------------------------------------------
+; BATCH - Concurrent CP/M-86 PC-MODE batch command processor.
+; Copyright (C) 1983,84 Digital Research. Shipped build date: 05/17/84.
+;
+; Reconstructed from base/batch.cmd. make check compares complete CMD files.
+; batorg.a86 is the invariant; batch.a86 is the maintained source.
+;
+; Runs .BAT files under PCTmp. It shares the PC-MODE command processor's
+; built-ins and command search: native CMD/RSP commands go through BDOS 150;
+; COM/EXE commands use the ancestor PCTmp's far service entry. A BAT command
+; reinitializes the reader in place (no nested return stack).
+;
+; CODE and DATA are separate groups. DATA begins with the loader base page;
+; the 200-byte private stack is inside DATA. All code, data pointers, shared
+; unused routines, patch areas, group padding and original quirks are retained.
+; No executable instruction is hidden in DB. The byte comparison verifies
+; absolute offsets as well as relative branches; it is not a runtime test.
+;-----------------------------------------------------------------------------
+
+	cseg
+	org	0
+
+base_fcb	equ	5ch
+base_tail	equ	81h
+sd_console_count	equ	47h
+sd_system_disk	equ	4bh
+sd_running_pd	equ	68h
+sd_8087_owner	equ	8ch
+pd_priority	equ	5h
+pd_name	equ	8h
+pd_uda	equ	10h
+pd_disk	equ	12h
+pd_user	equ	13h
+pd_parent	equ	1eh
+pd_printer	equ	24h
+uda_initial_cs	equ	50h
+pctmp_entry	equ	3h
+f_reset	equ	0h
+f_conout	equ	2h
+f_rawio	equ	6h
+f_version	equ	0ch
+f_set_disk	equ	0eh
+f_open	equ	0fh
+f_close	equ	10h
+f_get_disk	equ	19h
+f_dma_offset	equ	1ah
+f_user	equ	20h
+f_read_random	equ	21h
+f_free_drives	equ	27h
+f_error_mode	equ	2dh
+f_dma_segment	equ	33h
+f_open_queue	equ	87h
+f_priority	equ	91h
+f_attach	equ	92h
+f_detach	equ	93h
+f_set_console	equ	94h
+f_cli	equ	96h
+f_parse	equ	98h
+f_process	equ	9ch
+f_set_printer	equ	0a0h
+f_get_printer	equ	0a4h
+i_bdos	equ	0e0h
+
+; PCTmp far service selectors (not BDOS function numbers).
+pc_prepare	equ	0h
+pc_execute	equ	1h
+pc_memory	equ	2h
+pc_8087	equ	3h
+pc_suspend	equ	4h
+pc_return_code	equ	5h
+pc_search_order	equ	6h
+
+; ASM86 forces disp16 for CS operands (cmsubr.plm, MODRM/disptype).
+; Emit just the override with SEGFIX, then assemble the ordinary instruction.
+; Keep each cs_prefix immediately adjacent to the instruction it qualifies.
+	codemacro cs_prefix operand:mb
+	segfix operand
+	endm
+
+entry:
+	jmp	start
+	db	'COPYRIGHT(C)1983,84,DIGITAL RESEARCH(05/17/84)2004-0000-654321'
+
+;-----------------------------------------------------------------------------
+; Original 64-byte code patch area, filled with NOP instructions.
+;-----------------------------------------------------------------------------
+code_patch_area:
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+
+;-----------------------------------------------------------------------------
+; Establish SS:SP in DATA while preserving the incoming flags. BDOS version
+; BH must be 14h or 16h; otherwise print the rejection and reset the process.
+;-----------------------------------------------------------------------------
+start:
+	mov	ax,ds
+	pushf
+	pop	bx
+	cli
+	mov	ss,ax
+	mov	sp,offset stack_top
+	push	bx
+	popf
+	mov	cl,f_version
+	call	bdos
+	and	bh,0fdh
+	cmp	bh,14h
+	jz	choose_priority
+	mov	dx,offset msg_version
+	mov	si,0h
+	call	print_string
+	xor	cx,cx
+	mov	dx,cx
+	call	bdos
+
+;-----------------------------------------------------------------------------
+; Use parent priority minus one, bounded below by 64. With no parent use 197.
+; BDOS 156 supplies ES:BX = current PD; retain ES as the SYSDAT segment.
+;-----------------------------------------------------------------------------
+choose_priority:
+	push	es
+	mov	cl,f_process
+	call	bdos
+	mov	word ptr system_segment,es
+	mov	bx,es:pd_parent[bx]
+	xor	dh,dh
+	cmp	bx,0h
+	jnz	parent_priority
+	mov	dl,0c5h
+	jmps	set_priority
+parent_priority:
+	mov	dl,es:pd_priority[bx]
+	dec	dl
+	cmp	dl,40h
+	jnc	set_priority
+	mov	dl,40h
+set_priority:
+	mov	batch_priority,dl
+	mov	cl,f_priority
+	call	bdos
+	pop	es
+	mov	word ptr pctmp_segment,cs
+	call	init_batch
+
+;-----------------------------------------------------------------------------
+; Find PCTmp in the parent chain and take its initial CS from UDA+50h.
+; The far gateway offset is fixed at 3. The original name test checks CX after
+; REPE CMPSB, not ZF; preserve the shipped comparison.
+;-----------------------------------------------------------------------------
+find_pctmp:
+	push	es
+	mov	es,word ptr system_segment
+	mov	di,es:.sd_running_pd
+find_parent:
+	push	di
+	add	di,pd_name
+	mov	si,offset pctmp_name
+	mov	cx,5h
+	repe	cmpsb
+	pop	di
+	or	cx,cx
+	jz	pctmp_found
+	mov	di,es:pd_parent[di]
+	or	di,di
+	jnz	find_parent
+	jmps	no_pctmp
+pctmp_found:
+	mov	es,es:word ptr pd_uda[di]
+	mov	ax,es:.uda_initial_cs
+	mov	pctmp_segment,ax
+	pop	es
+	jmp	next_command
+no_pctmp:
+	pop	es
+	mov	dx,offset msg_pctmp
+	mov	si,0h
+	call	print_string
+	xor	cx,cx
+	mov	dx,cx
+	call	bdos
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; Unused resident-TMP entry retained from the shared command processor.
+; Select its configured console and the system disk before initializing BATCH.
+;-----------------------------------------------------------------------------
+resident_entry:
+	mov	word ptr pctmp_segment,cs
+	mov	dl,default_console
+	call	set_console
+	push	ds
+	mov	ds,word ptr system_segment
+	mov	dl,.sd_system_disk
+	pop	ds
+	call	set_disk
+	call	init_batch
+
+;-----------------------------------------------------------------------------
+; Release drive ownership, attach the console and run at priority 200 while
+; reading commands. PCTmp service 0 prepares its state for the next command.
+;-----------------------------------------------------------------------------
+next_command:
+	mov	dx,0ffffh
+	call	free_drives
+	call	attach_console
+	mov	dl,0c8h
+	mov	cl,f_priority
+	call	bdos
+	mov	cl,pc_prepare
+	callf	dword ptr pctmp_gateway
+	cmp	byte ptr command_returned,0ffh
+	jnz	check_command_sent
+	mov	byte ptr command_returned,0h
+	cmp	word ptr submit_cursor,0h
+	jz	check_command_sent
+	call	check_child_abort
+
+;-----------------------------------------------------------------------------
+; Separate command output from the next prompt. Check an aborted child only
+; when a batch cursor is still active.
+;-----------------------------------------------------------------------------
+check_command_sent:
+	cmp	byte ptr command_sent,0h
+	jz	prompt
+	mov	byte ptr command_sent,0h
+	call	newline
+
+;-----------------------------------------------------------------------------
+; Display user and drive prompt. Synchronize these fields in current and parent
+; PDs so native and PC-MODE children inherit the selected environment.
+;-----------------------------------------------------------------------------
+prompt:
+	mov	dl,0dh
+	call	console_out
+	call	get_user
+	mov	dx,pd_user
+	call	update_pd_field
+	test	bl,bl
+	jz	prompt_drive
+	mov	dl,bl
+	call	print_small_number
+prompt_drive:
+	call	get_disk
+	mov	dx,pd_disk
+	call	update_pd_field
+	mov	dl,41h
+	add	dl,bl
+	call	console_out
+	mov	dx,offset msg_prompt
+	call	print_code
+	call	get_command
+	mov	dl,0ah
+	call	console_out
+
+;-----------------------------------------------------------------------------
+; Trim leading space/tab/=, ignore empty and semicolon-comment lines, and
+; recognize a bare drive letter followed by a colon.
+;-----------------------------------------------------------------------------
+parse_command:
+	lea	bx,command_buffer
+	cmp	byte ptr command_length,0h
+	jz	command_done
+	mov	di,bx
+	dec	di
+	call	skip_blanks
+	mov	bx,di
+	cmp	byte ptr [bx],0h
+	jz	command_done
+	lea	ax,command_buffer
+	cmp	ax,bx
+	jz	check_comment
+	push	ds
+	pop	es
+	xor	ch,ch
+	mov	cl,command_length
+	mov	di,ax
+	mov	si,bx
+	cld
+	rep	movsb
+	mov	bx,ax
+check_comment:
+	cmp	byte ptr [bx],3bh
+	jz	command_done
+check_drive_command:
+	cmp	byte ptr command_buffer+2,0h
+	jnz	save_command
+	cmp	byte ptr 1h[bx],3ah
+	jnz	save_command
+	mov	dl,[bx]
+	and	dl,5fh
+	sub	dl,41h
+	cmp	dl,0h
+	jc	bad_drive
+	cmp	dl,0fh
+	ja	bad_drive
+	call	set_disk
+	jmp	command_done
+bad_drive:
+	mov	dx,offset msg_error
+	call	print_code
+	mov	dx,offset msg_bad_drive
+	call	print_code
+	call	newline
+command_done:
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; Save the command, parse its first filename, and retain the argument pointer.
+; Replace the end of the command name with a dollar for later error messages.
+;-----------------------------------------------------------------------------
+save_command:
+	mov	bx,offset command_buffer
+	mov	al,command_length
+	mov	ah,0h
+	add	bx,ax
+	mov	byte ptr [bx],0h
+	mov	cx,40h
+	mov	si,offset command_buffer
+	mov	di,offset saved_command
+	push	ds
+	pop	es
+	rep	movsw
+	mov	si,offset command_fcb
+	mov	di,offset saved_command
+	call	parse_filename
+	jcxz	parsed_command
+	sub	bx,bx
+	mov	bl,command_length
+	add	bx,offset saved_command
+	mov	byte ptr [bx],24h
+	jmp	command_error
+parsed_command:
+	mov	command_tail,bx
+	cmp	bx,0h
+	jnz	terminate_command_name
+	mov	bl,command_length
+	add	bx,offset saved_command
+terminate_command_name:
+	mov	byte ptr [bx],24h
+	inc	bx
+	cmp	byte ptr command_fcb,0h
+	jz	do_user
+	jmp	find_command
+
+;-----------------------------------------------------------------------------
+; Compare the eight FCB name bytes plus the first type byte against CS:DI.
+; A drive-qualified command bypasses all built-ins.
+;-----------------------------------------------------------------------------
+match_builtin:
+	mov	si,offset command_fcb
+	inc	si
+	push	cs
+	pop	es
+	mov	cx,9h
+	repe	cmpsb
+	ret
+
+;-----------------------------------------------------------------------------
+; USER [0..15]: parse two decimal digits, set/query the user, and explain that
+; user numbers apply only to CP/M media.
+;-----------------------------------------------------------------------------
+do_user:
+	mov	di,offset name_user
+	call	match_builtin
+	jnz	do_mem
+	mov	si,offset command_fcb
+	mov	di,command_tail
+	cmp	di,0h
+	jz	show_user
+	inc	di
+	call	parse_filename
+	cmp	cx,0h
+	jnz	show_user
+	mov	si,offset command_fcb
+	inc	si
+	mov	dx,[si]
+	mov	ch,30h
+	call	parse_decimal
+	cmp	bl,0fh
+	ja	bad_user
+	mov	dl,bl
+	call	set_user
+	jmp	show_user
+bad_user:
+	mov	dx,offset msg_bad_user
+	call	print_code
+show_user:
+	mov	dx,offset msg_user
+	call	print_code
+	call	get_user
+	mov	dl,bl
+	call	print_small_number
+	call	newline
+	mov	dx,offset msg_user_note
+	call	print_code
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; MEM [kilobytes]: convert the three-digit limit to paragraphs (shift by 6).
+; PCTmp service 2 sets the limit or queries it when DX=FFFFh.
+;-----------------------------------------------------------------------------
+do_mem:
+	mov	di,offset name_mem
+	call	match_builtin
+	jnz	do_8087
+	mov	si,offset command_fcb
+	mov	di,command_tail
+	cmp	di,0h
+	jz	show_mem
+	inc	di
+	call	parse_filename
+	cmp	cx,0h
+	jnz	show_mem
+	mov	si,offset command_fcb
+	inc	si
+	mov	ch,[si]
+	inc	si
+	mov	dx,[si]
+	call	parse_decimal
+	cmp	bx,0ffffh
+	jz	bad_mem
+	mov	cl,pc_search_order
+	shl	bx,cl
+	mov	dx,bx
+	mov	cl,pc_memory
+	callf	dword ptr pctmp_gateway
+	jmp	show_mem
+bad_mem:
+	mov	dx,offset msg_bad_mem
+	call	print_code
+show_mem:
+	mov	dx,offset msg_mem
+	call	print_code
+	mov	cl,pc_memory
+	mov	dx,0ffffh
+	callf	dword ptr pctmp_gateway
+	mov	cl,6h
+	shr	ax,cl
+	call	print_decimal
+	mov	dl,4bh
+	call	console_out
+	call	newline
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; 8087 [ON|OFF]: PCTmp service 3 controls the coprocessor state. Enabling
+; requires SYSDAT 8087 owner != FFFFh; query with DL=FFh.
+;-----------------------------------------------------------------------------
+do_8087:
+	mov	di,offset name_8087
+	call	match_builtin
+	jz	parse_8087
+	jmp	do_del
+parse_8087:
+	mov	si,offset command_fcb
+	mov	di,command_tail
+	cmp	di,0h
+	jz	show_8087
+	call	skip_blanks
+	call	parse_filename
+	cmp	cx,0h
+	jnz	show_8087
+	mov	si,offset command_name
+	mov	di,offset value_off
+	mov	cx,2h
+	call	compare_code_words
+	jnz	check_8087_on
+	mov	cl,pc_8087
+	xor	dl,dl
+	callf	dword ptr pctmp_gateway
+	jmps	show_8087
+check_8087_on:
+	mov	si,offset command_fcb
+	inc	si
+	mov	di,offset value_on
+	mov	cx,2h
+	call	compare_code_words
+	jnz	bad_8087
+	push	es
+	mov	es,word ptr system_segment
+	mov	bx,sd_8087_owner
+	cmp	es:word ptr [bx],0ffffh
+	pop	es
+	jnz	enable_8087
+	mov	dx,offset msg_no_8087
+	call	print_code
+	jmps	show_8087
+enable_8087:
+	mov	cl,pc_8087
+	mov	dl,1h
+	callf	dword ptr pctmp_gateway
+	jmps	show_8087
+bad_8087:
+	mov	dx,offset msg_bad_8087
+	call	print_code
+show_8087:
+	mov	dx,offset msg_8087
+	call	print_code
+	mov	cl,pc_8087
+	mov	dl,0ffh
+	callf	dword ptr pctmp_gateway
+	or	al,al
+	jz	show_8087_off
+	call	print_on
+	jmps	end_8087
+show_8087_off:
+	call	print_off
+end_8087:
+	call	newline
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; DEL becomes ERASE.EXE, then goes through the command parser again. The
+; backward copy extends into shared parsing scratch space, as in the original.
+;-----------------------------------------------------------------------------
+do_del:
+	mov	di,offset name_del
+	call	match_builtin
+	jnz	do_rename
+	push	es
+	push	ds
+	push	ds
+	pop	es
+	std
+	mov	si,offset command_guard
+	mov	di,offset parse_fcb_pointer
+	mov	cx,84h
+	rep	movsb
+	dec	si
+	add	byte ptr [si],6h
+	cld
+	push	cs
+	pop	ds
+	mov	si,offset name_erase
+	mov	di,offset command_buffer
+	mov	cx,0ah
+	rep	movsb
+	pop	ds
+	pop	es
+	jmp	parse_command
+
+;-----------------------------------------------------------------------------
+; RENAME becomes REN.EXE by shifting the tail and overwriting the name suffix.
+;-----------------------------------------------------------------------------
+do_rename:
+	mov	di,offset name_rename
+	call	match_builtin
+	jnz	do_rem
+	push	es
+	push	ds
+	push	ds
+	pop	es
+	xor	ax,ax
+	mov	al,command_length
+	inc	byte ptr command_length
+	mov	si,offset command_length
+	add	si,ax
+	mov	di,si
+	inc	di
+	mov	cx,ax
+	sub	cx,6h
+	std
+	rep	movsb
+	cld
+	mov	word ptr [si],4558h
+	dec	si
+	dec	si
+	mov	word ptr [si],452eh
+	pop	ds
+	pop	es
+	jmp	parse_command
+
+;-----------------------------------------------------------------------------
+; REM and SYS are accepted as no-ops by this version.
+;-----------------------------------------------------------------------------
+do_rem:
+	mov	di,offset name_rem
+	call	match_builtin
+	jnz	do_sys
+	jmp	next_command
+do_sys:
+	mov	di,offset name_sys
+	call	match_builtin
+	jnz	do_pause
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; PAUSE prints a prompt and waits through native BDOS raw input. Ctrl-C
+; asks whether to terminate the batch; no IBM BIOS keyboard interrupt is used.
+;-----------------------------------------------------------------------------
+do_pause:
+	mov	di,offset name_pause
+	call	match_builtin
+	jnz	do_suspend
+	mov	dx,offset msg_pause
+	call	print_code
+	call	raw_input
+	cmp	al,3h
+	jnz	end_pause
+	call	confirm_abort
+end_pause:
+	call	newline
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; SUSPEND [ON|OFF]: set/query PCTmp service 4, using the same option matcher.
+;-----------------------------------------------------------------------------
+do_suspend:
+	mov	di,offset name_suspend
+	call	match_builtin
+	jnz	do_printer
+	mov	si,offset command_fcb
+	mov	di,command_tail
+	cmp	di,0h
+	jz	show_suspend
+	call	skip_blanks
+	call	parse_filename
+	cmp	cx,0h
+	jnz	show_suspend
+	mov	si,offset command_name
+	mov	di,offset value_off
+	mov	cx,2h
+	call	compare_code_words
+	jnz	check_suspend_on
+	mov	cl,pc_suspend
+	xor	dl,dl
+	callf	dword ptr pctmp_gateway
+	jmps	show_suspend
+check_suspend_on:
+	mov	si,offset command_fcb
+	inc	si
+	mov	di,offset value_on
+	mov	cx,2h
+	call	compare_code_words
+	jnz	bad_suspend
+	mov	cl,pc_suspend
+	mov	dl,1h
+	callf	dword ptr pctmp_gateway
+	jmps	show_suspend
+bad_suspend:
+	mov	dx,offset msg_bad_suspend
+	call	print_code
+show_suspend:
+	mov	dx,offset msg_suspend
+	call	print_code
+	mov	cl,pc_suspend
+	mov	dl,0ffh
+	callf	dword ptr pctmp_gateway
+	or	al,al
+	jz	show_suspend_off
+	call	print_on
+	jmps	end_suspend
+show_suspend_off:
+	call	print_off
+end_suspend:
+	call	newline
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; PRINTER [number]: parse two digits, update both PD list-device fields,
+; then set/query the native list-device assignment.
+;-----------------------------------------------------------------------------
+do_printer:
+	mov	di,offset name_printer
+	call	match_builtin
+	jnz	find_command
+	mov	si,offset command_fcb
+	mov	di,command_tail
+	cmp	di,0h
+	jz	show_printer
+	inc	di
+	call	parse_filename
+	cmp	cx,0h
+	jnz	show_printer
+	mov	si,offset command_fcb
+	inc	si
+	mov	dx,[si]
+	mov	ch,30h
+	call	parse_decimal
+	cmp	bl,0ffh
+	jz	bad_printer
+	mov	dx,pd_printer
+	call	update_pd_field
+	mov	dl,bl
+	call	set_printer
+	jcxz	show_printer
+bad_printer:
+	mov	dx,offset msg_bad_printer
+	call	print_code
+show_printer:
+	mov	dx,offset msg_printer
+	call	print_code
+	call	get_printer
+	mov	dl,bl
+	call	print_small_number
+	call	newline
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; Shared ON/OFF display helpers.
+;-----------------------------------------------------------------------------
+print_on:
+	mov	dl,4fh
+	call	console_out
+	mov	dl,4eh
+	call	console_out
+	ret
+print_off:
+	mov	dl,4fh
+	call	console_out
+	mov	dl,46h
+	call	console_out
+	mov	dl,46h
+	call	console_out
+	ret
+
+;-----------------------------------------------------------------------------
+; Resolve external commands. An explicit extension must be CMD/COM/EXE/BAT.
+; With no extension and no explicit drive, first try a resident command queue,
+; then obtain the four extension candidates through PCTmp service 6.
+;-----------------------------------------------------------------------------
+find_command:
+	push	ds
+	pop	es
+	mov	byte ptr extensions_left,1h
+	mov	byte ptr explicit_drive,0ffh
+	cmp	byte ptr command_fcb,0h
+	jnz	get_search_drive
+	mov	byte ptr explicit_drive,0h
+get_search_drive:
+	call	get_disk
+	inc	al
+	mov	search_drive,al
+	call	validate_extension
+	or	al,al
+	jnz	open_command
+find_rsp:
+	cmp	byte ptr explicit_drive,0ffh
+	jz	get_search_order
+	mov	cl,f_open_queue
+	mov	dx,offset queue_block
+	call	bdos
+	inc	al
+	jz	get_search_order
+	mov	byte ptr explicit_drive,0ffh
+	jmp	run_native
+get_search_order:
+	mov	cl,pc_search_order
+	mov	dx,offset search_order
+	callf	dword ptr pctmp_gateway
+	mov	byte ptr extensions_left,4h
+	mov	cl,f_error_mode
+	mov	dl,0feh
+	call	bdos
+	mov	byte ptr from_user_zero,0h
+next_extension:
+	call	choose_extension
+
+;-----------------------------------------------------------------------------
+; Try the current/explicit drive, then the system disk. System-disk candidates
+; must have the system attribute; also search user zero, restoring the user.
+; Extended error reporting distinguishes a missing file from a hard error.
+;-----------------------------------------------------------------------------
+open_command:
+	mov	dx,offset command_fcb
+	call	open_file
+	inc	al
+	jz	try_system_disk
+	jmp	command_found
+try_system_disk:
+	or	ah,ah
+	jnz	command_not_found
+	cmp	byte ptr explicit_drive,0ffh
+	jz	retry_search
+	push	es
+	mov	es,word ptr system_segment
+	mov	al,es:.sd_system_disk
+	pop	es
+	inc	al
+	mov	command_fcb,al
+	mov	dx,offset command_fcb
+	call	open_file
+	inc	al
+	jz	reset_search_drive
+	mov	al,command_type+1
+	test	al,80h
+	jnz	found_system_file
+	mov	dx,offset command_fcb
+	call	close_file
+	call	get_user
+	push	ax
+	mov	dl,0h
+	call	set_user
+	mov	dx,offset command_fcb
+	call	open_file
+	inc	al
+	jz	restore_search_user
+	test	byte ptr command_type+1,80h
+	jz	close_user_zero_file
+	pop	dx
+	call	set_user
+	mov	byte ptr from_user_zero,0ffh
+	jmps	found_system_file
+close_user_zero_file:
+	mov	dx,offset command_fcb
+	call	close_file
+restore_search_user:
+	pop	dx
+	push	ax
+	call	set_user
+	pop	ax
+	jmp	reset_search_drive
+found_system_file:
+	mov	al,command_fcb
+	mov	search_drive,al
+	jmps	command_found
+reset_search_drive:
+	mov	byte ptr command_fcb,0h
+retry_search:
+	or	ah,ah
+	jnz	command_not_found
+	dec	byte ptr extensions_left
+	jz	command_not_found
+	jmp	next_extension
+command_not_found:
+	mov	cl,f_error_mode
+	xor	dl,dl
+	call	bdos
+	mov	byte ptr explicit_drive,0ffh
+	mov	cx,1eh
+	jmp	command_error
+
+;-----------------------------------------------------------------------------
+; Dispatch by validated extension: CMD uses the native CLI; BAT replaces
+; the current batch; COM/EXE use PCTmp. BAT chaining copies the FCB and tail
+; back to the loader base page and resets the private stack.
+;-----------------------------------------------------------------------------
+command_found:
+	mov	cl,f_error_mode
+	xor	dl,dl
+	call	bdos
+	mov	bx,offset command_type+2
+	mov	al,[bx]
+	and	al,7fh
+	cmp	al,44h
+	jnz	check_batch_type
+	mov	byte ptr explicit_drive,0ffh
+	jmp	run_native
+check_batch_type:
+	mov	bx,offset command_type
+	mov	al,[bx]
+	and	al,7fh
+	cmp	al,42h
+	jnz	run_dos
+	mov	si,offset command_fcb
+	mov	di,base_fcb
+	mov	cx,6h
+	rep	movsw
+	mov	si,offset command_buffer
+	mov	di,base_tail
+	mov	cx,7fh
+	rep	movsb
+	call	init_batch
+	mov	sp,offset stack_top
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; PCTmp service 1 receives two far pointers: the opened FCB and command tail.
+; Restore batch priority and remember that a child was executed.
+;-----------------------------------------------------------------------------
+run_dos:
+	mov	dl,batch_priority
+	mov	cl,f_priority
+	call	bdos
+	mov	byte ptr command_length,0h
+	mov	dx,offset command_length
+	mov	byte ptr command_sent,0ffh
+	mov	byte ptr command_returned,0ffh
+	mov	byte ptr chaining_batch,0h
+	mov	word ptr dos_fcb_offset,offset command_fcb
+	mov	word ptr dos_fcb_segment,ds
+	mov	dos_command_offset,dx
+	mov	word ptr dos_command_segment,ds
+	mov	dx,offset dos_fcb_offset
+	mov	cl,pc_execute
+	callf	dword ptr pctmp_gateway
+	cmp	bx,0h
+	jz	dos_done
+	jmp	command_error
+dos_done:
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; Validate an explicit three-byte extension against the four supported types.
+; A blank extension returns AL=0; a mismatch unwinds this call and reports 60.
+;-----------------------------------------------------------------------------
+validate_extension:
+	mov	bx,offset command_type
+	cmp	byte ptr [bx],20h
+	jnz	match_extension
+	mov	al,0h
+	ret
+match_extension:
+	mov	cx,4h
+	add	bx,2h
+	mov	si,offset type_cmd+2
+extension_loop:
+	mov	al,[bx]
+	cmp	al,[si]
+	jz	extension_prefix
+	add	si,3h
+	loop	extension_loop
+	jmp	bad_extension
+extension_prefix:
+	dec	si
+	dec	bx
+	mov	al,[bx]
+	cmp	al,[si]
+	jnz	bad_extension
+	dec	si
+	dec	bx
+	mov	al,[bx]
+	cmp	al,[si]
+	jnz	bad_extension
+	ret
+bad_extension:
+	pop	ax
+	mov	byte ptr explicit_drive,0ffh
+	mov	cx,3ch
+	jmp	command_error
+
+;-----------------------------------------------------------------------------
+; Select the next three-byte extension, from the table updated by PCTmp.
+;-----------------------------------------------------------------------------
+choose_extension:
+	mov	di,offset command_type
+	cmp	byte ptr extensions_left,4h
+	jnz	choose_com
+	mov	si,offset type_cmd
+	jmps	copy_extension
+choose_com:
+	cmp	byte ptr extensions_left,3h
+	jnz	choose_exe
+	mov	si,offset type_com
+	jmps	copy_extension
+choose_exe:
+	cmp	byte ptr extensions_left,2h
+	jnz	choose_bat
+	mov	si,offset type_exe
+	jmps	copy_extension
+choose_bat:
+	mov	si,offset type_bat
+copy_extension:
+	mov	cl,3h
+	rep	movsb
+	ret
+
+;-----------------------------------------------------------------------------
+; Read a batch line, clear the unused command buffer and echo it using a NUL
+; terminator. Restore the ordinary dollar delimiter afterwards.
+;-----------------------------------------------------------------------------
+get_command:
+	push	ds
+	pop	es
+	call	read_line
+	xor	bh,bh
+	mov	bl,command_length
+	add	bx,offset command_buffer
+	mov	di,bx
+	mov	cx,offset command_guard
+	sub	cx,bx
+	xor	al,al
+	rep	stosb
+	mov	byte ptr string_delimiter,0h
+	mov	dx,offset command_buffer
+	call	print_string
+	mov	byte ptr string_delimiter,24h
+	mov	dl,0dh
+	call	console_out
+	ret
+
+;-----------------------------------------------------------------------------
+; Read CR, LF or CR/LF lines. Keep the source cursor between calls and store
+; capacity/length together. A zero submit cursor resets the process.
+;-----------------------------------------------------------------------------
+read_line:
+	call	read_record
+	xor	bl,bl
+	xor	ah,ah
+	mov	si,submit_cursor
+	mov	di,offset command_length
+read_line_char:
+	call	get_char
+	cmp	word ptr submit_cursor,0h
+	jnz	check_line_end
+	xor	cx,cx
+	mov	dx,cx
+	call	bdos
+check_line_end:
+	cmp	dl,0dh
+	jnz	check_lf
+	mov	bl,0ffh
+	call	get_char
+	cmp	dl,0ah
+	jz	discard_lf
+	dec	ah
+	dec	si
+	dec	di
+	jmp	line_progress
+discard_lf:
+	dec	di
+	dec	ah
+	jmp	line_progress
+check_lf:
+	cmp	dl,0ah
+	jnz	line_progress
+	mov	bl,0ffh
+line_progress:
+	inc	bl
+	jnz	read_line_char
+	dec	di
+	cmp	word ptr submit_cursor,0h
+	jz	store_line_length
+	mov	submit_cursor,si
+store_line_length:
+	mov	bx,offset command_capacity
+	mov	al,0ffh
+	mov	[bx],ax
+	mov	bx,ax
+	xchg	bh,bl
+	xor	bh,bh
+	add	bx,offset command_length
+	mov	byte ptr [bx],0h
+	ret
+
+;-----------------------------------------------------------------------------
+; Get the next batch byte, refilling 128-byte random records as needed.
+; Ctrl-Z marks EOF; %% emits a literal percent; %n substitutes parameter n.
+; The shipped code does not bound the expanded line or validate n.
+;-----------------------------------------------------------------------------
+get_char:
+	inc	si
+	inc	di
+	inc	ah
+	cmp	byte ptr batch_eof,0ffh
+	jnz	check_record_end
+	mov	word ptr submit_cursor,0h
+	mov	dl,20h
+	jmps	store_char
+check_record_end:
+	cmp	si,offset parameters
+	jc	read_buffer_char
+	add	word ptr record_low,1h
+	adc	byte ptr record_high,0h
+	push	bx
+	call	read_record
+	pop	bx
+read_buffer_char:
+	mov	dl,[si]
+	cmp	dl,1ah
+	jnz	check_percent
+	mov	byte ptr batch_eof,0ffh
+	mov	dl,0dh
+check_percent:
+	cmp	dl,25h
+	jnz	store_char
+	inc	si
+	cmp	si,offset parameters
+	jc	read_parameter_number
+	add	word ptr record_low,1h
+	adc	byte ptr record_high,0h
+	push	bx
+	call	read_record
+	pop	bx
+read_parameter_number:
+	mov	dl,[si]
+	cmp	dl,25h
+	jz	store_char
+	push	si
+	push	bx
+	call	substitute_parameter
+	pop	bx
+	pop	si
+	dec	di
+	dec	ah
+	ret
+store_char:
+	mov	[di],dl
+	ret
+
+;-----------------------------------------------------------------------------
+; Reopen the BAT file for each record, selecting its saved user temporarily.
+; Copy the saved 24-bit record number to the FCB, read, close, restore the user
+; and restore DMA to the command buffer. Read failure ends batch processing.
+;-----------------------------------------------------------------------------
+read_record:
+	push	ax
+	mov	dx,offset batch_buffer
+	call	set_dma
+	call	get_user
+	push	ax
+	mov	dl,batch_user
+	call	set_user
+	mov	dx,offset batch_fcb
+	call	open_file
+	pop	dx
+	push	dx
+	push	ax
+	call	set_user
+	pop	ax
+	pop	dx
+	inc	al
+	jnz	read_random_record
+	mov	dx,offset msg_batch_missing
+	call	print_string
+	mov	cl,f_reset
+	mov	dl,0h
+	call	bdos
+read_random_record:
+	push	dx
+	mov	dl,batch_user
+	call	set_user
+	mov	bx,offset batch_random_record
+	mov	dx,record_low
+	mov	[bx],dx
+	add	bx,2h
+	mov	dl,record_high
+	mov	[bx],dl
+	mov	dx,offset batch_fcb
+	mov	cl,f_read_random
+	call	bdos
+	push	ax
+	mov	dx,offset batch_fcb
+	mov	cl,f_close
+	call	bdos
+	pop	ax
+	pop	dx
+	push	ax
+	call	set_user
+	mov	dx,offset command_buffer
+	call	set_dma
+	pop	ax
+	dec	al
+	js	record_ready
+	mov	word ptr submit_cursor,0h
+	mov	byte ptr batch_buffer,0ah
+record_ready:
+	mov	si,offset batch_buffer
+	pop	ax
+	ret
+
+;-----------------------------------------------------------------------------
+; Find parameter DL-'0' in the space-separated parameter buffer and copy it
+; into the command. Preserve the original unbounded scan and copy behavior.
+;-----------------------------------------------------------------------------
+substitute_parameter:
+	sub	dl,30h
+	mov	si,offset parameters
+find_parameter:
+	cmp	dl,0h
+	jz	copy_parameter
+	mov	al,[si]
+	cmp	al,20h
+	jz	next_parameter
+	cmp	al,0h
+	jnz	skip_parameter_char
+next_parameter:
+	dec	dl
+skip_parameter_char:
+	inc	si
+	jmp	find_parameter
+copy_parameter:
+	mov	dl,[si]
+	cmp	dl,20h
+	jz	parameter_done
+	cmp	dl,0h
+	jz	parameter_done
+	mov	[di],dl
+	inc	ah
+	inc	si
+	inc	di
+	jmp	copy_parameter
+parameter_done:
+	mov	dl,20h
+	ret
+
+;-----------------------------------------------------------------------------
+; Clear parameter storage and the FCB current-record byte.
+;-----------------------------------------------------------------------------
+clear_batch:
+	mov	word ptr submit_cursor,offset parameters
+	mov	al,0h
+	mov	di,offset parameters
+	mov	al,0h
+	mov	cx,80h
+	rep	stosb
+	mov	byte ptr batch_current_record,0h
+	ret
+
+;-----------------------------------------------------------------------------
+; Initialize the BAT FCB from the base-page drive/name; keep its fixed BAT
+; extension. Save the current user and set the cursor to buffer minus one.
+;-----------------------------------------------------------------------------
+open_batch:
+	mov	byte ptr record_high,0h
+	mov	word ptr record_low,0h
+	mov	si,base_fcb
+	mov	di,offset batch_fcb
+	mov	cl,9h
+	rep	movsb
+	cmp	byte ptr batch_fcb,0h
+	jnz	batch_drive_ready
+	call	get_disk
+	inc	al
+	mov	batch_fcb,al
+batch_drive_ready:
+	mov	byte ptr batch_eof,0h
+	call	get_user
+	mov	batch_user,al
+	mov	word ptr submit_cursor,offset batch_buffer-1
+	ret
+
+;-----------------------------------------------------------------------------
+; Normalize the original command tail into space-separated parameters.
+; Consecutive separator characters collapse to one space; append space/NUL.
+;-----------------------------------------------------------------------------
+init_batch:
+	call	clear_batch
+	call	open_batch
+	mov	cl,20h
+	mov	si,offset parameters
+	mov	bx,base_tail
+parse_parameter_char:
+	mov	al,[bx]
+	call	is_tail_end
+	jz	end_parameters
+	call	is_separator
+	jnz	save_parameter_char
+	cmp	cl,20h
+	jz	advance_parameter
+	mov	al,20h
+save_parameter_char:
+	mov	[si],al
+	inc	si
+advance_parameter:
+	inc	bx
+	mov	cl,al
+	jmp	parse_parameter_char
+end_parameters:
+	mov	byte ptr [si],20h
+	inc	si
+	mov	byte ptr [si],0h
+	ret
+
+;-----------------------------------------------------------------------------
+; PCTmp return code FFFEh means an aborted child; ask whether to stop BATCH.
+;-----------------------------------------------------------------------------
+check_child_abort:
+	mov	cl,pc_return_code
+	mov	dx,0ffffh
+	callf	dword ptr pctmp_gateway
+	cmp	ax,0fffeh
+	jz	confirm_abort
+	ret
+
+;-----------------------------------------------------------------------------
+; Clear the child return code and ask Y/N. Y or Ctrl-C abandons the cursor
+; and resets SP; N restores the delimiter, flag byte and caller SI.
+;-----------------------------------------------------------------------------
+confirm_abort:
+	mov	cl,pc_return_code
+	xor	dx,dx
+	callf	dword ptr pctmp_gateway
+	push	si
+	push	word ptr string_delimiter
+	mov	byte ptr string_delimiter,24h
+	call	newline
+abort_prompt:
+	mov	dx,offset msg_abort
+	call	print_string
+	mov	cl,f_rawio
+	mov	dl,0fdh
+	call	bdos
+	cmp	al,20h
+	jc	abort_answer
+	mov	dl,al
+	push	ax
+	call	console_out
+	pop	ax
+abort_answer:
+	push	ax
+	call	newline
+	pop	ax
+	cmp	al,3h
+	jz	abort_batch
+	cmp	al,79h
+	jz	abort_batch
+	cmp	al,59h
+	jz	abort_batch
+	cmp	al,4eh
+	jz	continue_batch
+	cmp	al,6eh
+	jnz	abort_prompt
+continue_batch:
+	pop	word ptr string_delimiter
+	pop	si
+	ret
+abort_batch:
+	mov	word ptr submit_cursor,0h
+	mov	sp,offset stack_top
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; Set both DMA offset and segment, preserving the buffer offset in DX.
+;-----------------------------------------------------------------------------
+set_dma:
+	mov	cl,f_dma_offset
+	push	dx
+	call	bdos
+	mov	cl,f_dma_segment
+	mov	dx,ds
+	call	bdos
+	pop	dx
+	ret
+
+;-----------------------------------------------------------------------------
+; File wrappers preserve BX. OPEN sets FCB attribute bit 6 (high bit of byte 6).
+;-----------------------------------------------------------------------------
+close_file:
+	push	bx
+	mov	cl,f_close
+	call	bdos
+	pop	bx
+	ret
+open_file:
+	push	bx
+	mov	bx,dx
+	add	bx,6h
+	or	byte ptr [bx],80h
+	mov	cl,f_open
+	call	bdos
+	pop	bx
+	ret
+
+;-----------------------------------------------------------------------------
+; Test AL against the configured separator list through ES:DI. The shipped
+; count is 12 although the list occupies 11 bytes: it also scans the following
+; pointer low byte (BFh). Retained for exact reconstruction.
+;-----------------------------------------------------------------------------
+is_separator:
+	push	di
+	push	cx
+	push	bx
+	mov	ch,0h
+	mov	cl,separator_count
+	mov	bx,cx
+	mov	di,separator_pointer
+	repne	scasb
+	pop	bx
+	pop	cx
+	pop	di
+	ret
+is_tail_end:
+	mov	al,[bx]
+	cmp	al,tail_terminator
+	ret
+
+;-----------------------------------------------------------------------------
+; Set PD byte at offset DX to BL in both current and parent descriptors.
+; This shared helper assumes a parent exists; no null-parent guard is added.
+;-----------------------------------------------------------------------------
+update_pd_field:
+	push	bx
+	push	es
+	mov	ax,bx
+	mov	es,word ptr system_segment
+	mov	bx,sd_running_pd
+	mov	cx,es:[bx]
+	mov	bx,cx
+	add	bx,dx
+	mov	es:[bx],al
+	mov	bx,cx
+	add	bx,pd_parent
+	mov	cx,es:[bx]
+	mov	bx,cx
+	add	bx,dx
+	mov	es:[bx],al
+	pop	es
+	pop	bx
+	ret
+
+;-----------------------------------------------------------------------------
+; Print a CS string by selecting SI=FFFFh; restore SI=0 for DATA output.
+;-----------------------------------------------------------------------------
+print_code:
+	mov	si,0ffffh
+	call	print_string
+	mov	si,0h
+	ret
+
+;-----------------------------------------------------------------------------
+; Poll before and after console output. Ctrl-C invokes the batch abort prompt;
+; Ctrl-S waits for Ctrl-Q (or Ctrl-C) using raw native console I/O.
+;-----------------------------------------------------------------------------
+poll_keyboard:
+	push	dx
+	mov	cl,f_rawio
+	mov	dl,0ffh
+	call	bdos
+	or	al,al
+	jz	poll_done
+	cmp	al,3h
+	jnz	check_ctrl_s
+keyboard_abort:
+	call	confirm_abort
+	jmps	poll_done
+check_ctrl_s:
+	cmp	al,13h
+	jnz	poll_done
+wait_ctrl_q:
+	mov	cl,f_rawio
+	mov	dl,0fdh
+	call	bdos
+	cmp	al,3h
+	jz	keyboard_abort
+	cmp	al,11h
+	jnz	wait_ctrl_q
+poll_done:
+	pop	dx
+	ret
+console_out:
+	call	poll_keyboard
+	mov	cl,f_conout
+	call	bdos
+	call	poll_keyboard
+	ret
+
+;-----------------------------------------------------------------------------
+; Emit one decimal place, suppressing leading zeroes; preserve the remainder.
+;-----------------------------------------------------------------------------
+decimal_place:
+	div	cx
+	push	dx
+	cmp	byte ptr decimal_started,0ffh
+	jz	decimal_digit
+	or	ax,ax
+	jz	decimal_remainder
+decimal_digit:
+	mov	byte ptr decimal_started,0ffh
+	mov	dl,al
+	add	dl,30h
+	call	console_out
+decimal_remainder:
+	pop	ax
+	xor	dx,dx
+	ret
+
+;-----------------------------------------------------------------------------
+; Print unsigned AX in decimal using divisors 10000, 1000, 100 and 10.
+;-----------------------------------------------------------------------------
+print_decimal:
+	mov	byte ptr decimal_started,0h
+	xor	dx,dx
+	mov	cx,2710h
+	call	decimal_place
+	mov	cx,3e8h
+	call	decimal_place
+	mov	cx,64h
+	call	decimal_place
+	mov	cx,0ah
+	call	decimal_place
+	mov	dl,al
+	add	dl,30h
+	call	console_out
+	ret
+
+;-----------------------------------------------------------------------------
+; Print DS:DX, or CS:DX when SI=FFFFh, until string_delimiter. Preserve the
+; original column bookkeeping and TAB-to-14h translation.
+;-----------------------------------------------------------------------------
+print_string:
+	mov	bx,dx
+print_next:
+	cmp	si,0ffffh
+	jnz	print_data_char
+	cs_prefix	cs:byte ptr [bx]
+	mov	dl,[bx]
+	jmps	check_delimiter
+print_data_char:
+	mov	dl,[bx]
+check_delimiter:
+	mov	ax,print_column
+	cmp	dl,string_delimiter
+	jz	print_done
+	cmp	dl,0dh
+	jnz	check_tab_column
+	mov	ax,0h
+check_tab_column:
+	cmp	ax,8h
+	jc	check_tab_char
+	mov	ax,0h
+check_tab_char:
+	cmp	dl,9h
+	jnz	print_char
+	mov	dl,14h
+print_char:
+	push	bx
+	push	ax
+	call	console_out
+	pop	ax
+	pop	bx
+	inc	bx
+	jmps	print_next
+print_done:
+	mov	print_column,ax
+	ret
+
+;-----------------------------------------------------------------------------
+; Unused shared helper: emit AL spaces with raw console output.
+;-----------------------------------------------------------------------------
+print_spaces:
+	cmp	al,0h
+	jz	spaces_done
+	dec	al
+	push	ax
+	push	bx
+	mov	cl,f_rawio
+	mov	dl,20h
+	call	bdos
+	pop	bx
+	pop	ax
+	jmps	print_spaces
+spaces_done:
+	ret
+
+;-----------------------------------------------------------------------------
+; Unused shared chain helper: build BATCH plus a drive-qualified command in
+; the prefix space preceding command_buffer, then submit through the CLI.
+;-----------------------------------------------------------------------------
+chain_batch:
+	mov	byte ptr cli_prefix,43h
+	mov	byte ptr command_capacity,48h
+	mov	byte ptr command_length,20h
+	cmp	byte ptr explicit_drive,0h
+	jnz	chain_batch_ready
+	push	ds
+	pop	es
+	mov	cx,84h
+	mov	di,offset command_guard
+	mov	si,di
+	dec	si
+	dec	si
+	std
+	rep	movsb
+	cld
+	mov	al,search_drive
+	add	al,40h
+	mov	command_buffer,al
+	mov	byte ptr command_buffer+1,3ah
+chain_batch_ready:
+	lea	dx,batch_cli_prefix
+	mov	byte ptr chaining_batch,0ffh
+	jmps	submit_cli
+
+;-----------------------------------------------------------------------------
+; Native command/RSP execution through BDOS 150. Restore batch priority,
+; release drives and select the CLI buffer prefix according to drive handling.
+;-----------------------------------------------------------------------------
+run_native:
+	mov	dl,batch_priority
+	mov	cl,f_priority
+	call	bdos
+	mov	dx,0ffffh
+	call	free_drives
+	mov	byte ptr cli_prefix,0h
+	lea	dx,cli_prefix
+	cmp	byte ptr explicit_drive,0h
+	jz	submit_cli
+	inc	dx
+	inc	dx
+	mov	byte ptr command_length,0h
+submit_cli:
+	mov	byte ptr command_sent,0ffh
+	mov	cl,f_cli
+	call	bdos
+	cmp	bx,0h
+	jz	native_done
+	cmp	byte ptr chaining_batch,0ffh
+	jnz	command_error
+	mov	byte ptr chaining_batch,0h
+	mov	cx,3dh
+	jmp	command_error
+native_done:
+	mov	byte ptr explicit_drive,0ffh
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; Translate CX through the CS error table. A null message silently returns
+; to the command loop; otherwise print the error and saved command name.
+;-----------------------------------------------------------------------------
+command_error:
+	mov	si,offset error_table-4
+find_error:
+	add	si,4h
+	cs_prefix	cs:byte ptr [si]
+	cmp	word ptr [si],0ffffh
+	jz	error_found
+	cs_prefix	cs:byte ptr [si]
+	cmp	cx,[si]
+	jnz	find_error
+error_found:
+	cs_prefix	cs:byte ptr [si]
+	mov	dx,2h[si]
+	cmp	dx,0h
+	jnz	print_error
+	mov	byte ptr command_sent,0h
+	jmp	next_command
+print_error:
+	push	dx
+	call	newline
+	mov	dx,offset msg_error
+	call	print_code
+	pop	dx
+	call	print_code
+	call	newline
+	mov	dx,offset msg_command
+	call	print_code
+	mov	dx,offset saved_command
+	call	print_string
+	call	newline
+	jmp	next_command
+
+;-----------------------------------------------------------------------------
+; Advance DI over space, tab and equals sign. Input DI precedes the first byte.
+;-----------------------------------------------------------------------------
+skip_blanks:
+	inc	di
+	cmp	byte ptr [di],20h
+	jz	skip_blanks
+	cmp	byte ptr [di],9h
+	jz	skip_blanks
+	cmp	byte ptr [di],3dh
+	jz	skip_blanks
+	ret
+
+;-----------------------------------------------------------------------------
+; Unused shared helper: copy CX words within CODE, preserving DS and ES.
+;-----------------------------------------------------------------------------
+move_code_words:
+	mov	ax,cs
+	push	ds
+	push	es
+	mov	ds,ax
+	mov	es,ax
+	rep	movsw
+	pop	es
+	pop	ds
+	ret
+
+;-----------------------------------------------------------------------------
+; Compare CX words of DS:SI against CS:DI, preserving ES.
+;-----------------------------------------------------------------------------
+compare_code_words:
+	push	es
+	mov	ax,cs
+	mov	es,ax
+	repe	cmpsw
+	pop	es
+	ret
+
+;-----------------------------------------------------------------------------
+; BDOS 152 filename parser: DI = input string, SI = output FCB.
+; The two near pointers live in parse_block; return registers are left intact.
+;-----------------------------------------------------------------------------
+parse_filename:
+	mov	cx,f_parse
+	mov	bx,offset parse_block
+	mov	[bx],di
+	mov	2h[bx],si
+	mov	dx,bx
+	jmp	bdos
+
+;-----------------------------------------------------------------------------
+; Parse up to three decimal digits (CH, DL, DH), shifting trailing blanks.
+; Return BX=FFFFh for invalid input, otherwise the value; preserve CX and DX.
+;-----------------------------------------------------------------------------
+parse_decimal:
+	push	cx
+	push	dx
+	cmp	dh,20h
+	jnz	validate_digits
+	mov	dh,dl
+	mov	dl,ch
+	mov	ch,30h
+	cmp	dh,20h
+	jnz	validate_digits
+	mov	dh,dl
+	mov	dl,ch
+validate_digits:
+	cmp	dh,30h
+	jc	invalid_decimal
+	cmp	dh,39h
+	ja	invalid_decimal
+	cmp	dl,30h
+	jc	invalid_decimal
+	cmp	dl,39h
+	ja	invalid_decimal
+	cmp	ch,30h
+	jc	invalid_decimal
+	cmp	ch,39h
+	ja	invalid_decimal
+	sub	dh,30h
+	sub	dl,30h
+	sub	ch,30h
+	mov	ax,0h
+	mov	al,dl
+	push	dx
+	mov	cl,0ah
+	mul	cl
+	mov	si,ax
+	mov	cl,64h
+	mov	al,ch
+	mul	cl
+	add	ax,si
+	pop	dx
+	mov	dl,dh
+	mov	dh,0h
+	add	ax,dx
+	mov	bx,ax
+	jmps	decimal_done
+invalid_decimal:
+	mov	bx,0ffffh
+decimal_done:
+	pop	dx
+	pop	cx
+	ret
+
+;-----------------------------------------------------------------------------
+; Small decimal display: optional leading 1 followed by the units character.
+; This helper is designed for 0..19; the original does not handle larger tens.
+;-----------------------------------------------------------------------------
+print_small_number:
+	cmp	dl,0ah
+	jc	print_units
+	push	dx
+	mov	dl,31h
+	call	console_out
+	pop	dx
+	sub	dl,0ah
+print_units:
+	add	dl,30h
+	jmp	console_out
+
+;-----------------------------------------------------------------------------
+; Thin native BDOS wrappers. Raw input DL=FDh blocks without echo.
+;-----------------------------------------------------------------------------
+get_user:
+	mov	dl,0ffh
+set_user:
+	mov	cl,f_user
+	jmp	bdos
+newline:
+	mov	dx,offset msg_newline
+	jmp	print_code
+raw_input:
+	mov	dl,0fdh
+	mov	cl,f_rawio
+	jmps	bdos
+set_console:
+	mov	cl,f_set_console
+	jmps	bdos
+set_disk:
+	mov	cl,f_set_disk
+	jmps	bdos
+get_disk:
+	mov	cl,f_get_disk
+	jmps	bdos
+set_printer:
+	mov	cl,f_set_printer
+	jmps	bdos
+get_printer:
+	mov	cl,f_get_printer
+	jmps	bdos
+attach_console:
+	mov	cl,f_attach
+	jmps	bdos
+detach_console:
+	mov	cl,f_detach
+	jmps	bdos
+free_drives:
+	mov	cl,27h
+
+;-----------------------------------------------------------------------------
+; Native Concurrent CP/M-86 BDOS gateway (INT E0h).
+;-----------------------------------------------------------------------------
+bdos:
+	int	i_bdos
+	ret
+;-----------------------------------------------------------------------------
+; Error table: WORD status, WORD near CODE message pointer. FFFFh is the
+; default terminator; the additional copies are retained from the shipped file.
+;-----------------------------------------------------------------------------
+error_table	dw	1fh,0
+	dw	3h,offset msg_memory
+	dw	0ch,offset msg_pd_full
+	dw	18h,offset msg_file_spec
+	dw	17h,offset msg_file_spec
+	dw	26h,offset msg_file_spec
+	dw	19h,offset msg_file_spec
+	dw	1ch,offset msg_load_error
+	dw	1dh,offset msg_load_error
+	dw	1eh,offset msg_no_command
+	dw	0fh,offset msg_queue_full
+	dw	28h,offset msg_cli_abort
+	dw	13h,offset msg_console
+	dw	14h,offset msg_console
+	dw	15h,offset msg_console
+	dw	20h,offset msg_console
+	dw	24h,offset msg_console
+	dw	3ch,offset msg_filetype
+	dw	3dh,offset msg_no_batch
+	dw	0ffffh,offset msg_load_error
+	dw	0ffffh,offset msg_load_error
+	dw	0ffffh,offset msg_load_error
+	dw	0ffffh,offset msg_load_error
+
+;-----------------------------------------------------------------------------
+; Dollar-terminated CODE messages, followed by padded built-in command names.
+;-----------------------------------------------------------------------------
+msg_prompt	db	'>$'
+msg_newline	db	0dh,0ah,'$'
+msg_error	db	'CP/M Error: $'
+msg_memory	db	'Not Enough Memory$'
+msg_pd_full	db	'PD Table Full$'
+msg_file_spec	db	'Bad File Spec$'
+msg_load_error	db	'Load Error$'
+msg_no_command	db	'Can',27h,'t Find Command$'
+msg_queue_full	db	'RSP Command Que Full$'
+msg_cli_abort	db	'CLI Abort$'
+msg_bad_drive	db	'Invalid Drive$'
+msg_console	db	'Can',27h,'t Assign Console$'
+msg_filetype	db	'Bad Filetype$'
+msg_no_batch	db	'Can',27h,'t Find BATCH.CMD$'
+msg_command	db	'Command = $'
+msg_bad_user	db	0dh,0ah,'Invalid User Number, IGNORED',0dh,0ah,'$'
+msg_user	db	0dh,0ah,'User Number = $'
+msg_user_note	db	0dh,0ah,'Note:  User numbers only apply to CP/M media.',0dh,0ah,'$'
+msg_bad_mem	db	0dh,0ah,'Invalid Memory Allocation Size, IGNORED',0dh,0ah,'$'
+msg_mem	db	0dh,0ah,'Memory Allocation Size = $'
+msg_bad_printer	db	0dh,0ah,'Invalid Printer Number, IGNORED',0dh,0ah,'$'
+msg_printer	db	0dh,0ah,'Printer Number = $'
+msg_no_8087	db	0dh,0ah,'8087 not installed',0dh,0ah,'$'
+msg_bad_8087	db	0dh,0ah,'Invalid 8087 State, IGNORED',0dh,0ah,'$'
+msg_8087	db	0dh,0ah,'8087 = $'
+msg_bad_suspend	db	0dh,0ah,'Invalid Suspend State, IGNORED',0dh,0ah,'$'
+msg_suspend	db	0dh,0ah,'Suspend = $'
+msg_pause	db	'Strike a key when ready . . .$'
+
+;-----------------------------------------------------------------------------
+; Eight-character FCB names plus a blank first extension byte.
+;-----------------------------------------------------------------------------
+name_user	db	'USER     '
+name_mem	db	'MEM      '
+name_printer	db	'PRINTER  '
+name_8087	db	'8087     '
+name_suspend	db	'SUSPEND  '
+name_rem	db	'REM      '
+name_sys	db	'SYS      '
+name_pause	db	'PAUSE    '
+name_del	db	'DEL      '
+name_rename	db	'RENAME   '
+name_erase	db	'ERASE.EXE '
+value_on	db	'ON  '
+value_off	db	'OFF '
+
+;-----------------------------------------------------------------------------
+; Unused startup message retained from the shared TMP source.
+;-----------------------------------------------------------------------------
+msg_startup	db	'Start up command: '
+
+;-----------------------------------------------------------------------------
+; Original CODE paragraph padding.
+;-----------------------------------------------------------------------------
+code_padding	db	'$',0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+
+	dseg
+	org	0
+
+
+;-----------------------------------------------------------------------------
+; Loader base page. The default FCB is at 5Ch and command text at 81h.
+;-----------------------------------------------------------------------------
+base_page	rb	100h
+
+;-----------------------------------------------------------------------------
+; Shared TMP header fields; system_segment is filled by BDOS 156.
+;-----------------------------------------------------------------------------
+system_segment	dw	0h
+console_count_offset	dw	sd_console_count
+default_console	db	0h
+header_reserved	rb	0bh
+
+;-----------------------------------------------------------------------------
+; Private 200-byte stack, initialized to CCh in the shipped image.
+;-----------------------------------------------------------------------------
+private_stack	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+
+;-----------------------------------------------------------------------------
+; Shared resident entry metadata, followed by the PCTmp far service pointer.
+;-----------------------------------------------------------------------------
+stack_top:
+resident_offset	dw	offset resident_entry
+resident_reserved	dw	0h
+	dw	0h
+pctmp_gateway	dw	pctmp_entry
+pctmp_segment	dw	0h
+
+;-----------------------------------------------------------------------------
+; Overlaid CLI/BATCH prefix and command buffer. The DEL expansion temporarily
+; uses bytes through parse_fcb_pointer. These layouts are intentionally shared.
+;-----------------------------------------------------------------------------
+batch_cli_prefix	db	0h
+batch_cli_name	db	'BAT'
+cli_prefix	db	0h
+command_capacity	db	84h
+command_length	db	0h
+command_buffer	rb	84h
+command_guard	db	0h
+command_sent	db	0h
+
+;-----------------------------------------------------------------------------
+; Parser scratch, DOS execution far descriptors and native queue-open prefix.
+; The queue name at queue_block+8 aliases command_name in the following FCB.
+;-----------------------------------------------------------------------------
+command_tail	dw	0h
+parse_block	dw	offset saved_command
+parse_fcb_pointer	dw	offset command_fcb
+dos_fcb_offset	dw	0h
+dos_fcb_segment	dw	0h
+dos_command_offset	dw	0h
+dos_command_segment	dw	0h
+from_user_zero	db	0h
+search_reserved	db	0h
+queue_block	db	0h,0h,0h,0h,0h,0h,0h
+
+;-----------------------------------------------------------------------------
+; 37-byte command FCB, initially naming STARTUP with a blank extension.
+;-----------------------------------------------------------------------------
+command_fcb	db	0h
+command_name	db	'STARTUP '
+command_type	db	'   '
+command_fcb_rest	rb	19h
+
+;-----------------------------------------------------------------------------
+; 128-byte saved command followed by its guard byte.
+;-----------------------------------------------------------------------------
+saved_command	rb	80h
+saved_command_guard	db	0h
+
+;-----------------------------------------------------------------------------
+; DATA diagnostics and the five-byte PCTmp process-name match.
+;-----------------------------------------------------------------------------
+msg_version	db	'Requires CCP/M-86',0dh,0ah,'$'
+msg_pctmp	db	'Requires PC-MODE Tmp',0dh,0ah,'$'
+pctmp_name	db	'PCTmp'
+batch_priority	db	0h
+msg_abort	db	'Terminate batch job (Y/N)? $'
+msg_batch_missing	db	0dh,0ah,'Batch file missing',0dh,0ah,'$'
+batch_user	db	0h
+
+;-----------------------------------------------------------------------------
+; 36-byte batch FCB, with fixed BAT extension and a 24-bit random record field.
+;-----------------------------------------------------------------------------
+batch_fcb	db	0h
+batch_name	db	'        '
+batch_type	db	'BAT'
+batch_fcb_rest	rb	14h
+batch_current_record	db	0h
+batch_random_record	dw	0h
+batch_random_high	db	0h
+
+;-----------------------------------------------------------------------------
+; One 128-byte random-read buffer, then 128 bytes of normalized parameters.
+;-----------------------------------------------------------------------------
+batch_buffer	rb	80h
+parameters	rb	80h
+
+;-----------------------------------------------------------------------------
+; Batch cursor, 24-bit random record counter (high byte first), print state
+; and flags. submit_cursor=0 terminates batch processing.
+;-----------------------------------------------------------------------------
+submit_cursor	dw	0h
+record_high	db	0h
+record_low	dw	0h
+print_column	dw	0h
+batch_eof	db	0h
+string_delimiter	db	'$'
+chaining_batch	db	0h
+
+;-----------------------------------------------------------------------------
+; Original separators, NUL included. separator_count is deliberately retained
+; as 12, so the scan also includes the low byte of separator_pointer.
+;-----------------------------------------------------------------------------
+separators	db	' ,![]><=;/',0h
+separator_pointer	dw	offset separators
+explicit_drive	db	0h
+drive_reserved	db	0h
+search_drive	db	0h
+separator_count	db	0ch
+saved_separator_count	db	0ch
+search_reserved2	db	0h
+extensions_left	db	0h
+search_reserved3	db	0h,0h,0h,0h
+tail_terminator	db	0h
+
+;-----------------------------------------------------------------------------
+; PCTmp service 6 search-order structure: flag followed by four 3-byte types.
+;-----------------------------------------------------------------------------
+search_order	db	0ffh
+type_cmd	db	'CMD'
+type_com	db	'COM'
+type_exe	db	'EXE'
+type_bat	db	'BAT'
+command_returned	db	0h
+decimal_started	db	0h
+
+;-----------------------------------------------------------------------------
+; Original 128-byte DATA patch area.
+;-----------------------------------------------------------------------------
+data_patch_area	db	'DATA PATCH AREA DATA PATCH AREA DATA PATCH AREA DATA PATCH AREA '
+	db	'DATA PATCH AREA DATA PATCH AREA DATA PATCH AREA DATA PATCH AREA '
+
+;-----------------------------------------------------------------------------
+; Original DATA paragraph padding.
+;-----------------------------------------------------------------------------
+data_padding	db	0h,0h,0h,0h,0h,0h,0h,0h,0h
+data_end:
+
+	end
