@@ -176,11 +176,11 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 
 | Tool | Purpose | Binary (`base/`) | Source (`commands/`) | BDOS 2.2 Compat. |
 | --- | --- | --- | --- | :---: |
-| `asm86` | 8086 assembler | — | 3.1 | ✓ |
+| `asm86` | 8086 assembler | — | Recompiled from CCP/M-86 3.1 and adapted | ✓ |
 | `batch` | Run PC-MODE BAT command files | Original | Reverse engineered from CCP/M-86 |  |
 | `cls` | Clear the terminal screen | — | TMP built-in; VT52 ESC-E |  |
 | `chset` | Inspect or change CMD header flags | — | Recompiled from CCP/M-86 3.1 and adapted |  |
-| `config` | Configure serial ports | Original | Byte-identical Concurrent reconstruction; CP/M reference |  |
+| `config` | Configure serial ports | Original |  Reverse engineered from CCP/M-86 |  |
 | `date` | Display or set the date | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K patched |  |
 | `dcomp` | Compare floppy diskettes | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |
 | `dcopy` | Copy floppy diskettes | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |
@@ -194,19 +194,19 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `gencmd` | Convert H86 output into CMD executables | — | Recompiled from CCP/M-86 3.1 and adapted | ✓ |
 | `genccpm` | Generate and configure the system image | — | Recompiled from CCP/M-86 3.1 and adapted; flag-table fix |  |
 | `gentab` | Generate disassembler opcode tables | — | Recompiled from CCP/M-86 3.1 and adapted |  |
-| `get` | Feed a program's console input from a text file (`GET [file{,E\|EI}] cmd`) | — | New; shares the `putget.lib` engine with PUT and RDR |  |
+| `get` | Feed a program's console input from a text file  | — | New; shares the `putget.lib` engine with PUT and RDR |  |
 | `hdmaint` | Hard-disk maintenance | Original | Reverse engineered from CCP/M-86 |  |
 | `help` / `help.hlp` | Browse indexed command help | — | Recompiled from CCP/M-86 3.1 and adapted; indexed from `help.dat` | ✓ |
 | `initdir` | Enable directory date/time stamps | — | Recompiled from CCP/M-86 3.1 and adapted |  |
-| `pcetime` | Synchronize time with the PCE host | Original | — |  |
+| `pcetime` | Synchronize time with the PCE host | External | [CPM86 Hacking Project](https://ibm.github.com/tsupplis/cpm86-hacking) |  |
 | `pip` | Copy and transfer files | — | Recompiled from CDOS 4.1 and adapted |  |
 | `print` | Print files using Concurrent printer services | Original | Recompiled from CCP/M-86 3.1 |  |
-| `put` | Capture a program's console output into a file (`PUT [file{,A}{,E\|EO}] cmd`) | — | New; shares the `putget.lib` engine with GET and RDR |  |
-| `rdr` | Redirect a program's console input and output together (`RDR [in,out{,A}{,E\|EI\|EO}] cmd`) | — | New; shares the `putget.lib` engine with PUT and GET |  |
-| `ren` | Rename files | — | 3.1 |  |
+| `put` | Capture a program's console output into a file | — | New; shares the `putget.lib` engine with GET and RDR |  |
+| `rdr` | Redirect a program's console input and output together | — | New; shares the `putget.lib` engine with PUT and GET |  |
+| `ren` | Rename files | — | Recompiled from CCP/M-86 3.1 and adapted |  |
 | `sdir` | Detailed, sorted directory listing | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K/DPB/tail fixes |  |
 | `set` | Set file and drive attributes | — | Recompiled from CCP/M-86 3.1 and adapted |  |
-| `setup` | Customize IBM PC/XT XIOS settings | Original | Byte-identical Concurrent reconstruction; CP/M reference |  |
+| `setup` | Customize IBM PC/XT XIOS settings | Original | Reverse engineered from CCP/M-86 |  |
 | `show` | Display disk space and drive information | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K patched |  |
 | `setdef` | Display/change the per-console command drive list; fixed system fallback | — | New, Source-built `SETDEF.CMD`; local kernel extension |  |
 | `submit` | Run batch command files | — | Recompiled from CCP/M-86 3.1 and adapted |  |
@@ -219,7 +219,7 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `vcmode` | Set virtual-console background modes | — | Recompiled from CCP/M-86 3.1 and adapted |  |
 | `asm80` | 8080 assembler | — | Translated using XLT86 from CP/M-80 2.2 and adapted | ✓ |
 | `hexcom` | Convert Intel HEX to COM binaries | — | HEXCOM 3.00-compatible C from [tpzasm](https://github.com/johnsonjh/tpzasm) | ✓ |
-| `dredix` | Full-screen text editor | — | 4.1; DREDIX C Backported from Concurrent DOS 4.1 |  |
+| `dredix` | Full-screen text editor | — | DREDIX C Backported from Concurrent DOS 4.1 |  |
 
 ✓ = confirmed compatible with BDOS 2.2.
 
