@@ -200,6 +200,7 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `initdir` | Enable directory date/time stamps | — | Recompiled from CCP/M-86 3.1 and adapted |  |
 | `pcetime` | Synchronize time with the PCE host | Original | — |  |
 | `pip` | Copy and transfer files | — | Recompiled from CDOS 4.1 and adapted |  |
+| `print` | Print files using Concurrent printer services | Original | Recompiled from CCP/M-86 3.1 |  |
 | `put` | Capture a program's console output into a file (`PUT [file{,A}{,E\|EO}] cmd`) | — | New; shares the `putget.lib` engine with GET and RDR |  |
 | `rdr` | Redirect a program's console input and output together (`RDR [in,out{,A}{,E\|EI\|EO}] cmd`) | — | New; shares the `putget.lib` engine with PUT and GET |  |
 | `ren` | Rename files | — | 3.1 |  |
@@ -221,6 +222,11 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `dredix` | Full-screen text editor | — | 4.1; DREDIX C Backported from Concurrent DOS 4.1 |  |
 
 ✓ = confirmed compatible with BDOS 2.2.
+
+PRINT is built from the original C sources in `commands/print` using the
+historical `SQLINK.INP` module list. Both `ccpm86.img` and `ccpmnative.img`
+include the rebuilt `commands/print/print.cmd`. See
+[the PRINT README](commands/print/README.md) for usage and build details.
 
 ### Development binaries
 
