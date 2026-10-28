@@ -13,7 +13,7 @@ SYSTEM_COMMANDS = ../commands/chset/chset.cmd ../commands/date/date.cmd \
     ../commands/help/help.cmd ../commands/help/help.hlp \
     ../commands/ed/ed.cmd ../commands/ren/ren.cmd \
     ../commands/sdir/sdir.cmd ../commands/set/set.cmd ../commands/show/show.cmd \
-    ../commands/submit/submit.cmd \
+    ../commands/submit/submit.cmd ../commands/print/print.cmd \
     ../commands/tod/tod.cmd ../commands/type/type.cmd \
     ../commands/vcmode/vcmode.cmd ../commands/sysdisk/sysdisk.cmd \
     ../commands/setdef/setdef.cmd ../commands/batch/batch.cmd
@@ -37,7 +37,7 @@ EXT_COMMANDS = ../commands/putget/put.cmd ../commands/putget/get.cmd \
 MAINT_COMMANDS = ../commands/dskmaint/dskmaint.cmd ../commands/dskmaint/dform.cmd \
     ../commands/disk/dcopy.cmd ../commands/disk/dcomp.cmd \
     ../commands/hdmaint/hdmaint.cmd ../commands/initdir/initdir.cmd ../commands/tod/tod.cmd \
-    ../base/config.cmd ../commands/function/function.cmd ../base/setup.cmd ../commands/systat/systat.cmd
+    ../commands/config/config.cmd ../commands/function/function.cmd ../commands/setup/setup.cmd ../commands/systat/systat.cmd
 
 # Native and DOS development tools each occupy a data-only disk.
 DEV_COMMANDS = ../dev/rasm86.cmd ../dev/link86.cmd ../dev/lib86.cmd \

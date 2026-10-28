@@ -1,0 +1,1734 @@
+;*****************************************************************************
+; SETUP - Concurrent CP/M-86 IBM PC/XT XIOS customization, version 1.0.
+;
+; Reconstructed from ../../base/setup.cmd, using the CP/M-86 SETUP
+; reconstruction as reference. setuporg.a86 is the frozen original.
+; Build: make. Verify complete original and maintained CMD files: make check.
+; Usage: SETUP (interactive function-key menus; no command-line options).
+; Save current function keys or serial settings, reserve a memory disk,
+; choose diskette step time / write verification and the storage disk.
+; Update writes the configuration sector for the next power-on/reset.
+; Requires Concurrent 3.x, a local console, foreground and DYNAMIC mode.
+;
+; Layout: one 8080-model CODE group, including the 256-byte loader page,
+; code, menu dispatch tables, 512-byte configuration sector and working data.
+; All executable bytes are assembled instructions. DB contains only actual
+; strings, initialized storage and padding; dispatch addresses use DW.
+; There are no raw opcode substitutions or instruction encoding exceptions.
+; The three CALLF instructions with CS overrides retain the original far ABI.
+;*****************************************************************************
+
+; Absolute aliases avoid automatic CS overrides on shared CODE/data.
+; Their values match the original layout; make check guards every address.
+configuration_sector equ 0908h
+memory_segment equ 090ah
+verify_flag equ 090ch
+step_rate equ 090dh
+save_serial_flag equ 0968h
+save_keys_flag equ 096ah
+serial_parameters equ 096ch
+field_096d equ 096dh
+function_key_data equ 0978h
+save_keys equ 0b08h
+save_serial equ 0b09h
+disk_head equ 0b0ah
+disk_chs equ 0b0ch
+hard_disk_chs equ 0b0eh
+xios_gateway equ 0b10h
+item_0b11 equ 0b11h
+system_segment equ 0b12h
+xios_segment equ 0b14h
+process_descriptor equ 0b16h
+console_descriptor equ 0b18h
+console_number equ 0b1ah
+field_0b1c equ 0b1ch
+field_0b1d equ 0b1dh
+bios_disk_gateway equ 0b1eh
+memory_range_1 equ 0b2ah
+memory_range_2 equ 0b2ch
+memory_range_3 equ 0b2eh
+field_0b30 equ 0b30h
+field_0b32 equ 0b32h
+field_0b33 equ 0b33h
+item_0b34 equ 0b34h
+item_0b44 equ 0b44h
+item_0b54 equ 0b54h
+item_0b8c equ 0b8ch
+item_0bc6 equ 0bc6h
+item_0bd5 equ 0bd5h
+item_0bde equ 0bdeh
+item_0bf0 equ 0bf0h
+item_0c0c equ 0c0ch
+item_0c12 equ 0c12h
+item_0c36 equ 0c36h
+item_0c58 equ 0c58h
+page_title equ 0c5fh
+page_choices equ 0c61h
+page_dispatch equ 0c63h
+field_0c65 equ 0c65h
+item_0c71 equ 0c71h
+item_0ca0 equ 0ca0h
+item_0cb9 equ 0cb9h
+item_0cc3 equ 0cc3h
+item_0cdf equ 0cdfh
+item_0cff equ 0cffh
+item_0d13 equ 0d13h
+item_0d14 equ 0d14h
+item_0d1f equ 0d1fh
+item_0d4c equ 0d4ch
+item_0d91 equ 0d91h
+item_0da1 equ 0da1h
+item_0e7c equ 0e7ch
+item_0ec5 equ 0ec5h
+item_0ecb equ 0ecbh
+item_0ed1 equ 0ed1h
+item_0f05 equ 0f05h
+item_102b equ 102bh
+item_104e equ 104eh
+item_1054 equ 1054h
+item_1075 equ 1075h
+item_1079 equ 1079h
+item_1089 equ 1089h
+item_10ab equ 10abh
+item_10ae equ 10aeh
+item_1167 equ 1167h
+item_117e equ 117eh
+item_1185 equ 1185h
+item_11a0 equ 11a0h
+item_12d2 equ 12d2h
+item_1310 equ 1310h
+item_1335 equ 1335h
+item_133e equ 133eh
+item_1347 equ 1347h
+item_1468 equ 1468h
+item_14a1 equ 14a1h
+item_14cb equ 14cbh
+item_14d2 equ 14d2h
+item_1526 equ 1526h
+field_15e1 equ 15e1h
+item_1605 equ 1605h
+item_1625 equ 1625h
+item_1648 equ 1648h
+item_1652 equ 1652h
+field_165c equ 165ch
+field_1660 equ 1660h
+item_1701 equ 1701h
+item_181e equ 181eh
+field_185e equ 185eh
+
+	cseg
+	org 0
+; Loader base page occupies offsets 0000h-00FFh.
+
+; Original non-instruction bytes at 0h.
+data_0000	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h
+
+; -----------------------------------------------------------------------------
+; Enter through the original short jump, skipping the embedded copyright.
+; -----------------------------------------------------------------------------
+entry:
+	jmps	initialize
+
+; Original non-instruction bytes at 102h.
+data_0102	db	'Copyright (C) 1983, Digital Research'
+
+; -----------------------------------------------------------------------------
+; Validate the environment, flush input, discover XIOS and load the saved settings before displaying menus.
+; -----------------------------------------------------------------------------
+initialize:
+	call	check_console
+	call	check_version
+	call	flush_keyboard
+	call	discover_xios
+	call	get_xios_parameters
+	call	drawframe
+	call	loadsettings
+
+; -----------------------------------------------------------------------------
+; Draw the current page, read a permitted function key, dispatch its action and clear the menu interior.
+; -----------------------------------------------------------------------------
+main_loop:
+	call	showpage
+	mov	di,word ptr .page_choices
+	call	getchoice
+	add	bx,word ptr .page_dispatch
+	call	word ptr [bx]
+	call	clear_menu
+	jmps	main_loop
+
+; Menu dispatch addresses: functions return to the main loop.
+dispatch_0150:
+	dw	 offset save_menu
+	dw	 offset memory_menu
+	dw	 offset step_time_menu
+	dw	 offset verify_menu
+	dw	 offset storage_menu
+	dw	 offset update_and_exit
+	dw	 offset exit_program
+
+; -----------------------------------------------------------------------------
+; Return to the caller in the main menu loop.
+; -----------------------------------------------------------------------------
+return_to_main:
+	ret
+
+; -----------------------------------------------------------------------------
+; BDOS 153 identifies the console; refuse terminal numbers four and above.
+; -----------------------------------------------------------------------------
+check_console:
+	mov	cl,99h
+	int	0e0h
+	cmp	ax,4h
+	jc	loc_0175
+	mov	dx,176h
+	mov	cl,9h
+	int	0e0h
+	xor	cx,cx
+	xor	dx,dx
+	int	0e0h
+loc_0175:
+	ret
+
+; Original non-instruction bytes at 176h.
+data_0176	db	0dh,0ah
+	db	'This utility cannot be used from a user terminal.'
+	db	0dh,0ah,0ah,24h
+; -----------------------------------------------------------------------------
+; Require Concurrent OS identity 1431h; print an error and terminate otherwise.
+; -----------------------------------------------------------------------------
+check_version:
+	mov	cx,0ch
+	int	0e0h
+	and	ah,0fh
+	cmp	ah,4h
+	jz	loc_01bf
+	cmp	ah,6h
+	jnz	loc_01ca
+loc_01bf:
+	mov	cx,0a3h
+	int	0e0h
+	cmp	ax,1431h
+	jnz	loc_01ca
+	ret
+loc_01ca:
+	mov	dx,1d8h
+	mov	cx,9h
+	int	0e0h
+	xor	cx,cx
+	xor	dx,dx
+	int	0e0h
+
+; Original non-instruction bytes at 1d8h.
+data_01d8	db	0dh,0ah
+	db	'SETUP requires Concurrent CP/M to run.'
+	db	0dh,0ah,24h
+
+; -----------------------------------------------------------------------------
+; Select which live settings will be copied into the configuration sector at update time.
+; -----------------------------------------------------------------------------
+save_menu:
+	mov	si,item_0ca0
+	mov	ax,0db1h
+	call	showhelp
+	mov	si,item_0e7c
+	call	showoptions
+
+; -----------------------------------------------------------------------------
+; Display saved/not-saved markers and dispatch the selected snapshot option.
+; -----------------------------------------------------------------------------
+saveloop:
+	call	showsaves
+	mov	dh,0ah
+	call	selectprompt
+	mov	di,item_0ed1
+	call	getchoice
+	jmp	word ptr 224h[bx]
+
+; Menu dispatch addresses: functions return to the main loop.
+dispatch_0224:
+	dw	 offset toggle_keys
+	dw	 offset toggle_serial
+	dw	 offset return_to_main
+
+; -----------------------------------------------------------------------------
+; Toggle function-key snapshot selection and redisplay the save menu.
+; -----------------------------------------------------------------------------
+toggle_keys:
+	xor	byte ptr .save_keys,0ffh
+	jmp	saveloop
+
+; -----------------------------------------------------------------------------
+; Toggle serial-port snapshot selection and redisplay the save menu.
+; -----------------------------------------------------------------------------
+toggle_serial:
+	xor	byte ptr .save_serial,0ffh
+	jmp	saveloop
+
+; -----------------------------------------------------------------------------
+; Display the current state of the two save-selection flags.
+; -----------------------------------------------------------------------------
+showsaves:
+	mov	dx,item_0c0c
+	mov	cx,2h
+	mov	bx,0b08h
+	call	reverseon
+
+; -----------------------------------------------------------------------------
+; Choose the Saved marker or blank replacement for the current flag.
+; -----------------------------------------------------------------------------
+saveshow:
+	mov	si,item_0ec5
+	test	byte ptr [bx],0ffh
+	jnz	saveput
+	mov	si,item_0ecb
+
+; -----------------------------------------------------------------------------
+; Output the marker and continue with the next option.
+; -----------------------------------------------------------------------------
+saveput:
+	call	putat
+	inc	bx
+	add	dh,3h
+	loop	saveshow
+	jmp	reverseoff
+
+; -----------------------------------------------------------------------------
+; Display memory-disk size and starting segment; offer entry of a new segment.
+; -----------------------------------------------------------------------------
+memory_menu:
+	mov	si,item_0cb9
+	mov	ax,0ed5h
+	call	showhelp
+	call	showmemory
+	mov	si,item_1089
+	call	showoptions
+	mov	dh,10h
+	call	selectprompt
+	mov	di,item_10ab
+	call	getchoice
+	jmp	word ptr 27eh[bx]
+
+; Menu dispatch addresses: functions return to the main loop.
+dispatch_027e:
+	dw	 offset loc_0282
+	dw	 offset return_to_main
+loc_0282:
+	mov	dh,0fh
+	call	clear_menu_row
+	mov	si,item_10ae
+	mov	dx,item_0f05
+	call	putlines
+	mov	si,item_1167
+	mov	dh,13h
+	call	revcent
+	mov	si,item_117e
+	mov	dx,item_1526
+	call	putat
+	call	gethex
+	mov	cl,4h
+	shl	al,cl
+	mov	dh,al
+	call	gethex
+	or	dh,al
+	mov	al,66h
+	call	escout
+	mov	al,dh
+	cmp	al,0h
+	jz	storememory
+	cmp	al,40h
+	jc	badmemory
+	cmp	al,90h
+	jna	storememory
+	cmp	al,0c0h
+	jc	badmemory
+	cmp	al,0e0h
+	jna	storememory
+
+; -----------------------------------------------------------------------------
+; Report an invalid memory segment and return to memory selection.
+; -----------------------------------------------------------------------------
+badmemory:
+	call	memoryerror
+	jmp	memory_menu
+
+; -----------------------------------------------------------------------------
+; Store the validated segment in the configuration sector.
+; -----------------------------------------------------------------------------
+storememory:
+	mov	dl,0h
+	mov	word ptr .memory_segment,dx
+	jmp	memory_menu
+
+; -----------------------------------------------------------------------------
+; Display the current segment and compute/display its resulting memory-disk size.
+; -----------------------------------------------------------------------------
+showmemory:
+	mov	si,item_102b
+	mov	dx,item_0c12
+	call	putat
+	call	reverseon
+	mov	dx,word ptr .memory_segment
+	call	puthexbyte
+	xchg	dh,dl
+	call	puthexbyte
+	mov	si,item_104e
+	call	puts
+	call	reverseoff
+	mov	si,item_1054
+	mov	dx,item_0d14
+	call	putat
+	call	reverseon
+	call	memory_size_kb
+	call	put_decimal
+	mov	si,item_1075
+	call	puts
+	jmp	reverseoff
+
+; -----------------------------------------------------------------------------
+; Output the high and low hexadecimal digits of DH.
+; -----------------------------------------------------------------------------
+puthexbyte:
+	mov	al,dh
+	mov	cl,4h
+	shr	al,cl
+	call	puthexdigit
+	mov	al,dh
+	and	al,0fh
+
+; -----------------------------------------------------------------------------
+; Translate a nibble through the hexadecimal character table.
+; -----------------------------------------------------------------------------
+puthexdigit:
+	mov	bx,1079h
+	xlat	byte ptr [bx]
+	jmp	put_character
+; -----------------------------------------------------------------------------
+; Validate the requested memory-disk segment against the XIOS memory ranges; return size in KiB, or zero.
+; -----------------------------------------------------------------------------
+memory_size_kb:
+	mov	ax,word ptr .memory_segment
+	cmp	ax,0h
+	jz	loc_0347
+	mov	dx,word ptr .memory_range_1
+	cmp	ax,dx
+	jc	loc_034a
+	cmp	ax,word ptr .memory_range_2
+	jc	loc_0347
+	mov	dx,word ptr .memory_range_3
+	cmp	ax,dx
+	jc	loc_034a
+loc_0347:
+	sub	ax,ax
+	ret
+loc_034a:
+	xchg	ax,dx
+	sub	ax,dx
+	mov	cl,6h
+	shr	ax,cl
+	ret
+; -----------------------------------------------------------------------------
+; Print a decimal value using the stored decimal divisors; suppress leading zeroes.
+; -----------------------------------------------------------------------------
+put_decimal:
+	mov	dh,0h
+	div	byte ptr .field_0b32
+	call	put_decimal_digit
+	mov	al,ah
+	cbw
+	div	byte ptr .field_0b33
+	call	put_decimal_digit
+	mov	dh,0ffh
+	mov	al,ah
+; -----------------------------------------------------------------------------
+; Suppress leading zeroes until a nonzero digit appears; preserve AX for the next digit.
+; -----------------------------------------------------------------------------
+put_decimal_digit:
+	push	ax
+	or	dh,al
+	jz	loc_0373
+	or	al,30h
+	call	put_character
+loc_0373:
+	pop	ax
+	ret
+
+; -----------------------------------------------------------------------------
+; Read an uppercase hexadecimal digit, rejecting other characters with a bell.
+; -----------------------------------------------------------------------------
+gethex:
+	call	read_key
+	cmp	al,60h
+	jc	hexscan
+	sub	al,20h
+
+; -----------------------------------------------------------------------------
+; Find the digit in the sixteen-character hexadecimal table.
+; -----------------------------------------------------------------------------
+hexscan:
+	mov	di,item_1079
+	mov	cx,10h
+	cld
+	repne	scasb
+	jz	hexecho
+	mov	al,7h
+	call	put_character
+	jmps	gethex
+
+; -----------------------------------------------------------------------------
+; Echo the accepted digit and return its numerical value.
+; -----------------------------------------------------------------------------
+hexecho:
+	call	put_character
+	mov	al,20h
+	call	put_character
+	mov	al,8h
+	call	put_character
+	mov	al,0fh
+	sub	al,cl
+	ret
+
+; -----------------------------------------------------------------------------
+; Display the invalid-address message, beep three times and wait for acknowledgement.
+; -----------------------------------------------------------------------------
+memoryerror:
+	mov	al,70h
+	call	escout
+	mov	si,item_1185
+	mov	dh,15h
+	call	putcent
+	mov	al,71h
+	call	escout
+	mov	cx,3h
+
+; -----------------------------------------------------------------------------
+; Emit the counted bells before displaying the acknowledgement prompt.
+; -----------------------------------------------------------------------------
+errorbeep:
+	mov	al,7h
+	call	put_character
+	loop	errorbeep
+	mov	si,item_11a0
+	mov	dh,13h
+	call	revcent
+	jmp	read_key
+
+; -----------------------------------------------------------------------------
+; Select whether diskette writes will be verified at the next boot.
+; -----------------------------------------------------------------------------
+verify_menu:
+	mov	si,item_0cdf
+	mov	ax,11b9h
+	call	showhelp
+	mov	si,item_12d2
+	call	showoptions
+	mov	dh,0dh
+	call	selectprompt
+
+; -----------------------------------------------------------------------------
+; Display the verify state and dispatch enable, disable or return.
+; -----------------------------------------------------------------------------
+verifyloop:
+	call	showverify
+	mov	di,item_1347
+	call	getchoice
+	jmp	word ptr 3eah[bx]
+
+; Menu dispatch addresses: functions return to the main loop.
+dispatch_03ea:
+	dw	 offset verifyon
+	dw	 offset verifyoff
+	dw	 offset return_to_main
+
+; -----------------------------------------------------------------------------
+; Set the saved verify-after-write flag.
+; -----------------------------------------------------------------------------
+verifyon:
+	mov	byte ptr .verify_flag,0ffh
+	jmps	verifyloop
+
+; -----------------------------------------------------------------------------
+; Clear the saved verify-after-write flag.
+; -----------------------------------------------------------------------------
+verifyoff:
+	mov	byte ptr .verify_flag,0h
+	jmps	verifyloop
+
+; -----------------------------------------------------------------------------
+; Display the enabled or disabled caption for the saved flag.
+; -----------------------------------------------------------------------------
+showverify:
+	mov	si,item_1310
+	mov	dx,item_0b11
+	call	putat
+	call	reverseon
+	mov	si,item_1335
+	test	byte ptr .verify_flag,0ffh
+	jnz	verifyput
+	mov	si,item_133e
+
+; -----------------------------------------------------------------------------
+; Output the selected verify caption.
+; -----------------------------------------------------------------------------
+verifyput:
+	call	puts
+	jmp	reverseoff
+
+; -----------------------------------------------------------------------------
+; Offer adjustment of the diskette head step time stored in the BIOS parameter byte.
+; -----------------------------------------------------------------------------
+step_time_menu:
+	mov	si,item_0cc3
+	mov	ax,134bh
+	call	showhelp
+	mov	si,item_1468
+	call	showoptions
+	mov	dh,0dh
+	call	selectprompt
+
+; -----------------------------------------------------------------------------
+; Display the current delay and dispatch faster/slower/return.
+; -----------------------------------------------------------------------------
+steploop:
+	call	showstep
+	mov	di,item_14d2
+	call	getchoice
+	jmp	word ptr 43eh[bx]
+
+; Menu dispatch addresses: functions return to the main loop.
+dispatch_043e:
+	dw	 offset stepfaster
+	dw	 offset stepslower
+	dw	 offset return_to_main
+
+; -----------------------------------------------------------------------------
+; Increase the inverted high-nibble rate encoding, reducing the delay.
+; -----------------------------------------------------------------------------
+stepfaster:
+	mov	al,byte ptr .step_rate
+	add	al,10h
+	jmps	storestep
+
+; -----------------------------------------------------------------------------
+; Decrease the encoded rate, increasing the delay; reject underflow.
+; -----------------------------------------------------------------------------
+stepslower:
+	mov	al,byte ptr .step_rate
+	sub	al,10h
+
+; -----------------------------------------------------------------------------
+; Save the new step-time byte and return to its display loop.
+; -----------------------------------------------------------------------------
+storestep:
+	jc	stepbeep
+	mov	byte ptr .step_rate,al
+	jmps	steploop
+
+; -----------------------------------------------------------------------------
+; Reject an out-of-range step-time change with a bell.
+; -----------------------------------------------------------------------------
+stepbeep:
+	mov	al,7h
+	call	put_character
+	jmps	steploop
+
+; -----------------------------------------------------------------------------
+; Convert the inverted rate encoding to milliseconds for display.
+; -----------------------------------------------------------------------------
+showstep:
+	mov	si,item_14a1
+	mov	dx,xios_gateway
+	call	putat
+	call	reverseon
+	mov	al,byte ptr .step_rate
+	mov	cl,4h
+	shr	al,cl
+	or	al,0f0h
+	neg	al
+	shl	al,1
+	aam
+	test	ah,ah
+	jz	stepunits
+	push	ax
+	mov	al,ah
+	or	al,30h
+	call	put_character
+	pop	ax
+
+; -----------------------------------------------------------------------------
+; Display the units following the decimal step-time value.
+; -----------------------------------------------------------------------------
+stepunits:
+	or	al,30h
+	call	put_character
+	mov	si,item_14cb
+	call	puts
+	jmp	reverseoff
+
+; -----------------------------------------------------------------------------
+; Select floppy A or the first supported hard disk as the configuration storage device.
+; -----------------------------------------------------------------------------
+storage_menu:
+	mov	si,item_0cff
+	mov	ax,14d6h
+	call	showhelp
+	mov	si,field_15e1
+	call	showoptions
+	mov	dh,0dh
+	call	selectprompt
+
+; -----------------------------------------------------------------------------
+; Read the storage-device choice and dispatch to floppy, return or hard disk.
+; -----------------------------------------------------------------------------
+storage_loop:
+	call	showdisk
+	mov	di,field_165c
+	call	getchoice
+	jmp	word ptr 4b5h[bx]
+
+; Menu dispatch addresses: functions return to the main loop.
+dispatch_04b5:
+	dw	 offset usefloppy
+	dw	 offset return_to_main
+	dw	 offset usehard
+
+; -----------------------------------------------------------------------------
+; Select floppy A and its configuration-sector CHS address.
+; -----------------------------------------------------------------------------
+usefloppy:
+	mov	byte ptr .disk_head,0h
+	mov	word ptr .disk_chs,2h
+	mov	si,item_1648
+	call	diskcaption
+	jmps	storage_loop
+
+; -----------------------------------------------------------------------------
+; Select BIOS hard disk 80h and the discovered partition configuration sector.
+; -----------------------------------------------------------------------------
+usehard:
+	mov	byte ptr .disk_head,80h
+	mov	ax,word ptr .hard_disk_chs
+	mov	word ptr .disk_chs,ax
+	mov	si,item_1652
+	call	diskcaption
+	jmps	storage_loop
+
+; -----------------------------------------------------------------------------
+; Display the selected storage-device caption.
+; -----------------------------------------------------------------------------
+diskcaption:
+	push	ds
+	pop	es
+	mov	di,item_0d1f
+	mov	cx,9h
+	cld
+	rep	movsb
+	ret
+
+; -----------------------------------------------------------------------------
+; Choose the floppy or hard-disk text from the saved device byte.
+; -----------------------------------------------------------------------------
+showdisk:
+	mov	si,item_1625
+	mov	dx,system_segment
+	call	putat
+	call	reverseon
+	mov	si,item_1648
+	cmp	byte ptr .disk_head,0h
+	jz	diskput
+	mov	si,item_1652
+
+; -----------------------------------------------------------------------------
+; Output the selected storage-device text.
+; -----------------------------------------------------------------------------
+diskput:
+	call	puts
+	jmp	reverseoff
+
+; -----------------------------------------------------------------------------
+; Snapshot the requested live parameters, write the configuration sector and leave through the common exit path.
+; -----------------------------------------------------------------------------
+update_and_exit:
+	call	snapshot_options
+	call	diskparams
+	mov	bx,908h
+	mov	ah,3h
+	call	disk_io
+
+; -----------------------------------------------------------------------------
+; Restore process flags and terminate without another menu iteration.
+; -----------------------------------------------------------------------------
+exit_program:
+	mov	si,item_0bd5
+	call	puts
+loc_0520:
+	cmp	byte ptr .field_0b1d,0ffh
+	jnz	loc_052e
+	mov	dx,item_0b44
+	mov	cl,8bh
+	int	0e0h
+loc_052e:
+	mov	es,word ptr .system_segment
+	cmp	byte ptr .field_0b1c,0ffh
+	jnz	loc_0543
+	mov	bx,word ptr .console_descriptor
+	and	es:word ptr 0eh[bx],0fff7h
+loc_0543:
+	mov	bx,word ptr .process_descriptor
+	and	es:word ptr 6h[bx],0fffdh
+	mov	cl,0h
+	mov	dl,0h
+	int	0e0h
+; -----------------------------------------------------------------------------
+; Copy the selected live serial and function-key settings into the saved configuration sector.
+; -----------------------------------------------------------------------------
+snapshot_options:
+	cmp	byte ptr .save_serial,0h
+	jz	loc_055d
+	call	snapshot_serial
+loc_055d:
+	cmp	byte ptr .save_keys,0h
+	jz	loc_0567
+	call	snapshot_keys
+loc_0567:
+	ret
+; -----------------------------------------------------------------------------
+; Mark serial parameters saved and read both UARTs into the configuration sector.
+; -----------------------------------------------------------------------------
+snapshot_serial:
+	mov	byte ptr .save_serial_flag,0ffh
+	mov	dx,3f8h
+	call	read_uart
+	mov	byte ptr .serial_parameters,al
+	mov	dx,2f8h
+	call	read_uart
+	mov	byte ptr .field_096d,al
+	ret
+; -----------------------------------------------------------------------------
+; Probe the UART, read its divisor/latch, restore the latch, and encode baud/parity/stop/word bits.
+; -----------------------------------------------------------------------------
+read_uart:
+	inc	dx
+	inc	dx
+	in	al,dx
+	test	al,0f8h
+	mov	al,43h
+	jnz	loc_05b1
+	inc	dx
+	in	al,dx
+	mov	bl,al
+	or	al,80h
+	out	dx,al
+	dec	dx
+	dec	dx
+	in	al,dx
+	mov	ah,al
+	dec	dx
+	in	al,dx
+	push	ds
+	pop	es
+	mov	di,item_0b34
+	mov	cx,8h
+	repne	scasw
+	add	dx,3h
+	mov	al,bl
+	out	dx,al
+	and	al,1fh
+	mov	bl,cl
+	mov	cl,5h
+	shl	bl,cl
+	or	al,bl
+loc_05b1:
+	ret
+; -----------------------------------------------------------------------------
+; Mark function keys saved and copy 180 words from the current console key table.
+; -----------------------------------------------------------------------------
+snapshot_keys:
+	mov	byte ptr .save_keys_flag,0ffh
+	push	ds
+	push	ds
+	pop	es
+	mov	bx,word ptr .console_number
+	add	bx,bx
+	mov	si,word ptr 0b22h[bx]
+	mov	di,function_key_data
+	mov	cx,0b4h
+	mov	ds,word ptr .system_segment
+	rep	movsw
+	pop	ds
+	ret
+; -----------------------------------------------------------------------------
+; Check Concurrent version; obtain system data, process and console descriptors. Inhibit process suspension while customizing, and require foreground DYNAMIC mode.
+; -----------------------------------------------------------------------------
+discover_xios:
+	mov	cl,0a3h
+	int	0e0h
+	and	ax,0fff0h
+	cmp	ax,1430h
+	jz	loc_05e4
+	mov	si,item_0b54
+	jmp	loc_0657
+loc_05e4:
+	mov	dl,96h
+	mov	cl,91h
+	int	0e0h
+	mov	cl,9ah
+	int	0e0h
+	mov	word ptr .system_segment,es
+	mov	ax,es:word ptr .28h
+	mov	word ptr .xios_gateway,ax
+	mov	cl,9ch
+	int	0e0h
+	mov	word ptr .process_descriptor,bx
+	mov	ax,es:word ptr 10h[bx]
+	mov	word ptr .xios_segment,ax
+	or	es:word ptr 6h[bx],2h
+	mov	cl,99h
+	int	0e0h
+	cbw
+	mov	word ptr .console_number,ax
+	mov	ah,2ch
+	mul	ah
+	mov	es,word ptr .system_segment
+	add	ax,es:word ptr .54h
+	mov	word ptr .console_descriptor,ax
+	mov	bx,ax
+	cli
+	cmp	es:word ptr 0eh[bx],0h
+	jz	loc_0637
+	sti
+	mov	si,item_0b8c
+	jmp	loc_0657
+loc_0637:
+	or	es:word ptr 0eh[bx],8h
+	mov	byte ptr .field_0b1c,0ffh
+	sti
+	mov	dx,item_0b44
+	mov	cl,87h
+	int	0e0h
+	mov	dx,item_0b44
+	mov	cl,89h
+	int	0e0h
+	mov	byte ptr .field_0b1d,0ffh
+	ret
+loc_0657:
+	call	puts
+	jmp	loc_0520
+
+; -----------------------------------------------------------------------------
+; Load the current page title, choices and dispatch table, then draw its frame and help text.
+; -----------------------------------------------------------------------------
+showpage:
+	mov	si,word ptr .page_title
+	mov	dh,3h
+	call	putcent
+	mov	si,word ptr .field_0c65
+	call	drawbuttons
+	mov	si,item_0d13
+	call	drawbuttons
+	mov	si,item_0d4c
+	mov	dx,item_1605
+	call	putat
+	mov	si,item_0c71
+	mov	dh,5h
+	jmp	revcent
+
+; -----------------------------------------------------------------------------
+; Draw the terminal frame using the stored corner and line descriptors.
+; -----------------------------------------------------------------------------
+drawframe:
+	mov	si,item_0bc6
+	call	puts
+	mov	cx,4eh
+	mov	dx,1h
+	mov	bl,0c4h
+	call	hline
+	mov	dx,201h
+	mov	bl,0cdh
+	call	hline
+	mov	dx,item_1701
+	mov	bl,0c4h
+	call	hline
+	mov	cx,16h
+	mov	dx,100h
+	mov	bl,0b3h
+	call	vline
+	mov	dx,14fh
+	mov	bl,0b3h
+	call	vline
+	mov	si,item_0bde
+	mov	cx,6h
+
+; -----------------------------------------------------------------------------
+; Place each configured corner character.
+; -----------------------------------------------------------------------------
+cornloop:
+	mov	al,59h
+	call	escout
+	lodsb
+	add	al,20h
+	call	put_character
+	lodsb
+	add	al,20h
+	call	put_character
+	lodsb
+	call	put_character
+	loop	cornloop
+	mov	si,item_0bf0
+	mov	dh,1h
+	jmp	putcent
+
+; -----------------------------------------------------------------------------
+; Draw a counted horizontal run from the current cursor position.
+; -----------------------------------------------------------------------------
+hline:
+	push	cx
+	call	gotoxy
+
+; -----------------------------------------------------------------------------
+; Output one horizontal-frame character per iteration.
+; -----------------------------------------------------------------------------
+hlloop:
+	mov	al,bl
+	call	put_character
+	loop	hlloop
+	pop	cx
+	ret
+
+; -----------------------------------------------------------------------------
+; Draw a counted vertical run by advancing the row.
+; -----------------------------------------------------------------------------
+vline:
+	push	cx
+	push	dx
+
+; -----------------------------------------------------------------------------
+; Position and output the next vertical-frame character.
+; -----------------------------------------------------------------------------
+vlloop:
+	call	gotoxy
+	mov	al,bl
+	call	put_character
+	inc	dh
+	loop	vlloop
+	pop	dx
+	pop	cx
+	ret
+
+; -----------------------------------------------------------------------------
+; Locate the configuration storage, read its sector and validate the saved signature.
+; -----------------------------------------------------------------------------
+loadsettings:
+	push	ds
+	pop	es
+	mov	dx,80h
+	mov	cx,1h
+	mov	bx,1660h
+	mov	ax,201h
+	call	disk_io
+	jc	loc_073d
+	cmp	word ptr .field_185e,0aa55h
+	jnz	loc_073d
+	mov	cx,4h
+	mov	si,item_181e
+
+; -----------------------------------------------------------------------------
+; Scan the four MBR partition entries for a usable disk partition.
+; -----------------------------------------------------------------------------
+partscan:
+	cmp	byte ptr 4h[si],0dbh
+	jz	foundpart
+	add	si,10h
+	loop	partscan
+	jmps	loc_073d
+
+; -----------------------------------------------------------------------------
+; Retain the selected partition CHS location for configuration-sector access.
+; -----------------------------------------------------------------------------
+foundpart:
+	mov	ax,word ptr 2h[si]
+	and	al,0c0h
+	or	al,3h
+	mov	word ptr .hard_disk_chs,ax
+	mov	byte ptr .field_165c,3h
+	mov	byte ptr .field_15e1,2h
+loc_073d:
+	cmp	byte ptr .field_0b30,0h
+	jnz	readhard
+	mov	dx,0h
+	mov	cx,2h
+	mov	bx,1660h
+	mov	ax,201h
+	call	disk_io
+	jc	readhard
+	cmp	word ptr .field_1660,0ddb2h
+	jz	copysector
+
+; -----------------------------------------------------------------------------
+; Read a hard-disk sector using the selected partition address.
+; -----------------------------------------------------------------------------
+readhard:
+	mov	dl,80h
+	mov	cx,word ptr .hard_disk_chs
+	mov	ax,201h
+	call	disk_io
+	jc	loadret
+	cmp	word ptr .field_1660,0ddb2h
+	jnz	loadret
+	mov	byte ptr .disk_head,dl
+	mov	word ptr .disk_chs,cx
+	mov	si,item_1652
+	call	diskcaption
+
+; -----------------------------------------------------------------------------
+; Copy the saved sector into the local configuration area.
+; -----------------------------------------------------------------------------
+copysector:
+	mov	si,field_1660
+	mov	di,configuration_sector
+	mov	cx,100h
+	cld
+	rep	movsw
+
+; -----------------------------------------------------------------------------
+; Return from configuration-sector loading.
+; -----------------------------------------------------------------------------
+loadret:
+	ret
+
+; -----------------------------------------------------------------------------
+; Prepare ES:BX, CHS and record count for configuration-sector I/O.
+; -----------------------------------------------------------------------------
+diskparams:
+	push	ds
+	pop	es
+	mov	dx,word ptr .disk_head
+	mov	cx,word ptr .disk_chs
+	mov	al,1h
+	ret
+; -----------------------------------------------------------------------------
+; Route hard-disk requests through the saved BIOS interrupt gateway. Translate drive-A floppy operations to the Concurrent XIOS far-call ABI; reject other drives.
+; -----------------------------------------------------------------------------
+disk_io:
+	cmp	dl,80h
+	jnz	loc_07a6
+	pushf
+	callf	dword ptr .bios_disk_gateway
+	ret
+loc_07a6:
+	cmp	dl,0h
+	jz	loc_07ad
+	stc
+	ret
+loc_07ad:
+	push	bx
+	push	cx
+	push	dx
+	push	si
+	push	di
+	push	es
+	push	ds
+	mov	dh,al
+	push	dx
+	mov	dh,0h
+	mov	dl,ch
+	push	dx
+	mov	dl,cl
+	dec	dx
+	push	dx
+	push	es
+	push	bx
+	mov	al,ah
+	add	al,8h
+	mov	es,word ptr .xios_segment
+	mov	ds,word ptr .system_segment
+	callf	cs:dword ptr .xios_gateway
+	add	sp,0ah
+	add	al,0ffh
+	pop	ds
+	pop	es
+	pop	di
+	pop	si
+	pop	dx
+	pop	cx
+	pop	bx
+	ret
+; -----------------------------------------------------------------------------
+; Call XIOS function 0Eh and copy its twenty-byte parameter/pointer block locally.
+; -----------------------------------------------------------------------------
+get_xios_parameters:
+	push	ds
+	mov	al,0eh
+	mov	cx,1h
+	mov	es,word ptr .xios_segment
+	mov	ds,word ptr .system_segment
+	callf	cs:dword ptr .xios_gateway
+	push	cs
+	pop	es
+	mov	di,bios_disk_gateway
+	mov	si,ax
+	mov	cx,14h
+	cld
+	rep	movsb
+	pop	ds
+	ret
+
+; -----------------------------------------------------------------------------
+; Draw the option lists and the current page heading.
+; -----------------------------------------------------------------------------
+showoptions:
+	call	drawbuttons
+	mov	si,item_0da1
+	call	drawbuttons
+	mov	si,word ptr .page_title
+	jmp	puts
+
+; -----------------------------------------------------------------------------
+; Walk the function-key button descriptions.
+; -----------------------------------------------------------------------------
+drawbuttons:
+	lodsb
+	cbw
+	xchg	ax,cx
+
+; -----------------------------------------------------------------------------
+; Render each function-key caption in the button list.
+; -----------------------------------------------------------------------------
+buttonloop:
+	lodsw
+	xchg	al,ah
+	mov	dx,ax
+	lodsw
+	mov	bx,ax
+	push	si
+	mov	si,item_0c36
+	call	putat
+	mov	al,bl
+	call	put_character
+	mov	al,bh
+	call	put_character
+	mov	si,item_0c58
+	call	puts
+	pop	si
+	call	puts
+	loop	buttonloop
+	ret
+
+; -----------------------------------------------------------------------------
+; Clear the menu and display the selected help text.
+; -----------------------------------------------------------------------------
+showhelp:
+	push	ax
+	call	clear_menu
+	mov	dh,4h
+	call	putcent
+	pop	si
+	mov	dx,605h
+
+; -----------------------------------------------------------------------------
+; Display successive zero-terminated lines of help text.
+; -----------------------------------------------------------------------------
+putlines:
+	call	putat
+	inc	dh
+	test	byte ptr [si],0ffh
+	jnz	putlines
+	ret
+
+; -----------------------------------------------------------------------------
+; Position and display the function-selection prompt.
+; -----------------------------------------------------------------------------
+selectprompt:
+	mov	si,item_0d91
+
+; -----------------------------------------------------------------------------
+; Enable reverse video before displaying centered text.
+; -----------------------------------------------------------------------------
+revcent:
+	call	reverseon
+	call	putcent
+	jmp	reverseoff
+
+; -----------------------------------------------------------------------------
+; Compute a centered column from the text length and requested row.
+; -----------------------------------------------------------------------------
+putcent:
+	push	ds
+	pop	es
+	mov	di,si
+	mov	al,0h
+	mov	cx,50h
+	repne	scasb
+	shr	cx,1
+	mov	dl,cl
+
+; -----------------------------------------------------------------------------
+; Position the cursor and output the selected string.
+; -----------------------------------------------------------------------------
+putat:
+	call	gotoxy
+
+; -----------------------------------------------------------------------------
+; Output a zero-terminated string, retaining the caller's screen state.
+; -----------------------------------------------------------------------------
+puts:
+	lodsb
+
+; -----------------------------------------------------------------------------
+; Send characters until the terminating zero.
+; -----------------------------------------------------------------------------
+putsloop:
+	call	put_character
+	lodsb
+	test	al,al
+	jnz	putsloop
+	ret
+
+; -----------------------------------------------------------------------------
+; Output the terminal cursor-position sequence from DH/DL.
+; -----------------------------------------------------------------------------
+gotoxy:
+	mov	al,59h
+	call	escout
+	mov	al,dh
+	add	al,20h
+	call	put_character
+	mov	al,dl
+	add	al,20h
+	jmp	put_character
+
+; -----------------------------------------------------------------------------
+; Read keys until one occurs in the menu's permitted-choice list.
+; -----------------------------------------------------------------------------
+getchoice:
+	mov	cl,byte ptr [di]
+	mov	ch,0h
+	inc	di
+
+; -----------------------------------------------------------------------------
+; Read a key and scan the current choice list.
+; -----------------------------------------------------------------------------
+choicekey:
+	push	cx
+	push	di
+	push	ds
+	pop	es
+	mov	bx,cx
+	call	read_key
+	sub	al,0bah
+	repne	scasb
+	mov	dx,cx
+	pop	di
+	pop	cx
+	jz	choicefound
+	mov	al,7h
+	call	put_character
+	jmps	choicekey
+
+; -----------------------------------------------------------------------------
+; Convert the matching choice position into a word-table dispatch offset.
+; -----------------------------------------------------------------------------
+choicefound:
+	sub	bx,dx
+	dec	bx
+	add	bx,bx
+	mov	ah,0h
+	ret
+; -----------------------------------------------------------------------------
+; Discard pending direct-console input before displaying the menu.
+; -----------------------------------------------------------------------------
+flush_keyboard:
+	call	poll_key
+	test	al,al
+	jnz	flush_keyboard
+	ret
+; -----------------------------------------------------------------------------
+; Erase the interior rows of the menu while retaining its right-hand frame.
+; -----------------------------------------------------------------------------
+clear_menu:
+	mov	dh,3h
+; -----------------------------------------------------------------------------
+; Position at column one, erase to end of line and redraw the right border through row 22.
+; -----------------------------------------------------------------------------
+clear_menu_row:
+	mov	dl,1h
+	call	gotoxy
+	mov	al,4bh
+	call	escout
+	mov	dl,4fh
+	call	gotoxy
+	mov	al,0b3h
+	call	put_character
+	inc	dh
+	cmp	dh,16h
+	jna	clear_menu_row
+	ret
+
+; -----------------------------------------------------------------------------
+; Select reverse-video text.
+; -----------------------------------------------------------------------------
+reverseon:
+	mov	al,72h
+	jmps	escout
+
+; -----------------------------------------------------------------------------
+; Restore normal text video.
+; -----------------------------------------------------------------------------
+reverseoff:
+	mov	al,75h
+
+; -----------------------------------------------------------------------------
+; Prefix the requested terminal operation with ESC.
+; -----------------------------------------------------------------------------
+escout:
+	push	ax
+	mov	al,1bh
+	call	put_character
+	pop	ax
+; -----------------------------------------------------------------------------
+; Direct-console output of AL. Shared wrapper preserves registers used by screen helpers.
+; -----------------------------------------------------------------------------
+put_character:
+	mov	ah,6h
+	jmps	conout
+; -----------------------------------------------------------------------------
+; Read one direct-console character using the FDh input selector.
+; -----------------------------------------------------------------------------
+read_key:
+	mov	ax,6fdh
+	jmps	conout
+; -----------------------------------------------------------------------------
+; Poll direct-console input using selector FFh; return zero when no input is available.
+; -----------------------------------------------------------------------------
+poll_key:
+	mov	ax,6ffh
+
+; -----------------------------------------------------------------------------
+; Preserve editor registers across direct BDOS console input/output.
+; -----------------------------------------------------------------------------
+conout:
+	push	bx
+	push	cx
+	push	dx
+	push	si
+	push	di
+	push	es
+	mov	dl,al
+	mov	cl,ah
+	int	0e0h
+	cld
+	pop	es
+	pop	di
+	pop	si
+	pop	dx
+	pop	cx
+	pop	bx
+	ret
+
+; -----------------------------------------------------------------------------
+; Saved 512-byte sector, runtime state, menu descriptors and text.
+; The first sector word is DDB2h; offsets are the original XIOS ABI.
+; -----------------------------------------------------------------------------
+configuration_sector_storage	db	0b2h,0ddh
+memory_segment_storage	db	0h,0d0h
+verify_flag_storage	db	0h
+step_rate_storage	db	0cfh,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h
+save_serial_flag_storage	db	0h,0h
+save_keys_flag_storage	db	0h,0h
+serial_parameters_storage	db	0h
+field_096d_storage	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+function_key_data_storage	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h
+save_keys_storage	db	0h
+save_serial_storage	db	0h
+disk_head_storage	db	0h,0h
+disk_chs_storage	db	2h,0h
+hard_disk_chs_storage	db	0h,0h
+xios_gateway_storage	db	0h
+item_0b11_storage	db	0h
+system_segment_storage	db	0h,0h
+xios_segment_storage	db	0h,0h
+process_descriptor_storage	db	0h,0h
+console_descriptor_storage	db	0h,0h
+console_number_storage	db	0h,0h
+field_0b1c_storage	db	0h
+field_0b1d_storage	db	0h
+bios_disk_gateway_storage	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+memory_range_1_storage	db	0h,0h
+memory_range_2_storage	db	0h,0h
+memory_range_3_storage	db	0h,0h
+field_0b30_storage	db	0h,0h
+field_0b32_storage	db	64h
+field_0b33_storage	db	0ah
+item_0b34_storage	db	0ch,0h,18h,0h,30h,0h,60h,0h,0c0h,0h,80h,1h
+	db	0h,3h,17h,4h
+item_0b44_storage	db	0h,0h,0h,0h,0h,0h,0h,0h
+	db	'MXdisk  '
+item_0b54_storage	db	0dh,0ah
+	db	'SETUP runs only under Concurrent CP/M-86 version 3.'
+	db	0dh,0ah,0h
+item_0b8c_storage	db	0dh,0ah
+	db	'SETUP must be run in the Foreground, in DYNAMIC mode.'
+	db	0dh,0ah,0h
+item_0bc6_storage	db	1bh,45h,1bh,77h,1bh,66h,1bh,71h,1bh,74h,1bh,75h
+	db	1bh,36h,0h
+item_0bd5_storage	db	1bh,45h,1bh,76h,1bh,65h,1bh,37h,0h
+item_0bde_storage	db	0h,0h,0dah,0h,4fh,0bfh,2h,0h,0c6h,2h,4fh,0b5h
+	db	17h,0h,0c0h,17h,4fh,0d9h
+; item_0c0c and item_0c12 are interior addresses into this banner.
+item_0bf0_storage	db	'Concurrent CP/M XIOS Customization for the IBM PC and XT  version 1.0'
+	db	0h
+item_0c36_storage	db	0dah,0c4h,0c4h,0c4h,0c4h,0bfh,0ah,8h,0b3h,8h,8h,8h
+	db	8h,8h,8h,0b3h,0ah,8h,0c0h,0c4h,0c4h,0c4h,0c4h,0d9h
+	db	1bh,41h,8h,8h,8h,8h,1bh,72h,46h,0h
+item_0c58_storage	db	1bh,75h,1bh,43h,20h,20h,0h
+page_title_storage	db	67h,0ch
+page_choices_storage	db	93h,0ch
+page_dispatch_storage	db	50h,1h
+field_0c65_storage	db	9bh,0ch
+	db	'Main Menu'
+	db	0h
+item_0c71_storage	db	' SELECT XIOS CUSTOMIZATION OPTION'
+	db	0h,7h,1h,2h,3h,4h,5h,9h,0ah,5h,7h,4h
+	db	31h,20h
+item_0ca0_storage	db	'Save XIOS Parameters'
+	db	0h,7h,2ah,32h,20h
+item_0cb9_storage	db	'MDisk'
+	db	0h,0ah,4h,33h,20h
+item_0cc3_storage	db	'Diskette Head Step Time'
+	db	0h,0ah,2ah,34h,20h
+item_0cdf_storage	db	'Verify After Diskette Write'
+	db	0h,0dh,4h,35h,20h
+item_0cff_storage	db	'Select Storage Disk'
+	db	0h
+item_0d13_storage	db	2h
+item_0d14_storage	db	12h,4h
+	db	'9 Update '
+item_0d1f_storage	db	'Diskette  and Exit'
+	db	0h,12h
+	db	'*10Exit without Updating'
+	db	0h
+item_0d4c_storage	db	'All modified options will take effect at the next Power-On or Reset.'
+	db	0h
+item_0d91_storage	db	'SELECT FUNCTION'
+	db	0h
+item_0da1_storage	db	1h,14h,14h
+	db	'9 Return to '
+	db	0h
+	db	'      This option allows the current state of certain XIOS parameters'
+	db	0h
+	db	'to be saved, and reinstated at the next Power-On or System Reset.  To'
+	db	0h
+	db	'cancel the Save command, retype the appropriate function key.'
+	db	0h,0h
+item_0e7c_storage	db	2h,0bh,14h
+	db	'1 Save Programmable Function Keys'
+	db	0h,0eh,14h
+	db	'3 Save Serial Port Configurations'
+	db	0h
+item_0ec5_storage	db	'Saved'
+	db	0h
+item_0ecb_storage	db	'     '
+	db	0h
+item_0ed1_storage	db	3h,1h,3h,9h
+	db	'      This option reserves a portion of memory t'
+item_0f05_storage	db	'o be used as a Logical'
+	db	0h
+	db	'Disk Drive, referred to as M:.  The user selects the starting address,'
+	db	0h
+	db	'and the XIOS allocates all of the contiguous memory above that address'
+	db	0h
+	db	'to MDisk.   If no memory is located at the starting address, or if the'
+	db	0h
+	db	'starting address is zero, then no MDisk will be created.'
+	db	0h,0h
+item_102b_storage	db	'The current Starting Address is:  '
+	db	0h
+item_104e_storage	db	':0000'
+	db	0h
+item_1054_storage	db	'Resulting in an MDisk size of:  '
+	db	0h
+item_1075_storage	db	20h,4bh,62h,0h
+item_1079_storage	db	'0123456789ABCDEF'
+item_1089_storage	db	1h,11h,14h
+	db	'1 Enter a new Starting Address'
+	db	0h
+item_10ab_storage	db	2h,1h,9h
+item_10ae_storage	db	'      Type the two most significant hexadecimal digits (0-9 or A-F) of'
+	db	0h
+	db	'the Starting Address segment.  The address must be within the range of'
+	db	0h
+	db	'4000-9000 or C000-E000, or equal to 0000.'
+	db	0h,0h
+item_1167_storage	db	'ENTER STARTING ADDRESS'
+	db	0h
+item_117e_storage	db	20h,5fh,8h,8h,1bh,65h,0h
+item_1185_storage	db	' Invalid Starting Address '
+	db	0h
+item_11a0_storage	db	'TYPE ANY KEY TO CONTINUE'
+	db	0h
+	db	'      This option controls the Verify After Write feature of the XIOS'
+	db	0h
+	db	'Diskette software.  When enabled, the Diskette is verified after each'
+	db	0h
+	db	'write operation, with automatic retries for verification errors.  The'
+	db	0h
+	db	'Verify feature results in greater data security at the cost of speed.'
+	db	0h,0h
+item_12d2_storage	db	2h,0eh,14h
+	db	'1 Enable Verify After Write'
+	db	0h,11h,14h
+	db	'3 Disable Verify After Write'
+	db	0h
+item_1310_storage	db	'The Verify After Write feature is:  '
+	db	0h
+item_1335_storage	db	'Enabled '
+	db	0h
+item_133e_storage	db	'Disabled'
+	db	0h
+item_1347_storage	db	3h,1h,3h,9h
+	db	'    This option sets a Head Step Time of 2 to 32 mSec for the Diskette'
+	db	0h
+	db	'Drive Hardware.  The smaller the time, the faster the Drive Head moves'
+	db	0h
+	db	'from track to track.   The default time is set to 8 mSec, but times of'
+	db	0h
+	db	'6 mSec or 4 mSec work with some Diskette Drives.   Caution is advised.'
+	db	0h,0h
+item_1468_storage	db	2h,0eh,14h
+	db	'1 Decrease Head Step Time'
+	db	0h,11h,14h
+	db	'3 Increase Head Step Time'
+	db	0h
+item_14a1_storage	db	'The current Diskette Head Step Time is:  '
+	db	0h
+item_14cb_storage	db	' mSec '
+	db	0h
+item_14d2_storage	db	3h,1h,3h,9h
+	db	'      This option controls which disk is used to store the information'
+	db	0h
+	db	'which is '
+item_1526_storage	db	'created by the SETUP program.  Selecting "Diskette" will send'
+	db	0h
+	db	'the information to drive A:. Selecting "Hard Disk" will send it to the'
+	db	0h
+	db	'Hard Disk with the lowest drive letter (usually B:).'
+	db	0h,0h
+field_15e1_storage	db	1h,0eh,14h
+	db	'1 Store SETUP data on Diskette'
+	db	0h,11h,14h
+item_1605_storage	db	'3 Store SETUP data on Hard Disk'
+	db	0h
+item_1625_storage	db	'The current Storage Disk is the:  '
+	db	0h
+item_1648_storage	db	'Diskette '
+	db	0h
+item_1652_storage	db	'Hard Disk'
+	db	0h
+field_165c_storage	db	2h,1h,9h,3h
+field_1660_storage	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h
+item_1701_storage	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h
+item_181e_storage	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h
+field_185e_storage	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
+	db	0h,0h,0h,0h,0h,0h
+	end

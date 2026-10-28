@@ -44,3 +44,28 @@ separator list, and the PCTmp name comparison's remaining-count test.
 This is the Concurrent PC-MODE interpreter, not a standalone CP/M-86 port.
 The byte comparison verifies the reconstruction and all original offsets;
 it does not constitute an interactive emulator test.
+
+## Review against the historical BATCH source
+
+The `ossrc/cdos-41-oem/D7/batch.a86` file selects BATCH/CMD mode and
+includes `tmpmenu.lib`, `tmpdir.lib` and `tmpmenue.lib`. All four files
+assemble successfully with RASM-86 1.4a. That build has CODE 2020h and
+DATA 0650h, versus 0FF0h and 0570h in our reference; it is not the same
+revision and cannot replace the invariant.
+
+The review confirms the shared command/parameter processing lineage:
+
+| Reconstructed routine | Later source counterpart | Assessment |
+| --- | --- | --- |
+| `find_pctmp` | `M_INIT` | Both follow parent descriptors to PCTmp; later code copies a command into TMP buffers instead of using our far-service handoff. |
+| `read_line`, `read_buffer_char` | batch line reader, `movchar` | Same record-based input, Ctrl-Z handling and percent-parameter expansion. |
+| `substitute_parameter` | `subparm` | Same parameter role; retain the shipped revision's scan/copy behavior. |
+| `init_batch` | batch parameter initialization | Both collapse argument separators; later source scans three delimiters, not our twelve-byte scan. |
+| `pctmp_gateway` callers | TMP command-ready buffer handoff | Different ABI between revisions; do not transplant addresses. |
+
+The later `movchar` explicitly checks the command length against 81h and
+sets `long_line` on overflow. That protection is not evidence that the
+older binary contains it. The reconstruction preserves its actual behavior.
+Both revisions have a 64-byte patch reserve; our maintained copy deliberately
+zeroes it while the invariant retains the original NOPs. `make check` still
+passes for the full original and the documented maintained difference.

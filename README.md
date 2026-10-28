@@ -180,7 +180,7 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `batch` | Run PC-MODE BAT command files | Original | Reverse engineered from CCP/M-86 |  |
 | `cls` | Clear the terminal screen | — | TMP built-in; VT52 ESC-E |  |
 | `chset` | Inspect or change CMD header flags | — | Recompiled from CCP/M-86 3.1 and adapted |  |
-| `config` | Configure serial ports | Original | — |  |
+| `config` | Configure serial ports | Original | Byte-identical Concurrent reconstruction; CP/M reference |  |
 | `date` | Display or set the date | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K patched |  |
 | `dcomp` | Compare floppy diskettes | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |
 | `dcopy` | Copy floppy diskettes | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |
@@ -206,7 +206,7 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `ren` | Rename files | — | 3.1 |  |
 | `sdir` | Detailed, sorted directory listing | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K/DPB/tail fixes |  |
 | `set` | Set file and drive attributes | — | Recompiled from CCP/M-86 3.1 and adapted |  |
-| `setup` | Customize IBM PC/XT XIOS settings | Original | — |  |
+| `setup` | Customize IBM PC/XT XIOS settings | Original | Byte-identical Concurrent reconstruction; CP/M reference |  |
 | `show` | Display disk space and drive information | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K patched |  |
 | `setdef` | Display/change the per-console command drive list; fixed system fallback | — | New, Source-built `SETDEF.CMD`; local kernel extension |  |
 | `submit` | Run batch command files | — | Recompiled from CCP/M-86 3.1 and adapted |  |
