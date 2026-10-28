@@ -56,6 +56,8 @@ int main()
     assert(!command("top"));
     assert(!command("write n=0 file=TEST.TXT"));
     assert(!command("write n=0 type=setup"));
+    assert(command("change n=1 prow=9,pcol=62,nrows=24,ncols=80"));
+    assert(w_read(1,&w) && w.nrows==16 && w.ncols==19);
     assert(command("top n=0"));
     assert(command("full n=1"));
     puts("PASS: parser, ranges, state conversion and XIOS dispatch checks");

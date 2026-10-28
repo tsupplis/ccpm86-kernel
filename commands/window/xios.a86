@@ -1,7 +1,9 @@
 ; C interface to the same Concurrent 3.1 XIOS gateway used by WINDOW/WMENU.
 ; All public entries preserve the DRC C ABI (BP, SI, DI, DS, ES).
 ; xcall(function,bx,cx,dx): far call system:0C03h with DS=system,
-; ES=current process's XIOS segment. Return full AX, including key type.
+; ES=current process's XIOS context. Return full AX, including key type.
+; XDATA is the SYSTEM DATA segment: pointers returned by function 16
+; address structures there, not in the process's XIOS context segment.
 ; Far-memory helpers deliberately live here, outside the portable C logic.
         public xinit,xcall,farword,farbyte,farput,bdos,DATASEG
 XDATA   dseg common byte
@@ -10,6 +12,7 @@ xdatareg rw 1
 DGROUP  group DATA
 DGROUP  group XDATA
 system  dw 0
+context dw 0
 gateway dw 0c03h,0
         cseg
 xinit:
@@ -21,10 +24,11 @@ xinit:
         int 0e0h
         mov system,es
         mov gateway+2,es
+        mov xdatareg,es
         mov cl,156
         int 0e0h
         mov ax,es:10h[bx]
-        mov xdatareg,ax
+        mov context,ax
         pop es
         pop di
         pop si
@@ -40,7 +44,7 @@ xcall:
         mov bx,6[bp]
         mov cx,8[bp]
         mov dx,10[bp]
-        mov es,xdatareg
+        mov es,context
         push gateway+2
         push gateway
         mov si,sp

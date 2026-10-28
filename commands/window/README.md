@@ -26,11 +26,13 @@ historical tools can return success after reporting errors.
 | `xios.a86` | Small C ABI bridge for far XIOS calls, far-memory access and BDOS |
 | `format.c` | Small-model formatter for decimal/string output; avoids general printf |
 | `start.c` | DRC entry and normal process termination |
+| `livetest.c` | Real-XIOS GLASS layout/TOP regression; restores original state |
 | `hostcheck.c` | Tests against a simulated XIOS data block and service gateway |
 
 The assembly bridge uses the same system:0C03h gateway as the shipped
 utilities, obtaining the system segment with BDOS 154 and the process XIOS
-segment through BDOS 156. See `kernel/con/xbegin.lib`, `xchar.lib` and
+context through BDOS 156. Function-16 data pointers are relative to the
+system data segment returned by BDOS 154, not the process XIOS context. See `kernel/con/xbegin.lib`, `xchar.lib` and
 `xconout.lib` for the register conventions, manager lifecycle and VS fields.
 The fixed ABI is intentionally confined to the shared support layer.
 
@@ -67,7 +69,8 @@ TAB to select Window, Console or Setup output.
 ## Validation and remaining comparison
 
 Both CMD files compile and link without unresolved symbols. A QEMU smoke
-test on Concurrent 3.1 passes WINDOW VIEW and WMENU installation/detachment.
+test on Concurrent 3.1 verifies all four WINDOW VIEW rows, CHANGE, the full
+GLASS layout/colors/TOP sequence and WMENU installation/detachment.
 The tools-disk smoke test uses a temporary bootable copy, leaving the released
 data-only disk unchanged. Both reject an
 ordinary CP/M environment under emu2 with the corresponding Concurrent-only
@@ -93,3 +96,8 @@ The compatibility check uses BDOS 12. It requires Concurrent 8086 identity
 1400h in the high byte and BDOS revision 31h or newer in the low byte.
 Host regression cases include the real 1431h return, ordinary CP/M 0022h,
 0031h without Concurrent identity, and the unsupported 1430h revision.
+
+`make livetest.cmd` builds the target regression program. The QEMU tools-disk
+check installs it only in its temporary fixture and runs it automatically.
+It exercises all four commands from GLASS, verifies their live geometry and
+colors, tests TOP, and restores all windows and the original top console.

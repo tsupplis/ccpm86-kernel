@@ -509,11 +509,15 @@ def check(image, second):
                 logical = Path(temporary) / 'tools.logical.img'
                 bootable = Path(temporary) / 'tools.boot.img'
                 twist = MEDIA.parent / 'tools/cpm86twist.py'
+                window = MEDIA.parent / 'commands/window'
+                subprocess.run(['make', '-C', str(window), 'livetest.cmd'],
+                               check=True, stdout=log, stderr=log)
                 subprocess.run(['python3', str(twist), 'untwist',
                                 str(image), str(logical)], check=True)
                 subprocess.run(['cpmcp', '-f', 'ccpm86-320', str(logical),
                                 str(MEDIA.parent / 'kernel/sysgen/ccpm.sys'),
-                                str(MEDIA / 'startup.0'), '0:'],
+                                str(MEDIA / 'startup.0'),
+                                str(window / 'livetest.cmd'), '0:'],
                                cwd=MEDIA, check=True)
                 subprocess.run(['python3', str(twist), 'twist',
                                 str(logical), str(bootable)], check=True)
@@ -674,11 +678,25 @@ def check(image, second):
                     wait_for(lambda t: 'System disk is A:' in t and re.search(r'^A>\s*$', t, re.M))
                     type_command('window view\n')
                     wait_for(lambda t: 'FGColor' in t and 'BGColor' in t
+                             and re.search(r'^\s*0\s+1\s+1\s+24\s+80\s', t, re.M)
+                             and re.search(r'^\s*3\s+1\s+1\s+24\s+80\s', t, re.M)
+                             and re.search(r'^A>\s*$', t, re.M))
+                    type_command('window ch n=1 prow=9,pcol=2,nrows=24,ncols=65\n')
+                    wait_for(lambda t: re.search(r'^A>\s*$', t, re.M)
+                             and 'ncols=65' in t)
+                    type_command('window view\n')
+                    wait_for(lambda t: re.search(r'^\s*1\s+9\s+2\s+16\s+65\s', t, re.M)
+                             and re.search(r'^A>\s*$', t, re.M))
+                    type_command('window ch n=1 pr=1,pc=1,nr=24,nc=80\n')
+                    wait_for(lambda t: re.search(r'^A>\s*$', t, re.M)
+                             and 'nr=24,nc=80' in t)
+                    type_command('livetest\n')
+                    wait_for(lambda t: 'PASS: GLASS layout, colors and TOP' in t
                              and re.search(r'^A>\s*$', t, re.M))
                     type_command('wmenu\n')
                     wait_for(lambda t: 'Window Manager installed.' in t
                              and re.search(r'^A>\s*$', t, re.M))
-                    print(f'{image.name}: WINDOW VIEW and WMENU installation passed')
+                    print(f'{image.name}: WINDOW VIEW, GLASS layout/TOP and WMENU installation passed')
                 print(f'{image.name}: PASS (two drives, A> prompt, RTC, yellow status, DIR)')
             finally:
                 process.terminate()

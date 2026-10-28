@@ -55,6 +55,10 @@ w_apply(w) struct window *w;
     if (w->prow<1 || w->prow>24 || w->pcol<1 || w->pcol>80 ||
         w->nrows<1 || w->nrows>24 || w->ncols<1 || w->ncols>80 ||
         w->vrow<1 || w->vrow>24 || w->vcol<1 || w->vcol>80) return 0;
+    /* XIOS ww_new_window accepts raw corners without screen clipping.
+     * Clamp the extent before passing it to the screen-map routines. */
+    if(w->prow+w->nrows-1>24) w->nrows=25-w->prow;
+    if(w->pcol+w->ncols-1>80) w->ncols=81-w->pcol;
     xcall(24,0,w->display,w->number);
     p=xcall(16,0,0,w->number);
     a=farword(xdata,p+28);

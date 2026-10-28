@@ -13,6 +13,10 @@ window.cmd: window.obj $(SHARED) Makefile
 	@$(LINK86) window=start,window,command,win,format,xios > window-link.log 2>&1; cat window-link.log
 	@! grep -iE "undefined|syntax error|unable" window-link.log
 
+livetest.cmd: livetest.obj $(SHARED) Makefile
+	@$(LINK86) livetest=start,livetest,command,win,format,xios > livetest-link.log 2>&1; cat livetest-link.log
+	@! grep -iE "undefined|syntax error|unable" livetest-link.log
+
 wmenu.cmd: wmenu.obj $(SHARED) Makefile
 	@$(LINK86) wmenu=start,wmenu,command,win,format,xios > wmenu-link.log 2>&1; cat wmenu-link.log
 	@! grep -iE "undefined|syntax error|unable" wmenu-link.log
@@ -30,4 +34,4 @@ check:
 	./hostcheck
 
 clean:
-	rm -f $(OBJECTS) $(TOOLS) hostcheck *.lst *.sym *.log
+	rm -f $(OBJECTS) $(TOOLS) livetest.obj livetest.cmd hostcheck *.lst *.sym *.log
