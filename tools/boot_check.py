@@ -503,6 +503,21 @@ def check(image, second):
                     '-rtc', 'base=2026-10-19T12:34:56,clock=vm']
             disks = (search_fixtures(temporary, image, second)
                      if image.name == 'ccpm86.img' else (image, second))
+            if image.name == 'ccpmtools.img':
+                # The released tools disk is data-only. Give the smoke-test
+                # copy a kernel and normal TOD startup before booting it.
+                logical = Path(temporary) / 'tools.logical.img'
+                bootable = Path(temporary) / 'tools.boot.img'
+                twist = MEDIA.parent / 'tools/cpm86twist.py'
+                subprocess.run(['python3', str(twist), 'untwist',
+                                str(image), str(logical)], check=True)
+                subprocess.run(['cpmcp', '-f', 'ccpm86-320', str(logical),
+                                str(MEDIA.parent / 'kernel/sysgen/ccpm.sys'),
+                                str(MEDIA / 'startup.0'), '0:'],
+                               cwd=MEDIA, check=True)
+                subprocess.run(['python3', str(twist), 'twist',
+                                str(logical), str(bootable)], check=True)
+                disks = (bootable, second)
             for index, disk in enumerate(disks):
                 args += ['-drive', f'file={disk},format=raw,if=floppy,index={index}']
             process = subprocess.Popen(args, stdin=subprocess.PIPE,
