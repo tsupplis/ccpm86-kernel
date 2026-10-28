@@ -39,7 +39,7 @@ PC-MODE supports a bounded DOS/BIOS subset; application compatibility varies.
 The supplied disks use the CP/M filesystem—DOS FAT support is not enabled.
 See the [API tables](api.md) for DOS, BIOS and native interrupt coverage.
 See [patch notes](patches.md#pc-mode-and-loader-hardening) for the implementation
-and verification details, and [distributions](#distributions) for all six disks.
+and verification details, and [distributions](#distributions) for all seven disks.
 
 <p align="center">
 <img src="images/ccpm86.png" alt="Concurrent CP/M-86 3.1 running in PCE" width="48%">
@@ -146,13 +146,13 @@ affected. See `HELP PUT`, `HELP GET` and `HELP RDR`.
 | --- | --- | --- |
 | `ccpm86.img` | Yes | PC-MODE/PCTMP kernel, core commands, ED, full HELP, BATCH, SYSDISK, SETDEF, PIP |
 | `ccpmnative.img` | Yes | Native TMP/XIOS alternative, with the same core commands and shared kernel fixes |
-| `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, WINDOW/WMENU, sample SUB files, PIP, TOD |
+| `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, WINDOW/WMENU, PRINT, sample SUB files, PIP, TOD |
 | `ccpmext.img` | No | PUT, GET, RDR (console redirection), DREDIX, PIP |
 | `ccpmmaint.img` | Yes | PC-MODE kernel, disk maintenance tools, CONFIG, FUNCTION, SETUP, SYSTAT, PIP, TOD |
 | `ccpmdev.img` | No | Native DR development/BASIC tools, Microsoft BASIC CMD, ASM80, HEXCOM, GENTAB |
 | `ccpmdos.img` | No | DOS MASM, LIB, LINK, LINKCMD, LINKEXE, EXE2BIN and Microsoft BASIC COM |
 
-`make dist` places the images above and `disks.zip` containing all six at the repository root.
+`make dist` places the images above and `disks.zip` containing all seven at the repository root.
 
 
 Root `make` builds both kernels in one run: `kernel/sysgen/ccpm.sys` (PC-MODE)
@@ -214,8 +214,8 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `systat` | Inspect processes and system resources | — | Recompiled from CCP/M-86 3.1 and adapted |  |
 | `tod` | Display or set date and time | — | Recompiled from MP/M-86 2.1 and adapted, Y2K patched |  |
 | `type` | Display a text file | — | Recompiled from CCP/M-86 3.1 and adapted |  |
-| `window` | Control console windows from commands | Original | — |  |
-| `wmenu` | Interactive console-window manager | Original | — |  |
+| `window` | Control console windows from commands | Original | C rewrite; shared modules in `commands/window` |  |
+| `wmenu` | Interactive console-window manager | Original | C rewrite; shared modules in `commands/window` |  |
 | `vcmode` | Set virtual-console background modes | — | Recompiled from CCP/M-86 3.1 and adapted |  |
 | `asm80` | 8080 assembler | — | Translated using XLT86 from CP/M-80 2.2 and adapted | ✓ |
 | `hexcom` | Convert Intel HEX to COM binaries | — | HEXCOM 3.00-compatible C from [tpzasm](https://github.com/johnsonjh/tpzasm) | ✓ |
@@ -223,9 +223,14 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 
 ✓ = confirmed compatible with BDOS 2.2.
 
+WINDOW and WMENU share a C implementation in `commands/window`. The default
+build produces both programs, and `ccpmtools.img` installs their rebuilt
+binaries. See [WINDOW/WMENU build and usage notes](commands/window/README.md)
+for commands, shared modules, validation and current compatibility limits.
+
 PRINT is built from the original C sources in `commands/print` using the
-historical `SQLINK.INP` module list. Both `ccpm86.img` and `ccpmnative.img`
-include the rebuilt `commands/print/print.cmd`. See
+historical `SQLINK.INP` module list. The tools disk, `ccpmtools.img`,
+includes the rebuilt `commands/print/print.cmd`. See
 [the PRINT README](commands/print/README.md) for usage and build details.
 
 ### Development binaries
@@ -281,7 +286,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 | `make check` | SYSDISK identity, source-built boot identity, every packaged file, sizes |
 | `make check-qemu` | Boot, RTC, status, switching, HELP, SDIR, SYSDISK, SETDEF, DREDIX, windows |
 | `make test` | Launch PCE |
-| `make dist` | `y2k-dist.zip`, `disks.zip` and the four disk images at the repository root |
+| `make dist` | `y2k-dist.zip`, `disks.zip` and the seven disk images at the repository root |
 | `make source-dist` | Sources and reference/vendor inputs; no ignored outputs |
 
 [Source pedigree](http://www.cpm.z80.de) · [License correspondence](LICENSE.md).

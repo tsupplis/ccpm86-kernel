@@ -1,0 +1,106 @@
+; C interface to the same Concurrent 3.1 XIOS gateway used by WINDOW/WMENU.
+; All public entries preserve the DRC C ABI (BP, SI, DI, DS, ES).
+; xcall(function,bx,cx,dx): far call system:0C03h with DS=system,
+; ES=current process's XIOS segment. Return full AX, including key type.
+; Far-memory helpers deliberately live here, outside the portable C logic.
+        public xinit,xcall,farword,farbyte,farput,bdos,DATASEG
+XDATA   dseg common byte
+xdatareg rw 1
+        dseg
+DGROUP  group DATA
+DGROUP  group XDATA
+system  dw 0
+gateway dw 0c03h,0
+        cseg
+xinit:
+        push bp
+        push si
+        push di
+        push es
+        mov cl,154
+        int 0e0h
+        mov system,es
+        mov gateway+2,es
+        mov cl,156
+        int 0e0h
+        mov ax,es:10h[bx]
+        mov xdatareg,ax
+        pop es
+        pop di
+        pop si
+        pop bp
+        ret
+xcall:
+        push bp
+        mov bp,sp
+        push si
+        push di
+        push es
+        mov ax,4[bp]
+        mov bx,6[bp]
+        mov cx,8[bp]
+        mov dx,10[bp]
+        mov es,xdatareg
+        push gateway+2
+        push gateway
+        mov si,sp
+        push ds
+        mov ds,system
+        callf ss:dword ptr [si]
+        pop ds
+        add sp,4
+        pop es
+        pop di
+        pop si
+        pop bp
+        ret
+farword:
+        push bp
+        mov bp,sp
+        push es
+        mov es,4[bp]
+        mov bx,6[bp]
+        mov ax,es:[bx]
+        pop es
+        pop bp
+        ret
+farbyte:
+        push bp
+        mov bp,sp
+        push es
+        mov es,4[bp]
+        mov bx,6[bp]
+        xor ax,ax
+        mov al,es:[bx]
+        pop es
+        pop bp
+        ret
+farput:
+        push bp
+        mov bp,sp
+        push es
+        mov es,4[bp]
+        mov bx,6[bp]
+        mov ax,8[bp]
+        mov es:[bx],ax
+        pop es
+        pop bp
+        ret
+bdos:
+        push bp
+        mov bp,sp
+        push si
+        push di
+        push es
+        mov cx,4[bp]
+        mov dx,6[bp]
+        int 0e0h
+        pop es
+        pop di
+        pop si
+        pop bp
+        ret
+DATASEG:
+        mov ax,ds
+        ret
+        end
