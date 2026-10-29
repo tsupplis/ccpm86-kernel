@@ -97,6 +97,7 @@ assert "User Number = 1" in s and "User Number = 0" in s, s
 assert "User numbers only" not in s, s
 s = screen("done")
 assert [x for x in s.splitlines() if x][-1] == "A>", s
+assert s.splitlines().count("A>") == 1, s
 run("python3", twist, "untwist", "b.img", "final.logical")
 names = run("cpmls", "-f", "ccpm86-320", "final.logical").stdout.decode().lower()
 assert "keep.tst" in names, names

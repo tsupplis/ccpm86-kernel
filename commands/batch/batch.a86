@@ -83,13 +83,21 @@ entry:
 	db	'COPYRIGHT(C)1983,84,DIGITAL RESEARCH(05/17/84)2004-0000-654321'
 
 ;-----------------------------------------------------------------------------
-; 64-byte code patch area, zero-filled; entry jumps over it.
+; 64-byte patch area: read ahead before prompting; unused bytes stay zero.
 ;-----------------------------------------------------------------------------
 code_patch_area:
+read_before_prompt:
+	push	ds
+	pop	es
+	call	read_line
+	cmp	byte ptr command_length,1
+	jbe	read_before_prompt
+	mov	dl,0dh
+	call	console_out
+	ret
 	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
 	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
+	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
 
 ;-----------------------------------------------------------------------------
 ; Establish SS:SP in DATA while preserving the incoming flags. BDOS version
@@ -233,8 +241,9 @@ check_command_sent:
 ; PDs so native and PC-MODE children inherit the selected environment.
 ;-----------------------------------------------------------------------------
 prompt:
-	mov	dl,0dh
-	call	console_out
+	call	read_before_prompt
+	nop
+	nop
 	call	get_user
 	mov	dx,pd_user
 	call	update_pd_field
@@ -972,7 +981,10 @@ copy_extension:
 get_command:
 	push	ds
 	pop	es
-	call	read_line
+; Already read before the drive prompt. Keep following addresses stable.
+	nop
+	nop
+	nop
 	xor	bh,bh
 	mov	bl,command_length
 	add	bx,offset command_buffer

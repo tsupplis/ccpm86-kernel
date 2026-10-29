@@ -29,5 +29,11 @@ new=b'Press any key to continue...$\x00'
 assert len(old)==len(new) and reference.count(old)==1
 p=reference.index(old)
 expected[p:p+len(old)]=new
+# Read-ahead helper occupies 18 bytes of the 64-byte reserve. The prompt
+# calls it before echoing anything; get_command no longer reads a second line.
+# All original code/data addresses and the complete CMD layout remain fixed.
+expected[0xc1:0xd3]=bytes.fromhex('1e07e82607803ee8010176f4b20de81e0ac3')
+expected[0x1ff:0x204]=bytes.fromhex('e8bffe9090')
+expected[0x7be:0x7c1]=bytes.fromhex('909090')
 assert Path('batch.cmd').read_bytes()==expected, 'Unexpected maintained BATCH byte change'
-print('PASS: frozen original; maintained changes limited to patch reserve, USER note call, DOS alias bypass and PAUSE message')
+print('PASS: frozen original; maintained changes limited to patch reserve, USER note call, DOS alias bypass, PAUSE message and prompt read-ahead')

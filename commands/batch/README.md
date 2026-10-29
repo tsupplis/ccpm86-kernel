@@ -81,3 +81,8 @@ DEL/RENAME aliases are bypassed in the maintained build, matching the
 simplified PCTMP dispatch. ERA and REN remain explicit external commands.
 The old alias bytes remain unreachable to preserve the original layout;
 the invariant and strict expected-byte check include this one JMP patch.
+
+The maintained build reads ahead before echoing a command prompt, suppressing
+empty-line and EOF prompts. Its 18-byte helper uses the existing patch reserve;
+the remaining 46 bytes stay zero. All original addresses remain unchanged,
+and `make check` verifies every byte including this patch.
