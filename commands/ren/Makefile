@@ -45,7 +45,7 @@ ren.loc: ren.obj scd.obj Makefile
 	$(INTEL_PLM86) $< debug 'optimize(3)' xref
 
 clean:
-	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img
+	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn
 	rm -f *.loc *.mp? *.lnk
 
 # Structural validation; byte comparisons or runtime checks are separate where available.
