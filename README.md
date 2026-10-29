@@ -292,7 +292,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 
 [Source pedigree](http://www.cpm.z80.de) · [License correspondence](LICENSE.md).
 
----
+--
 
 ## Companion projects
 
@@ -300,6 +300,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 |---------|-------------|
 | [cpm86-kernel](https://github.com/tsupplis/cpm86-kernel)     | CP/M-86 1.1 distribution rebuilt from patched and reconstituted sources |
 | [ccpm86-kernel](https://github.com/tsupplis/ccpm86-kernel)         | CCP/M-86 3.1 distribution rebuilt from patched and reconstituted sources |
+| [cdos41-kernel](https://github.com/tsupplis/cdos41-kernel)         | Concurrent DOS 4.1 distribution rebuilt from patched and reconstituted sources |
 | [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev) | Unix CP/M-86 cross development project (compilers, emulation and tools) |
 | [cpm86-hacking](https://github.com/tsupplis/cpm86-hacking)   | CP/M-86 miscellaneous tools and PCE emulator helpers |
 | [cpm86-cmdtools](https://github.com/tsupplis/cpm86-cmdtools) | CP/M-86 `.cmd` file manipulation tools |
