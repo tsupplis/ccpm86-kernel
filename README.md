@@ -135,8 +135,9 @@ B>GET [KEYS.IN] PIP.CMD
 B>RDR [KEYS.IN,PIP.LOG] PIP.CMD
 ```
 
-`cmd` must be a native `.CMD` program: shell built-ins such as `DIR`, `TYPE`
-and `CLS` are not redirected (use `SDIR.CMD`, `TYPE.CMD`). DOS programs
+`cmd` must be a native `.CMD` program. Resident `DIR` and the shell built-in
+`CLS` are not redirected; use `DIR.CMD` or `SDIR.CMD` for directory output.
+`TYPE` runs the external `TYPE.CMD` and can be redirected. DOS programs
 (`.COM`, `.EXE`) run by PC-MODE cannot be redirected, because PC-MODE
 handles their console calls itself. Only the console of the caller is
 affected. See `HELP PUT`, `HELP GET` and `HELP RDR`.
@@ -274,6 +275,16 @@ available on EGA with >=128 KB or VGA. Other native EGA modes and a general
 application INT 10h layer are not provided. The super annoying sysdisk to B: 
 vs C: when 2 floppies are on the system is also fixed...
 
+## Optional display paging
+
+`TYPE filespec [PAGE]` and `SDIR [PAGE]` pause after 23 screen rows.
+`DIR ... [P]` does the same in both resident DIR and DIR.CMD. Paging is
+off by default; SDIR also accepts `[NOPAGE]`. Prompts use PCTMP's native
+`Press any key to continue...` text. Press a key to continue or Ctrl-C to
+stop. TYPE and SDIR count wrapped text and tabs as physical screen rows;
+short output and an exact page ending need no final acknowledgement.
+SDIR's `[LENGTH=n]` remains a separate repeated-header setting.
+
 ## Build and checks
 
 Build: [cpm86-crossdev](https://github.com/tsupplis/cpm86-crossdev), make,
@@ -286,6 +297,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 | `make -C commands/sysdisk check` | Byte-identical SYSDISK reconstruction |
 | `make check` | SYSDISK identity, source-built boot identity, every packaged file, sizes |
 | `make check-qemu` | Boot, RTC, status, switching, HELP, SDIR, SYSDISK, SETDEF, DREDIX, windows |
+| `make check-paging` | TYPE, SDIR, DIR.RSP and DIR.CMD paging, resume, Ctrl-C and default-off |
 | `make test` | Launch PCE |
 | `make dist` | `y2k-dist.zip`, `disks.zip` and the seven disk images at the repository root |
 | `make source-dist` | Sources and reference/vendor inputs; no ignored outputs |
