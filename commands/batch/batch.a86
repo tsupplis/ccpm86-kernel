@@ -394,8 +394,13 @@ show_user:
 	mov	dl,bl
 	call	print_small_number
 	call	newline
-	mov	dx,offset msg_user_note
-	call	print_code
+	; Match PCTMP USER output while preserving all original addresses.
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
 	jmp	next_command
 
 ;-----------------------------------------------------------------------------
@@ -517,7 +522,9 @@ end_8087:
 ; backward copy extends into shared parsing scratch space, as in the original.
 ;-----------------------------------------------------------------------------
 do_del:
-	mov	di,offset name_del
+	; Match simplified PCTMP: DEL/RENAME/ERASE are not aliases.
+	jmp	do_rem
+	; Historical alias body is unreachable; retain its original layout.
 	call	match_builtin
 	jnz	do_rename
 	push	es
@@ -1857,7 +1864,8 @@ msg_bad_8087	db	0dh,0ah,'Invalid 8087 State, IGNORED',0dh,0ah,'$'
 msg_8087	db	0dh,0ah,'8087 = $'
 msg_bad_suspend	db	0dh,0ah,'Invalid Suspend State, IGNORED',0dh,0ah,'$'
 msg_suspend	db	0dh,0ah,'Suspend = $'
-msg_pause	db	'Strike a key when ready . . .$'
+msg_pause	db	'Press any key to continue...$'
+	db	0	; retain the original message allocation
 
 ;-----------------------------------------------------------------------------
 ; Eight-character FCB names plus a blank first extension byte.

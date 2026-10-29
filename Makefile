@@ -22,6 +22,7 @@ media: commands kernel boot
 check: all
 	$(MAKE) -C boot check
 	$(MAKE) -C commands/sysdisk check
+	$(MAKE) -C commands/batch check
 	$(MAKE) -C media check-media
 
 check-paging: all

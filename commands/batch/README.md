@@ -69,3 +69,14 @@ older binary contains it. The reconstruction preserves its actual behavior.
 Both revisions have a 64-byte patch reserve; our maintained copy deliberately
 zeroes it while the invariant retains the original NOPs. `make check` still
 passes for the full original and the documented maintained difference.
+
+The maintained build suppresses the USER media note and uses
+`Press any key to continue...` for PAUSE, matching PCTMP. Six NOPs and a
+message-padding byte preserve the original layout. `batorg.a86` is frozen;
+`make check` constrains the maintained binary to these patches and the
+existing zero-filled patch reserve.
+
+DEL/RENAME aliases are bypassed in the maintained build, matching the
+simplified PCTMP dispatch. ERA and REN remain explicit external commands.
+The old alias bytes remain unreachable to preserve the original layout;
+the invariant and strict expected-byte check include this one JMP patch.

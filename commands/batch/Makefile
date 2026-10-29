@@ -20,8 +20,7 @@ all: $(TOOLS)
 # Compare the entire file, including descriptors, patch areas and padding.
 check: $(TOOLS)
 	cmp batorg.cmd $(REF)
-	@python3 -c "from pathlib import Path; r=bytearray(Path('$(REF)').read_bytes()); r[0xc1:0x101]=bytes(64); assert Path('batch.cmd').read_bytes()==r, 'Unexpected BATCH difference outside zero-filled patch area'"
-	@echo "PASS: invariant matches original; maintained build differs only in the 64-byte patch area"
+	python3 check.py
 
 clean:
 	rm -f *.cmd *.obj *.h86 *.sym *.lst *.prn *.log
