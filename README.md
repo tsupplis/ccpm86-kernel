@@ -64,6 +64,7 @@ Alongside PC-MODE, the current version includes:
 - CP/M Plus mapped and direction keys command line recall and editing,
 - CP/M Plus setdef style configurability
 - CP/M Plus style Input/Ouput redirection with put/get/rdr commands
+- CP/M Plus style paging for DIR, SDIR, TYPE
 - Support for CGA, EGA modes even on VGA card,
 - Y2K compliance,
 - CLIs for floppy copy, format and more
