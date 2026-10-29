@@ -291,6 +291,8 @@ dcl pcb pcb$structure
 dcl token based pcb.token$adr (12) byte;
 dcl got$options boolean;
 
+dcl page$enabled byte external;
+
 get$options: procedure;
     dcl temp byte;
 
@@ -332,13 +334,16 @@ get$options: procedure;
         else if token(1) = 'N' then
             if token(4) = 'X' then
                 find.nonxfcb = true;
-            else if token(3) = 'P' then
+            else if token(3) = 'P' then do;
                 no$page$mode = 0FFh;
+                page$enabled = false;
+            end;
             else if token(3) = 'S' then
                 sort$op = false;
             else goto op$err;
-        /* else if token(1) = 'P' then
-            find.pass = true; */
+        else if token(1) = 'P' and token(2) = 'A' and
+                token(3) = 'G' and token(4) = 'E' and pcb.token$len = 4 then
+            page$enabled = true;
         else if token(1) = 'R' and token(2) = 'O' then
             find.ro = true;
         else if token(1) = 'R' and token(2) = 'W' then

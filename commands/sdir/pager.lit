@@ -1,0 +1,38 @@
+/* Optional screen paging. Count physical rows, including tabs and wraps.
+   Pause only when another character follows a full page (never at EOF).
+   The prompt and raw, non-echoing read match PCTMP PAUSE. */
+declare page$enabled byte public initial(0);
+declare (page$rows,page$column) byte initial(0,0);
+
+mon2: procedure(f,a) byte external;
+    declare f byte, a address;
+end mon2;
+
+page$put: procedure(char);
+    declare (char,key,advance) byte;
+    if page$enabled and page$rows >= 23 then do;
+        call mon1(9,.('Press any key to continue...$'));
+        key = mon2(6,0fdh);
+        call mon1(9,.(13,'                            ',13,'$'));
+        if key = 3 then call mon1(143,0);
+        page$rows = 0;
+    end;
+    call mon1(2,char);
+    if char = 13 then page$column = 0;
+    else if char = 10 then page$rows = page$rows + 1;
+    else if char = 12 then do;
+        page$column,page$rows = 0;
+    end;
+    else if char = 8 then do;
+        if page$column <> 0 then page$column = page$column - 1;
+    end;
+    else if char >= 32 or char = 9 then do;
+        if char = 9 then advance = 8 - (page$column and 7);
+        else advance = 1;
+        page$column = page$column + advance;
+        if page$column >= 80 then do;
+            page$column = page$column - 80;
+            page$rows = page$rows + 1;
+        end;
+    end;
+end page$put;

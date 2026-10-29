@@ -633,6 +633,7 @@
     DIR filespec
     DIR filespec [Gn]
     DIR filespec [S]
+    DIR filespec [P]
 
     Explanation:
 
@@ -640,6 +641,12 @@
     an  on-line  diskette.     Use DIR [S] to  display  the  names of
     SYStem files (files that have the SYS attribute set). Use DIR [Gn]
     to display non-system files in User n.
+
+    [P] pauses after 23 screen rows. It works with both the resident DIR
+    and DIR.CMD, and can be combined with [S] or [Gn]. The prompt is the
+    native PCTMP PAUSE message: Press any key to continue...
+    Press a key to display the next page, or Ctrl-C to stop the listing.
+    Without [P], output is continuous. Paging resets for each command.
 
     ///2EXAMPLES
     Examples:
@@ -653,6 +660,8 @@
     A>DIR PROGRAM.*
     A>DIR [S]
     A>DIR B:UTILITY.CMD [S]
+    A>DIR A: B: [P]
+    A>DIR.CMD A: B: [P]
 
 ///1DSKMAINT
     DSKMAINT.CMD is on the bootable maintenance disk (ccpmmaint.img),
@@ -1544,6 +1553,8 @@
     A>SDIR [nosort,ro] A: B: C:
     A>SDIR [user=3,exclude] *.CMD
     A>SDIR [size,rw] D:
+    A>SDIR B: [PAGE]
+    A>SDIR [PAGE,FULL] A: B:
     A>SDIR [user=all,drive=all,sys] *.PLI *.CMD *.A86
 
     ///2OPTIONS
@@ -1557,6 +1568,8 @@
     [LENGTH=n]    Displays a new (Page) header every n lines.
     [MESSAGE]     Causes SDIR to display where it is searching for files.
     [NOSORT]      Displays files in the order that they are found on the disk.
+    [PAGE]        Pauses after 23 screen rows, including headers and wraps.
+    [NOPAGE]      Disables pauses (the default).
     [RO]          Displays Read-Only files only.
     [RW]          Displays Read/Write attribute files only.
     [SIZE]        Displays only file name and size.
@@ -1566,6 +1579,10 @@
     [USER=all]    Displays files on all user numbers.
     [XFCB]        Displays only files with XFCBs or date stamping.
     [NONXFCB]     Displays only files without XFCBs or date stamping.
+
+    [PAGE] uses the native PCTMP message: Press any key to continue...
+    Press a key for the next page, or Ctrl-C to stop. [LENGTH=n] controls
+    repeated headers separately; it does not enable interactive pauses.
 
 ///1SET
 
@@ -2104,21 +2121,28 @@
     Syntax:
 
     TYPE filespec
+    TYPE filespec [PAGE]
 
     Explanation:
 
-    TYPE displays  contents  of  an  ASCII (text) file on the screen.
-    Press any key to discontinue the display.  TYPE does  not  accept
-    wildcard  filespecs.  Entering  a  ^P  prior  to the type command
-    causes the output to be echoed to the printer until another ^P is
-    entered.
+    TYPE displays an ASCII text file up to its CP/M Ctrl-Z end marker.
+    Wildcards are not accepted. [PAGE] pauses after 23 screen rows,
+    counting tabs and wrapped text. Paging is off by default.
+
+    The prompt is the native PCTMP PAUSE message:
+    Press any key to continue...
+    Press a key for the next page, or Ctrl-C to stop. A short file or a
+    file ending exactly at the page boundary needs no extra keypress.
+    The older P/PNN paging argument remains supported.
+
+    Entering ^P before TYPE echoes output to the printer until the next ^P.
 
     ///2EXAMPLES
     Examples:
 
     A>TYPE letter.dat
-    B>TYPE a:document.law
-    C>TYPE program.bas
+    B>TYPE a:document.law [PAGE]
+    C>TYPE program.bas [PAGE]
     D>TYPE program.a86
 
 ///1USER

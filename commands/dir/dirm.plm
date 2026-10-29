@@ -109,20 +109,26 @@ $else
   declare fcb16 (1) byte    external;	  /* 2nd default fcb    */
 $endif
 
+$include(pager.lit)
+
   write$console:
     procedure (char);
       declare char byte;
-      call mon1 (2,char);
+      call page$put(char);
     end write$console;
 
   print$buf:
     procedure (buffer$address);
-      declare buffer$address address;
-      call mon1 (9,buffer$address);
+      declare buffer$address address, character based buffer$address byte;
+      do while character <> '$';
+          call page$put(character);
+          buffer$address = buffer$address + 1;
+      end;
     end print$buf;
 
   check$ctrl$c:
     procedure byte;
+      if page$aborted then return(true);
 $if rsp
       if (dir$pd.flag and pf$ctlC) <> 0 then
       do;
@@ -391,7 +397,9 @@ parse$options: procedure boolean;
       do while in$brackets and not error;
         if (parse$fn.buff$adr := parse) <> 0ffffh then
         do;
-          if dirbuf(1) = 'S' then
+          if dirbuf(1) = 'P' and dirbuf(2) = ' ' then
+            page$enabled = true;
+          else if dirbuf(1) = 'S' then
             incl$sys = true;
           else if dirbuf(1) = 'G' then
           do;
@@ -488,6 +496,7 @@ $if rsp
      call mon1(m$setusr, (user := calling$pd.user));
      call mon1(m$select, calling$pd.dsk);
 $endif
+     page$enabled,page$aborted,page$rows,page$column = 0;
      new$user = true;
      sys$exists, incl$sys = false;
      tail$len = findb(@tbuff, 0, 128);

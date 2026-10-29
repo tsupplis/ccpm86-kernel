@@ -64,14 +64,19 @@ $include(fcb.lit)
 
 /* BDOS calls */
 
+$include(pager.lit)
+
 print$char: procedure(char) public;
     declare char byte;
-    call mon1(2,char);
+    call page$put(char);
 end print$char;
 
 print: procedure(string$adr) public;
-    dcl string$adr address;
-    call mon1(9,string$adr);
+    dcl string$adr address, character based string$adr byte;
+    do while character <> '$';
+        call page$put(character);
+        string$adr = string$adr + 1;
+    end;
 end print;
 
 printb: procedure public;

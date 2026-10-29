@@ -263,3 +263,22 @@ ERASE deleted it (DIR verified absence), and TIME displayed the time and returne
 after Enter. LINKCMD and LINKEXE now load but produce corrupt output without returning.
 Their runtime compatibility remains unresolved; loader acceptance is not reported
 as application compatibility.
+
+## Optional TYPE, SDIR and DIR paging
+
+- TYPE.CMD and SDIR.CMD accept `[PAGE]`; resident DIR.RSP and DIR.CMD accept
+  `[P]`. SDIR's `[NOPAGE]` explicitly disables pauses. Default output stays
+  continuous. TYPE retains its older P/PNN argument.
+- Page output counts 23 physical rows, including LF, wrapping and tabs.
+  A pause is deferred until another output character exists, avoiding an
+  unnecessary keypress at EOF. All prompts match native PCTMP PAUSE exactly:
+  `Press any key to continue...`, with raw non-echoing BDOS 6/FD input.
+- Ctrl-C stops output. DIR.RSP returns to its queue instead of terminating;
+  its page state resets for every request. The two DIRM copies retain their
+  existing build differences. Local pager includes keep each build standalone.
+- HELP.DAT documents the options and is reindexed into HELP.HLP. The temporary
+  indexer input uses tabs for multiples of eight leading spaces, preserving
+  rendered columns while keeping the complete 320 KB system disk within capacity.
+  Include
+  dependencies rebuild DIR.RSP, DIR.CMD and TYPE.CMD when paging sources change.
+  `make check-paging` runs disposable QEMU fixtures for all four variants.

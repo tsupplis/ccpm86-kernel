@@ -46,11 +46,13 @@ dir.loc: rhdir.obj dirrsp.obj
 	$(INTEL_ASM86) $^
 
 %.obj: %.p86
-	$(INTEL_PLM86) $^ debug 'optimize(3)' xref
+	$(INTEL_PLM86) $< debug 'optimize(3)' xref
 
 %.obj: %.plm
-	$(INTEL_PLM86) $^ debug 'optimize(3)' xref
+	$(INTEL_PLM86) $< debug 'optimize(3)' xref
 
 clean:
 	rm -f *.obj *.h86 *.sym *.lst *.rsp *.cmd *.loc *.lnk *.mp?
 
+
+dirrsp.obj: dirm.plm $(wildcard *.lit)

@@ -90,10 +90,12 @@ declare cmdrv     byte    external;	/* command drive      */
       return mon2 (1,0);
     end read$console;
 
+$include(pager.lit)
+
   printchar:
     procedure (char);
       declare char byte;
-      call mon1 (2,char);
+      call page$put(char);
     end printchar;
 
   conin: 
@@ -276,6 +278,35 @@ declare (ver, error$code)  address;
 declare last$dseg$byte byte
   initial (0);
 
+/* [PAGE] is a trailing, case-insensitive option; retain old P/PNN syntax. */
+page$option: procedure;
+    declare (n,j,k,c) byte;
+    declare word$adr address, word$char based word$adr byte;
+    n = tbuff(0);
+    do while n > 0 and (tbuff(n) = ' ' or tbuff(n) = 9);
+        n = n - 1;
+    end;
+    do j = 1 to n;
+        if tbuff(j) = '[' then do;
+            if n - j <> 5 then goto bad$page;
+            word$adr = .('[PAGE]');
+            do k = 0 to 5;
+                c = tbuff(j+k);
+                if c >= 'a' and c <= 'z' then c = c - 20h;
+                if c <> word$char then goto bad$page;
+                word$adr = word$adr + 1;
+            end;
+            page$enabled = true;
+            tbuff(j) = 0;
+            return;
+        end;
+    end;
+    return;
+bad$page:
+    call print$buf(.('Invalid option, use TYPE filespec [PAGE].',13,10,'$'));
+    call terminate;
+end page$option;
+
 plm$start: procedure public;
     ver = version;
     if low(ver) < Ver$BDOS  or  (high(ver) and Ver$Mask) = 0 then do;
@@ -294,6 +325,8 @@ plm$start: procedure public;
            +(fcb16(3)-'0');
       end;
 
+    call page$option;
+    if page$enabled then cnt = 0;
     parse$fn.buff$adr = .tbuff(1);
     parse$fn.fcb$adr = .fcb;
     call parse;
@@ -356,7 +389,9 @@ plm$start: procedure public;
               do;
                 if (tcnt:=tcnt+1) = cnt then
                 do;
-                  tcnt = read$console;
+                  call print$buf(.('Press any key to continue...$'));
+                  tcnt = conin;
+                  call crlf;
                   tcnt = 0;
                 end;
               end;

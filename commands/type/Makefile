@@ -39,8 +39,10 @@ type.loc: type.obj scd.obj
 	$(INTEL_ASM86) $^
 
 %.obj: %.plm
-	$(INTEL_PLM86) $^ debug 'optimize(3)' xref
+	$(INTEL_PLM86) $< debug 'optimize(3)' xref
 
 clean:
 	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img
 	rm -f *.loc *.mp? *.lnk
+
+type.obj: $(wildcard *.lit)

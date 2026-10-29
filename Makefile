@@ -4,7 +4,7 @@ DISKSZIP=disks.zip
 DIST_DISKS=ccpm86.img ccpmnative.img ccpmtools.img ccpmext.img ccpmdev.img ccpmmaint.img ccpmdos.img
 SOURCEDIST=$(DISTDIR)/ccpm86-source.tar.gz
 
-.PHONY: all commands kernel boot media check check-qemu test dist source-dist clean
+.PHONY: all commands kernel boot media check check-qemu check-paging test dist source-dist clean
 all: media
 
 commands:
@@ -23,6 +23,9 @@ check: all
 	$(MAKE) -C boot check
 	$(MAKE) -C commands/sysdisk check
 	$(MAKE) -C media check-media
+
+check-paging: all
+	python3 tools/paging_check.py
 
 check-qemu: all
 	$(MAKE) -C media check-qemu
