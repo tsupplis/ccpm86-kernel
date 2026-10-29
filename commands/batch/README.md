@@ -12,8 +12,8 @@ make -C commands/batch check
 ```
 
 The check compares whole files: the header, 4,080-byte CODE group, 1,392-byte
-DATA group and final record padding. Only the maintained build's 64-byte
-zero-filled patch area is allowed to differ. The 200-byte private stack resides in
+DATA group and final record padding. The maintained differences are constrained to the zero-filled patch reserve,
+the USER-note call, the DOS-alias bypass and the padded PAUSE message. The 200-byte private stack resides in
 DATA. ASM86 and GENCMD need no binary post-processing for this executable.
 The normal command build includes BATCH; system images install the maintained
 build and retain its SYS attribute for system-disk command searches.
@@ -21,7 +21,8 @@ build and retain its SYS attribute for system-disk command searches.
 The source labels and comments cover:
 
 - PCTmp discovery through parent process descriptors and its far service ABI.
-- USER, MEM, 8087, DEL, RENAME, REM, SYS, PAUSE, SUSPEND and PRINTER built-ins.
+- USER, MEM, 8087, REM, SYS, PAUSE, SUSPEND and PRINTER built-ins;
+  historical DOS alias bodies are retained but bypassed.
 - Resident/native command lookup and CMD/COM/EXE/BAT extension search.
 - Random-record BAT reading, parameter expansion, batch chaining and Ctrl-C.
 - Native BDOS wrappers, error tables, overlaid buffers and unused shared helpers.

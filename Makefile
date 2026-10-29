@@ -72,3 +72,7 @@ clean:
 .PHONY: check-wmenu
 check-wmenu: all
 	python3 tools/wmenu_check.py
+
+.PHONY: check-batch-live
+check-batch-live: all
+	python3 tools/batch_check.py

@@ -301,3 +301,15 @@ Ctrl+Alt+1..4 and Ctrl+Alt+Tab retain their existing behavior.
 
 WMENU's status-line call now passes its offset in CX and segment in DX,
 matching XIOS. This corrects the blank menu exposed by the live wake test.
+
+## BATCH: shell message and alias alignment
+
+The maintained BATCH suppresses the redundant USER media note, uses the
+PCTMP PAUSE wording and bypasses old DEL/RENAME aliases. Six NOPs, one JMP
+and message padding preserve every original label address. The frozen
+batorg build remains byte-identical; the expected-byte checker permits only
+these patches and the existing zero-filled reserve. Live checks verify USER,
+PAUSE, alias behavior and preservation of unrelated files.
+
+DREDIX's original HELP.EDX/LSN.EDX are now kept beside its sources and
+packaged on the extension disk with the editor.
