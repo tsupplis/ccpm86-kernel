@@ -1,12 +1,12 @@
-
-TOOLS=
+# SYSGEN — kernel system-image generation.
+# all builds local outputs; clean removes generated files.
 
 SNIPPETS= ccpm.sys ccpm-native.sys
 
 CONS=bdos.con cio.con mem.con rtm.con sup.con sysdat.con xios.con
 RSPS=abort.rsp clock.rsp dir.rsp echo.rsp pin.rsp serin.rsp serout.rsp pctmp.rsp vout.rsp
 
-all: $(TOOLS) $(SNIPPETS)
+all: $(SNIPPETS)
 
 
 bdos.con: ../con/bdos.con
@@ -74,28 +74,11 @@ ccpm-native.sys: ../../commands/genccpm/genccpm.cmd genccpm-native.in Makefile $
 	cp native/ccpm.sys $@
 	cmdinfo $@
 
-%.h86: %.a86
-	$(DRASM86) $^
-
-%.obj: %.a86
-	$(ASM86) $^
-
-%.obj: %.c
-	$(DRC86) -o$@ $^
-
-ccpm86.img: ccpm.sys ccpm86base.img
-	cp ccpm86base.img ccpm86.img
-	cpmcp -f ibmpc-514ss ccpm86.img ccpm.sys 0:
-	#cpmcp -f ibmpc-514ss ccpm86.img startup.0 0:
-	cpmls -F -f ibmpc-514ss ccpm86.img 0:*.*
-
-test: ccpmtest
-
-ccpmtest: ccpm86.img 
-	@./ccpm86
-
 clean:
 	$(RM) native/*.con native/*.rsp native/*.sys native/*.old
-	rm -f *.sys *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn 
+	rm -f *.sys *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn
 	rm -f *.con *.rsp
 	rm -f ccpm86.img ccpmtest.img
+
+.PHONY: all clean
+.DELETE_ON_ERROR:

@@ -1,23 +1,27 @@
-INTEL_OH86=intel_oh86
+# SUBMIT — local command build.
+# all builds the declared tools; check validates them; clean removes generated files.
+
+CMDINFO=cmdinfo
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
-RASM86=pcdev_rasm86
-LINK86=pcdev_linkcmd
 
 TOOLS=submit.cmd
 
-SNIPPETS=
+.PHONY: all check clean
+.DELETE_ON_ERROR:
+all: $(TOOLS)
 
-all: $(TOOLS) $(SNIPPETS)
-
-submit.cmd: submit.h86
+submit.cmd: submit.h86 Makefile
 	$(GENCMD) $<
-	cmdinfo $@
+	$(CMDINFO) $@
 
-%.h86: %.a86
-	$(ASM86) $^
+%.h86: %.a86 Makefile
+	$(ASM86) $<
 
 clean:
 	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img
 	rm -f *.loc *.mp? *.lnk
 
+# Structural validation; byte comparisons or runtime checks are separate where available.
+check: all
+	@set -e; for file in $(TOOLS); do $(CMDINFO) $$file; done

@@ -1,3 +1,6 @@
+# RSP3 — kernel module build.
+# all builds local outputs; clean removes generated files.
+
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 
@@ -8,7 +11,7 @@ all: $(SNIPPETS)
 pctmp.h86: pcguard.lib pcshell.lib pcerror.lib pchelp.lib pcsearch.lib pcdata.lib
 
 %.rsp: %.h86
-	$(GENCMD) $^
+	$(GENCMD) $<
 	mv $(basename $@).cmd $@
 	@cmdinfo $@
 
@@ -17,3 +20,6 @@ pctmp.h86: pcguard.lib pcshell.lib pcerror.lib pchelp.lib pcsearch.lib pcdata.li
 
 clean:
 	rm -f *.h86 *.sym *.lst *.rsp *.cmd
+
+.PHONY: all clean
+.DELETE_ON_ERROR:

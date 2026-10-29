@@ -1,3 +1,6 @@
+# CON — kernel module build.
+# all builds local outputs; clean removes generated files.
+
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 RASM86=pcdev_rasm86
@@ -29,21 +32,20 @@ xios.con xiosnat.con:
 	mv $(basename $@).cmd $@
 	@cmdinfo $@
 
-%.h86: %.loc
-	$(INTEL_OH86) $^
-	mv $*.hex $*.h86
-
 %.con: %.h86
-	$(GENCMD) $^
+	$(GENCMD) $<
 	mv $(basename $@).cmd $@
 	@cmdinfo $@
 
 %.h86: %.a86
 	$(ASM86) $<
-	
+
 %.obj: %.a86
 	$(RASM86) $<
 
 clean:
 	rm -f *.obj *.h86 *.sym *.lst *.con *.cmd *.loc *.lnk *.lst
 
+
+.PHONY: all clean
+.DELETE_ON_ERROR:

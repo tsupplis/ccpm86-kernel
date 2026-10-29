@@ -1,3 +1,6 @@
+# RSP2 — kernel module build.
+# all builds local outputs; clean removes generated files.
+
 INTEL_PLM86=intel_plm86
 INTEL_ASM86=intel_asm86
 INTEL_LOC86=intel_loc86
@@ -15,7 +18,7 @@ abort.rsp: abort.h86
 	mv $(basename $@).cmd $@
 	cmdinfo $@
 
-abort.loc: rhabt.obj rabt.obj 
+abort.loc: rhabt.obj rabt.obj
 	$(INTEL_LINK86) rhabt.obj,  rabt.obj to $(basename $@).lnk
 	$(INTEL_LOC86) $(basename $@).lnk 'od(sm(code,dats,data,stack,const))' \
 		'ad(sm(code(0),dats(10000h)))' 'ss(stack(0))'  to $(basename $@).loc
@@ -25,25 +28,25 @@ dir.rsp: dir.h86
 	mv $(basename $@).cmd $@
 	cmdinfo $@
 
-dir.loc: rhdir.obj dirrsp.obj 
+dir.loc: rhdir.obj dirrsp.obj
 	$(INTEL_LINK86) rhdir.obj,  dirrsp.obj to $(basename $@).lnk
 	$(INTEL_LOC86) $(basename $@).lnk 'od(sm(code,dats,data,stack,const))' \
 		'ad(sm(code(0),dats(10000h)))' 'ss(stack(0))'  to $(basename $@).loc
 
 %.h86: %.loc
-	$(INTEL_OH86) $^
+	$(INTEL_OH86) $<
 	mv $*.hex $*.h86
 
 %.rsp: %.h86
-	$(GENCMD) $^
+	$(GENCMD) $<
 	mv $(basename $@).cmd $@
 	@cmdinfo $@
 
 %.h86: %.a86
-	$(ASM86) $^
-	
+	$(ASM86) $<
+
 %.obj: %.a86
-	$(INTEL_ASM86) $^
+	$(INTEL_ASM86) $<
 
 %.obj: %.p86
 	$(INTEL_PLM86) $< debug 'optimize(3)' xref
@@ -56,3 +59,6 @@ clean:
 
 
 dirrsp.obj: dirm.plm $(wildcard *.lit)
+
+.PHONY: all clean
+.DELETE_ON_ERROR:

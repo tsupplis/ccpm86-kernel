@@ -1,3 +1,7 @@
+# DSKMAINT — local command build.
+# all builds the declared tools; check validates them; clean removes generated files.
+
+CMDINFO=cmdinfo
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
 RASM86=pcdev_rasm86
@@ -10,10 +14,12 @@ IMAGES=bootsect.bin loader.bin
 INCS=bootsect.inc loader.inc
 REF=../../base/dskmaint.cmd
 
+.PHONY: all check clean check-dsk check-dform
+.DELETE_ON_ERROR:
 all: $(TOOLS) $(IMAGES)
 
-dskmaint.h86: dskmaint.a86 $(INCS)
-dskmorg.h86: dskmorg.a86 $(INCS)
+dskmaint.h86: dskmaint.a86 $(INCS) Makefile
+dskmorg.h86: dskmorg.a86 $(INCS) Makefile
 
 # GENCMD creates all four historical groups, including the empty EXTRA
 # descriptor and the initialized 256-byte STACK. XFFFF is in paragraphs.
@@ -21,12 +27,12 @@ dskmaint.cmd dskmorg.cmd: CMDOPTS=extra[m200 xffff]
 
 dskmaint.cmd: dskmaint.h86 Makefile
 	$(GENCMD) dskmaint '$(CMDOPTS)'
-	cmdinfo $@
+	$(CMDINFO) $@
 dskmorg.cmd: dskmorg.h86 Makefile
 	$(GENCMD) dskmorg '$(CMDOPTS)'
-	cmdinfo $@
+	$(CMDINFO) $@
 
-%.h86: %.a86
+%.h86: %.a86 Makefile
 	unix2dos $<
 	rm -f $@
 	$(ASM86) $*
@@ -40,7 +46,7 @@ dskmorg.cmd: dskmorg.h86 Makefile
 	$(BIN2ASM) -m -f $@ $<
 	unix2dos $@
 
-dform.obj: dform.a86 ccpmio.a86 $(INCS)
+dform.obj: dform.a86 ccpmio.a86 $(INCS) Makefile
 	unix2dos $<
 	rm -f $@
 	@$(RASM86) $< $$ pz sz > dform.log 2>&1; cat dform.log
@@ -48,7 +54,7 @@ dform.obj: dform.a86 ccpmio.a86 $(INCS)
 dform.cmd: dform.obj Makefile
 	$(LINK86) dform '[$$sz,cod[ori[0]],dat[ori[0],max[0]]]'
 	@python3 -c "p='$@';b=open(p,'rb').read();open(p,'wb').write(b[:128+int.from_bytes(b[1:3],'little')*16])"
-	cmdinfo $@
+	$(CMDINFO) $@
 
 check: check-dsk check-dform
 check-dsk: dskmaint.cmd dskmorg.cmd $(IMAGES)
@@ -61,4 +67,3 @@ check-dform: dform.cmd $(IMAGES)
 clean:
 	rm -f *.cmd *.obj *.h86 *.lst *.sym *.log *.bin.boot *.mp? *.lnk
 	rm -f $(IMAGES) $(INCS)
-.PHONY: all check check-dsk check-dform clean

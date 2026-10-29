@@ -1,5 +1,11 @@
+# BATCH — annotated assembly reconstruction.
+# batorg.a86 is the frozen reference; batch.a86 is the maintained source.
+# all builds both CMDs; check validates complete files; clean removes build outputs.
+
 ASM86=cpm86_asm86
 GENCMD=cpm86_gencmd
+CMDINFO=cmdinfo
+PYTHON=python3
 
 TOOLS=batch.cmd batorg.cmd
 REF=../../base/batch.cmd
@@ -10,17 +16,18 @@ all: $(TOOLS)
 
 # ASM86/GENCMD retain the original separate CODE and DATA groups. The private
 # stack is inside DATA; no header normalization or binary patching is needed.
-%.cmd: %.h86
+%.cmd: %.h86 Makefile
 	$(GENCMD) $<
-	@cmdinfo $@
+	$(CMDINFO) $@
 
-%.h86: %.a86
+%.h86: %.a86 Makefile
 	$(ASM86) $<
 
-# Compare the entire file, including descriptors, patch areas and padding.
-check: $(TOOLS)
+# The frozen build must match base. check.py checks the maintained build against
+# only the documented patch-area, USER/PAUSE and alias changes; all other bytes match.
+check: $(TOOLS) check.py
 	cmp batorg.cmd $(REF)
-	python3 check.py
+	$(PYTHON) check.py
 
 clean:
 	rm -f *.cmd *.obj *.h86 *.sym *.lst *.prn *.log

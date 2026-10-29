@@ -1,78 +1,26 @@
+# GENCCPM — DRI C system-generator build.
+# Kernel composition and image generation belong to kernel/sysgen/Makefile.
+# all builds the declared tools; check validates them; clean removes generated files.
+
+CMDINFO=cmdinfo
 DRC86=drccpm_cc
 DRCLINK86=drccpm_link
 
 TOOLS=genccpm.cmd
 
-SNIPPETS=
+.PHONY: all check clean
+.DELETE_ON_ERROR:
+all: $(TOOLS)
 
-all: $(TOOLS) $(SNIPPETS)
-
-
-bdos.con: 
-	@cp ../kernel/bdos.con .
-
-cio.con: 
-	@cp ../kernel/cio.con .
-
-mem.con: 
-	@cp ../kernel/mem.con .
-
-rtm.con: 
-	@cp ../kernel/rtm.con .
-
-sup.con: 
-	@cp ../kernel/sup.con .
-
-sysdat.con: 
-	@cp ../kernel/sysdat.con .
-
-xios.con: 
-	@cp ../kernel/xios.con .
-
-abort.rsp:
-	@cp ../rsp*/abort.rsp .
-
-clock.rsp:
-	@cp ../rsp*/clock.rsp .
-
-dir.rsp:
-	@cp ../rsp*/dir.rsp .
-
-echo.rsp:
-	@cp ../rsp*/echo.rsp .
-
-pin.rsp:
-	@cp ../rsp*/pin.rsp .
-
-serin.rsp:
-	@cp ../rsp*/serin.rsp .
-
-serout.rsp:
-	@cp ../rsp*/serout.rsp .
-
-tmp.rsp:
-	@cp ../rsp*/tmp.rsp .
-
-vout.rsp:
-	@cp ../rsp*/vout.rsp .
-
-ccpm.sys: genccpm.cmd genccpm.in $(CONS) $(RSPS)
-	@cp ../kernel/*.con .
-	#@cp ../rsp*/*.rsp .
-	@emu2 genccpm.cmd < genccpm.in
-	@cmdinfo ccpm.sys
-
-genccpm.cmd: genc1.obj genc2.obj genc3.obj genc4.obj genc5.obj genc6.obj
+genccpm.cmd: genc1.obj genc2.obj genc3.obj genc4.obj genc5.obj genc6.obj Makefile
 	$(DRCLINK86) genccpm[map]=genc1,genc2,genc3,genc4,genc5,genc6 [libsyms]
 
-%.h86: %.a86
-	$(DRASM86) $^
-
-%.obj: %.a86
-	$(ASM86) $^
-
-%.obj: %.c genccpm.h portab.h machine.h
+%.obj: %.c genccpm.h portab.h machine.h Makefile $(wildcard *.h)
 	$(DRC86) -o$@ $<
 
 clean:
 	rm -f *.sys *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn *.map
+
+# Structural validation; byte comparisons or runtime checks are separate where available.
+check: all
+	@set -e; for file in $(TOOLS); do $(CMDINFO) $$file; done
