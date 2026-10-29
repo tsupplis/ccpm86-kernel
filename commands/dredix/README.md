@@ -18,5 +18,12 @@ console structure pointers, or direct video-memory accesses in the program.
 Exit restores the BDOS output mode and delimiter, enables function-key
 expansion and wrapping, and restores normal attributes and cursor visibility.
 
-The editor help/tutorial data (`HELP.EDX` and `LSN.EDX`) are not included in
-these sources. F7 reports a missing help file if `HELP.EDX` is unavailable.
+
+
+## Editor data
+
+`help.edx` supplies the editor's help screens; `lsn.edx` supplies its
+interactive lessons. These original data files are kept beside the DREDIX
+sources and packaged on the same image as DREDIX.CMD. They are independent
+of the system HELP.HLP database. Select that disk as the current drive when
+using the editor data; the existing editor searches the current drive, then A:.

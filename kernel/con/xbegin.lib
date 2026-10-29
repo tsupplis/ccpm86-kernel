@@ -775,6 +775,12 @@ key_make:
     and ah,ctrl_bit or alt_bit
     cmp ah,ctrl_bit or alt_bit
     jne key_translate
+    cmp al,1                    ; Ctrl-Alt-Esc: wake the window manager
+    jne key_console_shortcuts
+    mov al,07dh                 ; native Ctrl-keypad-Plus event
+    mov key_type,0ffh
+    jmp save_key_code
+key_console_shortcuts:
     cmp al,15                   ; Ctrl-Alt-Tab: next foreground console
     je key_next_console
     cmp al,2                    ; top-row 1 through 4, scan codes 2..5

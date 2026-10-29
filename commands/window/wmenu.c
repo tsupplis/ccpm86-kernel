@@ -9,7 +9,7 @@ static line(s) char *s;
 {
     int i;
     for(i=0;i<80;++i) { status[2*i]=*s?*s++:' '; status[2*i+1]=0x70; }
-    xcall(18,0,dataseg(),status);
+    xcall(18,0,status,dataseg());
 }
 static restore_line() { xcall(8,0,0xffff,0); }
 static letter(k) int k;

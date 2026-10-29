@@ -2,11 +2,12 @@
    Pause only when another character follows a full page (never at EOF).
    The prompt and raw, non-echoing read match PCTMP PAUSE. */
 declare page$enabled byte public initial(0);
+declare page$length byte initial(23);
 declare (page$rows,page$column) byte initial(0,0);
 
 page$put: procedure(char);
     declare (char,key,advance) byte;
-    if page$enabled and page$rows >= 23 then do;
+    if page$enabled and page$rows >= page$length then do;
         call mon1(9,.('Press any key to continue...$'));
         key = mon2(6,0fdh);
         call mon1(9,.(13,'                            ',13,'$'));

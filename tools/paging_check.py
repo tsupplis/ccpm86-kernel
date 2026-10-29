@@ -38,7 +38,7 @@ def check():
             run('cpmcp', '-f', 'ccpm86-320', str(logical), str(empty), f'0:f{number:03}.txt')
         for name, content in [
             ('long.txt', b''.join(f'page line {n:02}\r\n'.encode() for n in range(1, 51)) + b'\x1a'),
-            ('short.txt', b'short file\r\n\x1a'),
+            ('short.txt', b'short file\r\nsecond line\r\n\x1a'),
             ('exact.txt', b'exact page\r\n' * 23 + b'\x1a'),
             ('wrap.txt', b'wrapped text ' * 160 + b'\r\nwrap end\r\n\x1a')]:
             source = folder / name
@@ -145,6 +145,11 @@ def check():
                 pages('type b:wrap.txt [page]')
                 pages('type b:long.txt [page]', 1, abort=True)
                 pages('type b:long.txt', 0)
+                pages('type b:long.txt [p10]', 4)
+                pages('type b:long.txt [p23]', 2)
+                pages('type b:short.txt [p01]', 1)
+                pages('type b:short.txt [p02]', 0)
+                pages('type b:long.txt [p10]', 1, abort=True)
                 pages('sdir b: [page]')
                 pages('sdir b: [page]', 1, abort=True)
                 pages('sdir b: [page nopage]', 0)
@@ -155,7 +160,13 @@ def check():
                 pages('dir.cmd b: b: [p]')
                 pages('dir.cmd b: b: [p]', 1, abort=True)
                 pages('dir.cmd b: b:', 0)
-                print('PASS: native PAUSE text; TYPE/SDIR/DIR.RSP/DIR.CMD paging, resume, Ctrl-C, default-off and state reset; TYPE short/exact/wrapped pages')
+                for option in ('p', 'p10', '[p]', '[p00]', '[p24]', '[p99]', '[p1]', '[paa]'):
+                    type_command('cls\n')
+                    wait(prompt)
+                    type_command('type b:short.txt ' + option + '\n')
+                    display = wait(prompt)
+                    assert 'Invalid option' in display, (option, display)
+                print('PASS: native PAUSE text; TYPE/SDIR/DIR.RSP/DIR.CMD paging, resume, Ctrl-C, default-off and state reset; TYPE PAGE/P01..P23, short/exact/wrapped pages and rejection of old/out-of-range syntax')
             finally:
                 try:
                     command('quit')

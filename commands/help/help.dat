@@ -1606,7 +1606,7 @@
 
           SET {d:} [NAME=labelname.typ]
           SET [PASSWORD=password]
-          SET [PASSWORD=<cr>
+          SET [PASSWORD=,PROTECT=OFF]
 
 
   Examples:
@@ -1619,15 +1619,16 @@
 
        Assigns SECRET to the  disk  label.
 
-  A>SET [PASSWORD=<cr>
+  A>SET [PASSWORD=,PROTECT=OFF]
 
-       Nullifies the existing password.
+       Removes the label password and disables drive protection.
 
   ///2Passwords
 
           SET [PROTECT=ON]
           SET [PROTECT=OFF]
           SET filespec [PASSWORD=password]
+          SET filespec [PASSWORD=,PROTECT=NONE]
           SET filespec [PROTECT=READ]
           SET filespec [PROTECT=WRITE]
           SET filespec [PROTECT=DELETE]
@@ -1795,15 +1796,16 @@
     ///2OPTIONS
     Options:
 
+    [ARCHIVE=ON|OFF]      Set or clear the archive attribute.
+    [F1=ON|OFF] ... [F4=ON|OFF]   Set or clear CP/M file flags.
     [ACCESS=ON|OFF]       Turn access time stamps on/off.
     [CREATE=ON|OFF]       Turn creation time stamps on/off.
     [DEFAULT=password]    Specify a default password.
     [DIR]                 Set file DIRectory attribute.
     [HELP]                Display a list of examples.
-    [MAKE=ON|OFF]         Turn automatic creation of XFCBs on/off.
     [NAME=lablname.typ]   Specify directory label name.
     [PASSWORD=password]   Specify file or directory label password.
-    [PROTECTION=READ|WRITE|EDIT|NONE]   Set level of password protection.
+    [PROTECTION=READ|WRITE|DELETE|NONE]   Set level of password protection.
     [RO]                  Set file or drive to Read-Only.
     [RW]                  Set file or drive to Read/Write.
     [SYS]                 Set file SYStem attribute.
@@ -2122,6 +2124,7 @@
 
     TYPE filespec
     TYPE filespec [PAGE]
+    TYPE filespec [PNN]
 
     Explanation:
 
@@ -2133,7 +2136,9 @@
     Press any key to continue...
     Press a key for the next page, or Ctrl-C to stop. A short file or a
     file ending exactly at the page boundary needs no extra keypress.
-    The older P/PNN paging argument remains supported.
+    [PNN] selects a smaller page: NN must be two digits, 01 through 23.
+    Example: TYPE notes.txt [P10]. [PAGE] uses 23 physical rows.
+    Unbracketed P/PNN, [P], [P00] and [P24] are invalid.
 
     Entering ^P before TYPE echoes output to the printer until the next ^P.
 
@@ -2354,7 +2359,8 @@
     Type WMENU and press Enter.   WMENU returns the message,  "Window
     Manager installed." You will notice that the letters "Win" appear
     on the  Concurrent CP/M status line.   With the window manager in
-    memory,  you can press Ctrl-keypad-Plus (+) to obtain WMENU's main menu.
+    memory,  you can press Ctrl-Alt-Esc to obtain WMENU's main menu.
+    Ctrl-keypad-Plus remains available as a compatibility shortcut.
     This menu offers you a choice from Place, Size, Scroll, Tracking,
     Display, Color, Write,  and Abort.  You can press Escape (Esc) to
     leave the main menu.
@@ -2409,7 +2415,7 @@
     your computer's memory.   After  pressing  Enter  from  the Abort
     submenu, you must reinvoke WMENU to load the window manager.
 
-    Remember that you can press Ctrl-keypad-Plus to obtain WMENU's main menu
+    Remember that you can press Ctrl-Alt-Esc to obtain WMENU's main menu
     even when you are in an application program.  Also you can switch
     virtual  consoles  when  you are in the  main  menu or while in a
     submenu.  This means that you could, for example, change the size

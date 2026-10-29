@@ -226,6 +226,9 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 
 ✓ = confirmed compatible with BDOS 2.2.
 
+After installing WMENU, **Ctrl+Alt+Esc** opens its menu;
+Ctrl+keypad-Plus remains available.
+
 WINDOW and WMENU share a C implementation in `commands/window`. The default
 build produces both programs, and `ccpmtools.img` installs their rebuilt
 binaries. See [WINDOW/WMENU build and usage notes](commands/window/README.md)
@@ -278,13 +281,9 @@ vs C: when 2 floppies are on the system is also fixed...
 
 ## Optional display paging
 
-`TYPE filespec [PAGE]` and `SDIR [PAGE]` pause after 23 screen rows.
-`DIR ... [P]` does the same in both resident DIR and DIR.CMD. Paging is
-off by default; SDIR also accepts `[NOPAGE]`. Prompts use PCTMP's native
-`Press any key to continue...` text. Press a key to continue or Ctrl-C to
-stop. TYPE and SDIR count wrapped text and tabs as physical screen rows;
-short output and an exact page ending need no final acknowledgement.
-SDIR's `[LENGTH=n]` remains a separate repeated-header setting.
+TYPE and SDIR accept `[PAGE]`; DIR.RSP and DIR.CMD use `[P]`. TYPE also accepts
+`[P01]` through `[P23]` for shorter pages. Paging is off by default and uses
+the native pause prompt; Ctrl-C stops output. [TYPE syntax and paging details](commands/type/README.md).
 
 ## Build and checks
 

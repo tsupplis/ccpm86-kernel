@@ -165,6 +165,13 @@ $include(pager.lit)
               fcb$adr   address);
   declare (saveax,savecx) word external;  /* reg return vals, set in mon1 */
 
+  option$error: procedure;
+    call print$buf(.('Invalid option, use TYPE filespec [PAGE] or [P01]..[P23].',13,10,'$'));
+    call terminate;
+  end option$error;
+
+  declare parse$end address;
+
   parse: procedure;
     declare (retcode,errcode) word;
 
@@ -180,6 +187,7 @@ $include(pager.lit)
          else if errcode = 38 then call print$buf(.(' (password)$'));
          call print$buf(.('.',13,10,'$')); call terminate;
        end;
+    parse$end = retcode;
     end parse;
 
 
@@ -272,15 +280,15 @@ exit:
     Main Program
   */
 
-declare (cnt,tcnt) byte;
 declare (ver, error$code)  address;
 
 declare last$dseg$byte byte
   initial (0);
 
-/* [PAGE] is a trailing, case-insensitive option; retain old P/PNN syntax. */
+/* Exactly one trailing bracket option. PAGE uses 23 physical rows;
+   PNN selects 01..23 rows. Unbracketed P/PNN are no longer accepted. */
 page$option: procedure;
-    declare (n,j,k,c) byte;
+    declare (n,j,k,c,rows) byte;
     declare word$adr address, word$char based word$adr byte;
     n = tbuff(0);
     do while n > 0 and (tbuff(n) = ' ' or tbuff(n) = 9);
@@ -288,14 +296,30 @@ page$option: procedure;
     end;
     do j = 1 to n;
         if tbuff(j) = '[' then do;
-            if n - j <> 5 then goto bad$page;
-            word$adr = .('[PAGE]');
-            do k = 0 to 5;
-                c = tbuff(j+k);
-                if c >= 'a' and c <= 'z' then c = c - 20h;
-                if c <> word$char then goto bad$page;
-                word$adr = word$adr + 1;
+            if n - j = 5 then do;
+                word$adr = .('[PAGE]');
+                do k = 0 to 5;
+                    c = tbuff(j+k);
+                    if c >= 'a' and c <= 'z' then c = c - 20h;
+                    if c <> word$char then goto bad$page;
+                    word$adr = word$adr + 1;
+                end;
+                rows = 23;
             end;
+            else if n - j = 4 then do;
+                c = tbuff(j+1);
+                if c >= 'a' and c <= 'z' then c = c - 20h;
+                if c <> 'P' or tbuff(n) <> ']' then goto bad$page;
+                rows = 0;
+                do k = j+2 to j+3;
+                    c = tbuff(k);
+                    if c < '0' or c > '9' then goto bad$page;
+                    rows = rows * 10 + c - '0';
+                end;
+                if rows = 0 or rows >= 24 then goto bad$page;
+            end;
+            else goto bad$page;
+            page$length = rows;
             page$enabled = true;
             tbuff(j) = 0;
             return;
@@ -303,9 +327,20 @@ page$option: procedure;
     end;
     return;
 bad$page:
-    call print$buf(.('Invalid option, use TYPE filespec [PAGE].',13,10,'$'));
-    call terminate;
+    call option$error;
 end page$option;
+
+/* BDOS 152 returns the first unconsumed character (or zero at end).
+   Reject old unbracketed paging and any other second argument. */
+check$tail: procedure;
+    declare tail$char based parse$end byte;
+    if parse$end <> 0 then do;
+        do while tail$char = ' ' or tail$char = 9;
+            parse$end = parse$end + 1;
+        end;
+        if tail$char <> 0 then call option$error;
+    end;
+end check$tail;
 
 plm$start: procedure public;
     ver = version;
@@ -314,22 +349,11 @@ plm$start: procedure public;
       call mon1(0,0);
       end;
 
-    tcnt,
-    cnt = 0;
-    if fcb16(1) = 'P' then
-      do;
-      if fcb16(2) = ' ' or fcb16(2) = 'A' then   
-        cnt = 24;
-      else
-        cnt = (fcb16(2)-'0')*10
-           +(fcb16(3)-'0');
-      end;
-
     call page$option;
-    if page$enabled then cnt = 0;
     parse$fn.buff$adr = .tbuff(1);
     parse$fn.fcb$adr = .fcb;
     call parse;
+    call check$tail;
 
     do i = 1 to 11;                     /* check for wildcards */
       if fcb(i) = '?' then do;
@@ -383,19 +407,6 @@ plm$start: procedure public;
               call terminate;
             end;
 ****/
-            if cnt <> 0 then
-            do;
-              if char = 0ah then
-              do;
-                if (tcnt:=tcnt+1) = cnt then
-                do;
-                  call print$buf(.('Press any key to continue...$'));
-                  tcnt = conin;
-                  call crlf;
-                  tcnt = 0;
-                end;
-              end;
-            end;
             call printchar (char);
           end;
         end;

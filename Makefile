@@ -67,3 +67,7 @@ $(Y2KDISTZIP): commands/sdir/sdir.cmd commands/tod/tod.cmd \
 clean:
 	@set -e; for d in commands kernel boot media; do $(MAKE) -C $$d clean; done
 	rm -rf $(DISTDIR) dist.zip $(Y2KDISTZIP) $(DISKSZIP) $(DIST_DISKS)
+
+.PHONY: check-wmenu
+check-wmenu: all
+	python3 tools/wmenu_check.py

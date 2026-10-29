@@ -57,7 +57,7 @@ screen image; SETUP output is a WINDOW CHANGE command.
 ## WMENU
 
 WMENU registers manager state 1, detaches with BDOS 147 and waits on XIOS
-service 17. The existing XIOS manager hotkey activates it. ESC returns it to
+service 17. Ctrl+Alt+Esc activates it; Ctrl+keypad-Plus remains available. ESC returns it to
 idle; Abort followed by RETURN unregisters it and exits.
 
 The trial UI explicitly maps P to Place, S to Size, R to Scroll, T to

@@ -1,0 +1,198 @@
+.K default
+CURSOR MOTION COMMANDS
+	KEY		ACTION
+	up arrow	Up
+	down arrow	Down
+	left arrow	Left
+	right arrow	Right
+	PgUp		Page up
+	PgDn		Page down
+	Ctrl-left arw	Word left
+	Ctrl-rght arw	Word right
+	Home		Beginning of buffer
+	End		End of buffer
+	F3		Beginning of window
+	F4		End of window
+	F5		Beginning of line
+	F6		End of line
+	Alt-g		Go to line (prompts)
+
+
+
+
+
+This is the first of 4 help screens; press Alt-h again for second screen.
+.M default2
+EDITING COMMANDS
+	KEY		ACTION
+	Backspace	Delete character to left of cursor
+	Del		Delete character at cursor
+	Alt-d or F9	Delete entire line
+	Alt-F9		Delete line to right of cursor
+	Alt-u		Insert last deleted line above cursor (undo)
+	Alt-a		Get blank line below cursor
+	Alt-i		Get blank line above cursor
+	Ins		Toggle between insert and overstrike mode
+
+FILE COMMANDS
+	KEY		ACTION
+	Alt-e		Edit new file (prompts)
+	Alt-f		Change file name for next write (prompts)
+	Alt-r		Read file into buffer below cursor (prompts)
+	Alt-w		Write contents of buffer to file (might prompt)
+
+
+
+
+
+Press Alt-h again for third help screen.
+.M default3
+BLOCK COMMANDS
+	KEY		ACTION
+	Alt-k or F8	Mark lines to copy, move or delete
+	Alt-c		Copy marked lines below cursor
+	Alt-m		Move marked lines below cursor
+	Ctrl-d		Delete marked lines
+
+SEARCH AND TRANSLATE COMMANDS
+	KEY		ACTION
+	Alt-s or F10	Search for characters that match a pattern (prompts)
+	Alt-F10		Continue search
+	Alt-t		Translate characters that match a pattern (prompts)
+
+
+
+
+
+
+
+
+
+
+Press Alt-h again for fourth help screen.
+.M default4
+WINDOW AND BUFFER COMMANDS
+	KEY		ACTION
+	Alt-1 or F1	Edit in window 1
+	Alt-2 or F2	Edit in window 2 (split screen if necessary)
+	Alt-o		Restore screen to one window
+	Alt-b		Swap to different buffer (prompts)
+
+MISCELLANEOUS COMMANDS
+	KEY		ACTION
+	Alt-x		Exit from DREDIX or exit from prompt
+	Alt-p		Display status of files, buffers, windows, etc.
+	Alt-h or F7	Get help
+
+
+Characters typed on the alphanumeric keyboard (including tab) are inserted at
+the cursor, pushing the rest of the text on the line to the right. Inserting a
+RETURN splits a line; deleting a RETURN joins two lines.
+
+Additional help is available whenever DREDIX prompts you for additional
+information (for example, a file name).  You may press Alt-h at any time,
+and DREDIX will give the help that you need.
+.M default
+.K Pattern
+Type a pattern to be searched for followed by a RETURN. If you want to cancel
+this command, press Alt-x after pressing the space bar.
+
+Simple patterns consist of letters, numbers and most special symbols. Upper
+and lower case letters are different. Special characters can be used to build
+more complex patterns.  If you don't want a character to be special, precede
+it with \ (backslash).
+
+
+CHAR	SPECIAL MEANING
+
+*	Matches any string of zero or more characters.
+?	Matches any single character except end-of-line.
+\	Makes next character (*, ? or \) non-special.
+.K Replacemen
+Type text to replace text that the pattern matches, followed by a RETURN. The
+RETURN isn't part of the replacement text.
+
+If and when a match is found, you will be prompted to enter one of three
+responses:
+
+RESPONSE	ACTION
+
+Alt-x		Terminate the translation process. Translations that were
+		already made will remain made.
+
+l		(local) Perform this translation, and go on to the next match.
+
+g		(global) Perform this translation and all other translations.
+
+[space bar]	Skip this translation, but go on to the next match. Hitting any
+		other key is equivalent to hitting the space bar.
+
+If you want to cancel this command, press Alt-x after the space bar.
+.K treply
+DREDIX is ready to make the translation you requested, but first it wants your
+approval.  You must respond with one of the following:
+
+RESPONSE	ACTION
+
+Alt-x		Terminate the translation process. Translations that were
+		already made will remain made.
+
+l		(local) Perform this translation, and go on to the next match.
+
+g		(global) Perform this translation and all other translations.
+
+[space bar]	Skip this translation, but go on to the next match. Hitting any
+		other key is equivalent to hitting the space bar.
+
+(The most likely response is pressing "l" or "g".)
+.K File
+Type a file name followed by a RETURN.
+
+If you want to cancel this command, press Alt-x after pressing the space bar.
+.K Line
+Type a line number (from 1 to the number of lines in the buffer) followed by a
+RETURN.
+
+If you omit the line number or use a line number of zero, you will go to the
+first line of the marked block.
+
+If you want to cancel this command, press Alt-x after pressing the space
+bar.
+.K Buffer num
+Type a buffer number or file name followed by a RETURN.
+
+The buffer you specify will be brought into the current window.  If the buffer
+was previously associated with some other window, then the two windows will
+exchange buffers.  Otherwise, the old buffer will not be associated with any
+window.  In any event, the old buffer will remain undisturbed, and you can
+change back to it later.
+
+If you specify a file name and there is a buffer associated with that name,
+then that buffer's number will be used.
+
+If the file you specify isn't associated with any buffer, then an error
+message will be given.
+
+If you want to cancel this command, press Alt-x after the space bar.
+.K OK to lose
+If you just issued an edit (Alt-e) command, then the problem is that you
+haven't yet written out the changes you made to the current buffer. If you
+respond with "y" followed by a RETURN, then you will lose the changes.
+
+To get a chance to write out the changes with a write (Alt-w) command,
+respond with "n" or any character other than "y".
+
+If you just tried to exit (Alt-x), then the problem is that some buffer
+(not necessarily the one associated with the current window) hasn't been
+written out.  If you're not sure which buffer it is, type "n" followed by a
+RETURN and use the Alt-p command to get a status display.
+.K memfull
+Memory to store text is full!
+
+No more text can be read in, and no more editing can be done.
+
+You should exit from DREDIX immediately and start over.  If you have made
+changes that you want to save, you may issue a write command.  If you haven't
+made any changes, just exit.
+f you have made
+changes that you want to save, you may issue 

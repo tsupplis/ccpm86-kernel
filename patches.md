@@ -268,7 +268,7 @@ as application compatibility.
 
 - TYPE.CMD and SDIR.CMD accept `[PAGE]`; resident DIR.RSP and DIR.CMD accept
   `[P]`. SDIR's `[NOPAGE]` explicitly disables pauses. Default output stays
-  continuous. TYPE retains its older P/PNN argument.
+  continuous. TYPE accepts [P01]..[P23] as alternatives to [PAGE]; old P/PNN are rejected.
 - Page output counts 23 physical rows, including LF, wrapping and tabs.
   A pause is deferred until another output character exists, avoiding an
   unnecessary keypress at EOF. All prompts match native PCTMP PAUSE exactly:
@@ -282,3 +282,22 @@ as application compatibility.
   Include
   dependencies rebuild DIR.RSP, DIR.CMD and TYPE.CMD when paging sources change.
   `make check-paging` runs disposable QEMU fixtures for all four variants.
+
+## TYPE: bracketed page length
+
+TYPE accepts [PAGE] (23 physical rows) or [PNN], with exactly two digits
+01..23. Both use the same row counter, native pause prompt and Ctrl-C path.
+Unbracketed P/PNN and [P] are rejected, as are zero, lengths above 23,
+malformed options and extra arguments. Detailed behavior is documented in
+commands/type/README.md. Regression checks cover the numeric limits,
+case-insensitivity, EOF boundaries and rejection of the removed syntax.
+
+## XIOS: WMENU compact-keyboard shortcut
+
+Ctrl+Alt+Esc emits the existing window-manager wake event (7Dh), the same
+as Ctrl+keypad-Plus. The original binding remains available. No manager is
+loaded automatically; WMENU must already be installed. Console shortcuts
+Ctrl+Alt+1..4 and Ctrl+Alt+Tab retain their existing behavior.
+
+WMENU's status-line call now passes its offset in CX and segment in DX,
+matching XIOS. This corrects the blank menu exposed by the live wake test.
