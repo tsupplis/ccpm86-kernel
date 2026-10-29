@@ -19,7 +19,7 @@ submit.cmd: submit.h86 Makefile
 	$(ASM86) $<
 
 clean:
-	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img
+	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn
 	rm -f *.loc *.mp? *.lnk
 
 # Structural validation; byte comparisons or runtime checks are separate where available.

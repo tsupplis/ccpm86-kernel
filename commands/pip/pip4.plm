@@ -101,7 +101,7 @@ DECLARE COPYRIGHT(*) BYTE DATA (
 $if cpm3
         ' (12/28/84) CP/M 3 PIP VERS 3.3 ');
 $else
-        ' (04/25/85) CCP/M-86 PIP VERS 3.1N ');
+        ' (04/25/85) CCP/M-86 PIP VERS 4.1N ');
 $endif
 
 

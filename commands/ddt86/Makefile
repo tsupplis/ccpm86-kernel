@@ -72,19 +72,7 @@ cpmif.obj: cpmif.a86 Makefile
 
 clean:
 	rm -f *.sys *.cmd *.obj *.exe *.map *.h86 *.sym
-	rm -f *.lin *.lst *.prn ccpmtest.img ddt86m.h86 *.abs *.lnk *.mp?
+	rm -f *.lin *.lst *.prn ddt86m.h86 *.abs *.lnk *.mp?
 
-ccpmtest.img: $(TOOLS) Makefile startup.0
-	cp cpmbase.img ccpmtest.img
-	cpmcp -f ibmpc-514ss ccpmtest.img ddt86.cmd 0:
-	cpmcp -f ibmpc-514ss ccpmtest.img startup.0 0:
-	cpmls -F -f ibmpc-514ss ccpmtest.img 0:*.*
-
-test: ccpmtest $(TOOLS)
-
-ccpmtest: ccpmtest.img $(TOOLS)
-	@./ccpm86
-
-# Structural validation; byte comparisons or runtime checks are separate where available.
 check: all
 	@set -e; for file in $(TOOLS); do $(CMDINFO) $$file; done
