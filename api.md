@@ -99,11 +99,47 @@
 | 54 | Get verify flag | Missing | — |
 | 56 / 57 | Rename pathname / file date and time | Missing | NEW |
 
+## Graphics modes and entry points
+
+Mode selection and drawing support are separate contracts. “BIOS mode” below
+identifies the display format; native callers select it through XIOS or the
+console escape stream, without executing a DOS program.
+
+| BIOS mode (hex) | Display | Adapter | Native XIOS mode byte | Native `ESC a` parameter | DOS INT 10h/AH=00h |
+| --- | --- | --- | --- | --- | --- |
+| 04 | 320×200, 4 colours | CGA, or detected colour EGA/VGA | 20h | 04h | Implemented |
+| 05 | 320×200, 4 pixel values, CGA monochrome/burst-disabled variant | CGA, or detected colour EGA/VGA | 30h | 05h | Implemented |
+| 06 | 640×200, 2 colours | CGA, or detected colour EGA/VGA | 40h | 06h | Implemented |
+| 10 | 640×350, 16 colours | Colour EGA with at least 128 KB, or VGA passing the capability probe | 50h | 10h | Not mapped by the DOS adapter; use the native extension |
+| Other graphics modes | EGA/VGA modes 0Dh/0Eh/0Fh/11h/12h/13h and beyond | — | Not assigned | Not supported | No compatibility claim |
+
+Text modes use the existing native console/window implementation. DOS mode
+selectors 00h–03h and 07h have text mappings; these are not a promise of
+arbitrary BIOS pages, fonts or EGA/VGA text geometries. `ESC a` does not use
+the same mapping for every text selector as INT 10h.
+
+| Native interface | Contract |
+| --- | --- |
+| `ESC a` | Emit bytes 1Bh, 61h, then the binary mode parameter above (not ASCII digits) |
+| XIOS function 30 decimal | CH=0 sets the mode byte in CL for console DL; CH=1 queries. This is an XIOS entry, **not** BDOS function 30 or a permitted direct-BIOS packet selector |
+| CGA palette extension | XIOS function 30, CH=2, CL=CGA colour-select value (bits 0–5); graphics owner only |
+| EGA palette extension | XIOS function 30, CH=3, CL=palette entry 0–15, DH=6-bit EGA colour, DL=console; requires native mode 50h and graphics ownership |
+| Capability probe | INT E6h, AL=1Eh (30 decimal), input BX=0: AX=4745h (`EG`), BX bit 0 enables native mode 10h; probe before requesting it |
+| Console switching | BIOS-backed graphics keeps the foreground console until the owner restores text mode; there is no per-console saved EGA/VGA graphics framebuffer |
+
+DOS drawing support is the bounded CGA subset: INT 10h/AH=0Bh palette,
+0Ch/0Dh pixels in modes 04h/05h/06h, page zero and foreground ownership.
+Text operations use the native console. Selecting native EGA mode 10h does
+not enable DOS EGA planar drawing, AH=10h palette services or later BIOS calls.
+
+Sources: [xconout.lib](kernel/con/xconout.lib), [xpcmode.lib](kernel/con/xpcmode.lib),
+[xbegin.lib](kernel/con/xbegin.lib), [xinit.lib](kernel/con/xinit.lib).
+
 ## DOS and BIOS interrupts
 
 | INT | Selector | Service | Status / limit | Implementation | Extension |
 | --- | --- | --- | --- | --- | --- |
-| 10 | AH=00 | Set video mode | Native mode bridge; text and CGA support; no blanket EGA/VGA DOS claim | PCTMP + XIOS | — |
+| 10 | AH=00 | Set video mode | Text/CGA mode bridge; native EGA mode 10h is separate (see graphics table) | PCTMP + XIOS | — |
 | 10 | AH=01 | Set cursor shape | Implemented | PCTMP + XIOS | — |
 | 10 | AH=02 | Set cursor position | Implemented; bounded to console | PCTMP + XIOS | — |
 | 10 | AH=03 | Get cursor position/shape | Partial: position returned, CX=0 (shape missing) | PCTMP + XIOS | NEW |
