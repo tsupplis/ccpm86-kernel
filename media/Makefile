@@ -9,13 +9,13 @@ IMAGES = ccpm86.img ccpmtools.img ccpmext.img ccpmdev.img ccpmmaint.img ccpmnati
 all: $(IMAGES)
 
 SYSTEM_COMMANDS = ../commands/chset/chset.cmd ../commands/date/date.cmd \
-    ../commands/era/era.cmd ../commands/era/eraq.cmd \
+    ../commands/era/era.cmd \
     ../commands/help/help.cmd ../commands/help/help.hlp \
     ../commands/ed/ed.cmd ../commands/ren/ren.cmd \
     ../commands/sdir/sdir.cmd ../commands/set/set.cmd ../commands/show/show.cmd \
     ../commands/submit/submit.cmd \
-    ../commands/tod/tod.cmd ../commands/type/type.cmd \
-    ../commands/vcmode/vcmode.cmd ../commands/sysdisk/sysdisk.cmd \
+    ../commands/type/type.cmd \
+    ../commands/sysdisk/sysdisk.cmd \
     ../commands/setdef/setdef.cmd ../commands/batch/batch.cmd
 
 # Remaining original system utilities are selected explicitly.
@@ -27,8 +27,8 @@ WINDOW_SAMPLES = ../base/carddeck.sub ../base/clear.sub \
 
 TOOLS_COMMANDS = ../commands/asm86/asm86.cmd ../commands/ddt86/ddt86.cmd \
     ../commands/gencmd/gencmd.cmd ../commands/genccpm/genccpm.cmd \
-    ../commands/print/print.cmd \
-    ../commands/tod/tod.cmd \
+    ../commands/print/print.cmd ../commands/vcmode/vcmode.cmd \
+    ../commands/tod/tod.cmd ../commands/era/eraq.cmd \
     $(WINDOW_COMMANDS) $(WINDOW_SAMPLES)
 
 # Extension disk: console redirection and DREDIX.
