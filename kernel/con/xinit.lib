@@ -897,8 +897,8 @@ init_video_mode	rb	1	; which crt to default
 		db	0	; pad
 
 banner	db '---------------------------------------------------',cr,lf
-	db 'Concurrent CP/M for the IBM PC and PC XT   01/01/84',cr,lf
-	db 'Serial No. XXXX-0000-654321     All Rights Reserved',cr,lf
+	db 'Concurrent CP/M for the IBM PC and PC XT    10/2026',cr,lf
+	db 'Serial No. 0000-0000-000000     All Rights Reserved',cr,lf
 	db 'Copyright (C) 1982,83,84      Digital Research Inc.',cr,lf
 	db '---------------------------------------------------',cr,lf,lf
 	db 'Hardware Supported :',cr,lf,0
@@ -989,4 +989,4 @@ int_tbl	dw	divide_interrupt*4,	i_divide
 	dw	xios_interrupt*4,	xios_v1_entry
 
 int_tbl_len	equ	(offset $ - offset int_tbl) / 4
-
+
