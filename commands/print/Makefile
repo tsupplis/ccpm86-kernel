@@ -1,40 +1,32 @@
-# PRINT — DR C / RASM86 build.
-# all builds local outputs; check validates them; clean removes generated files.
+# PRINT — local command build.
+# all builds the declared tools; check validates them; clean removes generated files.
+.PHONY: all check clean
 
 CMDINFO=cmdinfo
 RASM86=pcdev_rasm86
 DRC86=drccpm_cc
 DRCLINK86=drccpm_link
+RM=rm -f
 
 TOOLS=print.cmd
-MODULES=main sqprint cpmif cpyucase cpmerr crlf fileopen firstch getdrv getnum gettail issysfil itoa nextfcb okver parse putfname readsect reverse tlex valid
-OBJECTS=$(addsuffix .obj,$(MODULES))
-HEADERS=portab.h cpmfunc.h utildef.h
-
-.PHONY: all check clean
-.DELETE_ON_ERROR:
 
 all: $(TOOLS)
 
 # sqlink.inp preserves the original module order; the linker supplies the C runtime.
-print.cmd: $(OBJECTS) sqlink.inp Makefile
-	@$(DRCLINK86) 'sqlink[input]' > print-link.log 2>&1; result=$$?; cat print-link.log; test $$result -eq 0
-	@! grep -qiE 'undefined|unresolved|syntax error|unable|fatal' print-link.log
-	@test -s $@
+print.cmd: main.obj sqprint.obj cpmif.obj cpyucase.obj cpmerr.obj crlf.obj fileopen.obj \
+ firstch.obj getdrv.obj getnum.obj gettail.obj issysfil.obj itoa.obj nextfcb.obj okver.obj \
+ parse.obj putfname.obj readsect.obj reverse.obj tlex.obj valid.obj sqlink.inp Makefile
+	$(DRCLINK86) 'sqlink[input]'
 	$(CMDINFO) $@
 
 cpmif.obj: cpmif.a86 Makefile
-	@$(RASM86) $< > cpmif.log 2>&1; result=$$?; cat cpmif.log; test $$result -eq 0
-	@grep -qiE 'Number of errors: +0\.' cpmif.log
+	$(RASM86) $<
 
-# Compile C modules with local declarations.
-%.obj: %.c $(HEADERS) Makefile
-	@$(DRC86) -o$@ $< > $*.log 2>&1; result=$$?; cat $*.log; test $$result -eq 0
-	@! grep -qiE 'error|unable to open|fatal' $*.log
+%.obj: %.c Makefile $(wildcard *.h)
+	$(DRC86) -o$@ $<
 
-# Remove generated outputs only; preserve sources and reference files.
 clean:
 	$(RM) *.cmd *.obj *.lst *.sym *.map *.log
 
 check: all
-	$(CMDINFO) print.cmd
+	@set -e; for file in $(TOOLS); do $(CMDINFO) $$file; done

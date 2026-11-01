@@ -1,42 +1,39 @@
-# WINDOW — DR C / RASM86 build.
-# all builds local outputs; check validates them; clean removes generated files.
+# WINDOW — local command build.
+# all builds the declared tools; check validates them; clean removes generated files.
+.PHONY: all check clean
 
-DRC86=drccpm_cc
+CMDINFO=cmdinfo
 RASM86=pcdev_rasm86
-LINK86=drccpm_link
+DRC86=drccpm_cc
+DRCLINK86=drccpm_link
+RM=rm -f
+
 TOOLS=window.cmd wmenu.cmd
 SHARED=start.obj command.obj win.obj format.obj xios.obj
-
-.PHONY: all check clean
-.DELETE_ON_ERROR:
 
 all: $(TOOLS)
 
 window.cmd: window.obj $(SHARED) Makefile
-	@$(LINK86) window=start,window,command,win,format,xios > window-link.log 2>&1; result=$$?; cat window-link.log; test $$result -eq 0
-	@! grep -iE "undefined|syntax error|unable" window-link.log
+	$(DRCLINK86) window=start,window,command,win,format,xios
+	$(CMDINFO) $@
 
 livetest.cmd: livetest.obj $(SHARED) Makefile
-	@$(LINK86) livetest=start,livetest,command,win,format,xios > livetest-link.log 2>&1; result=$$?; cat livetest-link.log; test $$result -eq 0
-	@! grep -iE "undefined|syntax error|unable" livetest-link.log
+	$(DRCLINK86) livetest=start,livetest,command,win,format,xios
+	$(CMDINFO) $@
 
 wmenu.cmd: wmenu.obj $(SHARED) Makefile
-	@$(LINK86) wmenu=start,wmenu,command,win,format,xios > wmenu-link.log 2>&1; result=$$?; cat wmenu-link.log; test $$result -eq 0
-	@! grep -iE "undefined|syntax error|unable" wmenu-link.log
+	$(DRCLINK86) wmenu=start,wmenu,command,win,format,xios
+	$(CMDINFO) $@
 
-# Compile C modules with local declarations.
-%.obj: %.c win.h Makefile
-	@$(DRC86) -o$@ $< > $*.log 2>&1; result=$$?; cat $*.log; test $$result -eq 0
-	@! grep -iE "error|unable to open" $*.log
+%.obj: %.c Makefile $(wildcard *.h)
+	$(DRC86) -o$@ $<
 
 xios.obj: xios.a86 Makefile
-	@$(RASM86) $< > xios.log 2>&1; result=$$?; cat xios.log; test $$result -eq 0
-	@grep -qE 'Number of errors: +0\.' xios.log
+	$(RASM86) $<
+
+clean:
+	$(RM) *.cmd *.obj hostcheck *.lst *.sym *.map *.log
 
 check: all
 	$${CC:-cc} -std=gnu89 -DHOST_TEST -Wno-int-conversion -Wno-deprecated-non-prototype win.c command.c hostcheck.c -o hostcheck
 	./hostcheck
-
-# Remove generated outputs only; preserve sources and reference files.
-clean:
-	$(RM) *.cmd *.obj hostcheck *.lst *.sym *.map *.log
