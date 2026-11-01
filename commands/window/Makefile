@@ -9,31 +9,34 @@ DRCLINK86=drccpm_link
 RM=rm -f
 
 TOOLS=window.cmd wmenu.cmd
-SHARED=start.obj command.obj win.obj format.obj xios.obj
 
 all: $(TOOLS)
 
-window.cmd: window.obj $(SHARED) Makefile
+window.cmd: window.obj start.obj command.obj win.obj format.obj xios.obj Makefile
 	$(DRCLINK86) window=start,window,command,win,format,xios
 	$(CMDINFO) $@
 
-livetest.cmd: livetest.obj $(SHARED) Makefile
+livetest.cmd: livetest.obj start.obj command.obj win.obj format.obj xios.obj Makefile
 	$(DRCLINK86) livetest=start,livetest,command,win,format,xios
 	$(CMDINFO) $@
 
-wmenu.cmd: wmenu.obj $(SHARED) Makefile
+wmenu.cmd: wmenu.obj start.obj command.obj win.obj format.obj xios.obj Makefile
 	$(DRCLINK86) wmenu=start,wmenu,command,win,format,xios
 	$(CMDINFO) $@
-
-%.obj: %.c Makefile $(wildcard *.h)
-	$(DRC86) -o$@ $<
 
 xios.obj: xios.a86 Makefile
 	$(RASM86) $<
 
-clean:
-	$(RM) *.cmd *.obj hostcheck *.lst *.sym *.map *.log
+%.obj: %.c Makefile $(wildcard *.h)
+	$(DRC86) -o$@ $<
 
+clean:
+	$(RM) *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img *.log
+	$(RM) *.loc *.mp? *.lnk *.map
+	$(RM) hostcheck
+
+# Structural validation; byte comparisons or runtime checks are separate where available.
 check: all
+	@set -e; for file in $(TOOLS); do $(CMDINFO) $$file; done
 	$${CC:-cc} -std=gnu89 -DHOST_TEST -Wno-int-conversion -Wno-deprecated-non-prototype win.c command.c hostcheck.c -o hostcheck
 	./hostcheck

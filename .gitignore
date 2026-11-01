@@ -44,7 +44,7 @@ local/**
 
 # Recovered, immutable PC-MODE inputs (hashes/provenance live beside them).
 !/kernel/rsp3/inputs/pctmp.rsp
-
+!/commands/print/sqlink.inp
 # Opt-in personality output, independent of production media.
 /build/pcmode*/
 **/__pycache__/

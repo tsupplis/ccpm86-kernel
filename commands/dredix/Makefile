@@ -14,7 +14,7 @@ all: $(TOOLS)
 dredix.cmd: ed.obj common.obj ekey.obj ebuf.obj ecmdglb.obj ecmdio.obj epat.obj \
  emem.obj ecmdblk.obj ewv.obj ehelp.obj elesson.obj ewdv.obj ecmdsta.obj \
  vd.obj vk.obj dredix.inp Makefile
-	$(DRCLINK86) '$(basename $@)[input]'
+	$(DRCLINK86) 'dredix[input]'
 	$(CMDINFO) $@
 
 dredix.inp: Makefile
@@ -26,7 +26,9 @@ dredix.inp: Makefile
 	$(DRC86) -o$@ $<
 
 clean:
-	$(RM) *.obj *.lst *.sym *.cmd dredix.inp
+	$(RM) *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img *.log
+	$(RM) *.loc *.mp? *.lnk *.map
+	$(RM) dredix.inp
 
 # Structural validation; byte comparisons or runtime checks are separate where available.
 check: all

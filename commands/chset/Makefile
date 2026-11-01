@@ -23,7 +23,7 @@ cpmif.obj: cpmif.a86 Makefile
 	$(DRC86) -o$@ $<
 
 clean:
-	$(RM) *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img
+	$(RM) *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img *.log
 	$(RM) *.loc *.mp? *.lnk *.map
 
 # Structural validation; byte comparisons or runtime checks are separate where available.
