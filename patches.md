@@ -386,3 +386,43 @@ CDOS independently. Packaged disk payloads, boot tracks and sizes verify.
 CDOS additionally passes the 32-byte-header EXE test on FAT with output
 redirection, append/echo and stderr isolation, plus the existing assembled
 DOS/EXEC/critical-error regressions.
+
+## Extended EGA/VGA modes and drawing (issue #22)
+
+The local XIOS `egvideo.lib` adds native 60h/70h/80h/90h/A0h for BIOS
+0Dh/0Eh/11h/12h/13h; existing 50h remains BIOS 10h. Native function 30,
+`ESC a`, DOS mode setting and DOS mode query use the same mapping. EGA
+0Dh/0Eh work with 64 KB; mode 10h retains the >=128 KB check. A separate
+INT 10h/1A00h VGA display-combination probe gates 11h/12h/13h, so an EGA
+with 256 KB is not mistaken for VGA. Capability selector 30 returns bit 0
+for mode 10h, bit 1 for 0Dh/0Eh and bit 2 for the VGA modes and DAC.
+
+Graphics drawing uses captured video firmware through the existing XIOS
+private stack and PIC guard. Planar drawing calls the captured ROM vector,
+never the DOS-intercepted INT 10h. Its register results are captured before
+restoring XIOS registers. There is no new component dependency or call back
+from XIOS into PCTMP; each project contains its own helper and build inputs.
+
+The graphics owner can use cursor, character read/write, TTY, scroll,
+pixel read/write, EGA palette entry and VGA DAC entry services. Pixel
+coordinates, page zero, scroll rectangle order/bounds and palette fields
+are checked before firmware entry. Mode 13h is the firmware-configured
+chain-4 byte-per-pixel mode, with a separate A000h byte backend. It restores
+sequencer map masks, graphics-controller state and their index selectors
+after each access. Its full 8-bit colour is retained, unlike the
+planar bit-7 XOR convention. VGA DAC entries 0–255 use 6-bit RGB components.
+The extended packet ABI is documented in `api.md`; legacy native simple
+selectors and text/CGA paths remain separate. Text restoration reloads the
+ROM text mode/font before redrawing the console. No saved graphics contexts,
+EGA monochrome 0Fh, VESA, arbitrary pages or font-loading API is introduced.
+
+`make check-graphics` runs assembled-XIOS validation with synthetic ROM
+results, then a disposable PCE graphics program. NASM builds only these
+host-side test fixtures; production assembly still uses ASM86.
+
+The CGA regression also exposed stale BIOS mode metadata when the native
+XIOS programs a physical CGA directly. The ROM pixel writer then treats
+640x200 mode 6 as the wrong pixel packing. Legacy text/graphics mode changes
+now synchronize BDA mode, column count, page size and page-zero offset;
+text restoration updates the same fields. CGA drawing stays on its existing
+backend; this does not route CGA through the enhanced planar driver.

@@ -290,6 +290,20 @@ detect_cursor_height:
  ja detect_ega_done
  mov enhanced_ega,1
 detect_ega_done:
+ push bx
+ mov ax,1A00h                   ; VGA display combination, not EGA memory size
+ xor bx,bx
+ int 10h
+ cmp al,1Ah
+ jne detect_vga_done
+ cmp bl,7                       ; VGA analogue mono or colour, not MCGA
+ je detect_vga_found
+ cmp bl,8
+ jne detect_vga_done
+detect_vga_found:
+ mov enhanced_vga,1
+detect_vga_done:
+ pop bx
  mov ah,0Fh
  int 10h
  and al,7Fh

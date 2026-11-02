@@ -19,6 +19,8 @@ if PCMODE_XIOS
 include		xpcmode.lib	; PC-MODE hardware services, still one XIOS
 endif
 
+include		egvideo.lib	; enhanced graphics, local protected ROM bridge
+
 include		xinit.lib	; startup, hardware init, int vectors
 
 	end

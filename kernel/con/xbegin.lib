@@ -488,6 +488,9 @@ function_table:
 	dw	io_ret			;28 dummy
 	dw	io_ret			;29 dummy
 	dw	get_set_screen		;30 alpha/graphics screens
+if not PCMODE_XIOS
+	dw	eg_native_video		;31 enhanced graphics packets, native-only build
+endif
 if PCMODE_XIOS
 ; PCTMP hardware services retain native 24-row console ownership.
 	dw	pc_video		;31 BIOS video subset
@@ -584,6 +587,14 @@ xios_v1_graph_caps:
 	mov	ax,4745h
 	sub	bx,bx
 	mov	bl,enhanced_ega
+	cmp	enhanced_video,0
+	je	egcaps_no_ega
+	or	bl,2			; modes 0D/0E, including 64 KB EGA
+egcaps_no_ega:
+	cmp	enhanced_vga,0
+	je	egcaps_done
+	or	bl,4			; VGA 11/12/13 and 256-entry DAC
+egcaps_done:
 	ret
 
 ;	restore normal status line operation

@@ -424,7 +424,7 @@ screen_not_sup:
 ; Older kernels reject function 30 through that back door without output.
 screen_palette:
 	cmp	vs_screen_mode,50h
-	jnz	screen_cga_palette
+	jb	screen_cga_palette
 	jmp	screen_not_sup		; use CH=3 for native EGA colors
 screen_cga_palette:
 	mov	al,vs_bit
@@ -486,7 +486,9 @@ screen_ega_palette:
 	cmp	dh,40h
 	jae	screen_ega_bad
 	cmp	vs_screen_mode,50h
-	jnz	screen_ega_unsupported
+	jb	screen_ega_unsupported
+	cmp	vs_screen_mode,0A0h
+	jae	screen_ega_unsupported
 	mov	al,vs_bit
 	test	graphic_bits,al
 	jz	screen_ega_unsupported
@@ -515,9 +517,9 @@ alpha_vector	dw	screen_bad_param, general_alpha
 graph_vector	dw	screen_bad_param, general_graph
 		dw	color_320, black_white_320
 		dw	black_white_640, ega_640_350
-		dw	screen_not_sup, screen_not_sup
-		dw	screen_not_sup, screen_not_sup
-		dw	screen_not_sup, screen_not_sup
+		dw	eg_320_200, eg_640_200
+		dw	eg_vga_mono, eg_vga_color
+		dw	eg_vga_256, screen_not_sup
 		dw	screen_not_sup, screen_not_sup
 		dw	screen_not_sup, screen_not_sup
 
@@ -562,6 +564,20 @@ enhanced_alpha_init:
 	call	enhanced_alpha
 	jmp	general_alpha		; redraw after hardware/font restoration
 legacy_alpha_init:
+	push	ax
+	mov	al,ch
+	sub	al,2
+	cmp	ch,9
+	jne	eg_bda_alpha_mode
+	mov	al,2
+eg_bda_alpha_mode:
+	mov	ah,40
+	cmp	al,2
+	jb	eg_bda_alpha_ready
+	mov	ah,80
+eg_bda_alpha_ready:
+	call	eg_legacy_bda
+	pop	ax
 	push	ax			; save video mode
 	call	general_alpha		; take care of variables
 	pop	ax			; restore video mode
@@ -638,6 +654,19 @@ enhanced_graph_init:
 	sub	ax,ax
 	ret
 legacy_graph_init:
+	push	ax
+	mov	al,4
+	mov	ah,40
+	cmp	ch,20h
+	je	eg_bda_graph_ready
+	inc	al
+	cmp	ch,30h
+	je	eg_bda_graph_ready
+	inc	al
+	mov	ah,80
+eg_bda_graph_ready:
+	call	eg_legacy_bda
+	pop	ax
 	push	ax			; save video mode
 	call	general_graph		; take care of variables
 	pop	ax			; restore video mode
@@ -689,6 +718,11 @@ endif
 if not PCMODE_XIOS
 	int	10h
 endif
+	; Capture ROM results while interrupts remain masked by the PIC.
+	mov	cs:video_result_ax,ax
+	mov	cs:video_result_bx,bx
+	mov	cs:video_result_cx,cx
+	mov	cs:video_result_dx,dx
 	cli
 	push	cs ! pop ds
 	mov	ax,video_bios_ss
@@ -1319,10 +1353,18 @@ z_video_mode:
 
 z_video_param:
 	call	restore_state	; back to con_normal
-	cmp	al,10h			; native 640x350x16 extension
-	jnz	z_video_legacy
-	mov	cl,50h			; new XIOS graphics mode nibble
-	jmp	z_video_set
+	cmp	al,0Dh
+	jb	z_video_legacy
+	mov	si,offset eg_bios_modes
+	mov	cl,50h
+z_video_enhanced_scan:
+	cmp	al,cs:byte ptr [si]
+	je	z_video_set
+	inc	si
+	add	cl,10h
+	cmp	cl,0B0h
+	jb	z_video_enhanced_scan
+	ret				; unsupported enhanced mode, no alias
 z_video_legacy:
 	and	al,07h		; allow only mode 0-7
 	cbw

@@ -72,6 +72,19 @@ pc_equipment_done:
 ; Never call INT 10h here: PCTMP has hooked it and that would recurse.
 ; ---------------------------------------------------------------------------
 pc_video:
+	test	al,80h
+	jnz	eg_video_entry
+	cmp	al,16
+	je	eg_video_entry
+	cmp	al,12
+	je	eg_video_entry
+	cmp	al,13
+	jne	eg_video_legacy
+eg_video_entry:
+	call	eg_try_video
+	jc	eg_video_legacy
+	ret
+eg_video_legacy:
         cmp al,13
         je pc_video_graphics
         cmp al,11

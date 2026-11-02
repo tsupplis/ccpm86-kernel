@@ -110,8 +110,13 @@ console escape stream, without executing a DOS program.
 | 04 | 320×200, 4 colours | CGA, or detected colour EGA/VGA | 20h | 04h | Implemented |
 | 05 | 320×200, 4 pixel values, CGA monochrome/burst-disabled variant | CGA, or detected colour EGA/VGA | 30h | 05h | Implemented |
 | 06 | 640×200, 2 colours | CGA, or detected colour EGA/VGA | 40h | 06h | Implemented |
-| 10 | 640×350, 16 colours | Colour EGA with at least 128 KB, or VGA passing the capability probe | 50h | 10h | Not mapped by the DOS adapter; use the native extension |
-| Other graphics modes | EGA/VGA modes 0Dh/0Eh/0Fh/11h/12h/13h and beyond | — | Not assigned | Not supported | No compatibility claim |
+| 0D | 320×200, 16 colours | Colour EGA or VGA | 60h | 0Dh | Implemented |
+| 0E | 640×200, 16 colours | Colour EGA or VGA | 70h | 0Eh | Implemented |
+| 10 | 640×350, 16 colours | Colour EGA with at least 128 KB, or VGA passing the capability probe | 50h | 10h | Implemented |
+| 11 | 640×480, 2 colours | VGA | 80h | 11h | Implemented |
+| 12 | 640×480, 16 colours | VGA | 90h | 12h | Implemented |
+| 13 | 320×200, 256 colours | VGA | A0h | 13h | Implemented |
+| Other graphics modes | 0Fh (EGA monochrome), VESA and nonstandard modes | — | Not assigned | Not supported | No compatibility claim |
 
 Text modes use the existing native console/window implementation. DOS mode
 selectors 00h–03h and 07h have text mappings; these are not a promise of
@@ -123,14 +128,28 @@ the same mapping for every text selector as INT 10h.
 | `ESC a` | Emit bytes 1Bh, 61h, then the binary mode parameter above (not ASCII digits) |
 | XIOS function 30 decimal | CH=0 sets the mode byte in CL for console DL; CH=1 queries. This is an XIOS entry, **not** BDOS function 30 or a permitted direct-BIOS packet selector |
 | CGA palette extension | XIOS function 30, CH=2, CL=CGA colour-select value (bits 0–5); graphics owner only |
-| EGA palette extension | XIOS function 30, CH=3, CL=palette entry 0–15, DH=6-bit EGA colour, DL=console; requires native mode 50h and graphics ownership |
-| Capability probe | INT E6h, AL=1Eh (30 decimal), input BX=0: AX=4745h (`EG`), BX bit 0 enables native mode 10h; probe before requesting it |
+| EGA palette extension | XIOS function 30, CH=3, CL=palette entry 0–15, DH=6-bit EGA colour, DL=console; requires native planar mode 50h–90h and graphics ownership |
+| Capability probe | INT E6h, AL=1Eh (30 decimal), input BX=0: AX=4745h (`EG`), BX bit 0 enables BIOS 10h (native 50h), bit 1 enables 0Dh/0Eh, bit 2 enables VGA 11h/12h/13h and DAC; probe before selecting |
 | Console switching | BIOS-backed graphics keeps the foreground console until the owner restores text mode; there is no per-console saved EGA/VGA graphics framebuffer |
 
-DOS drawing support is the bounded CGA subset: INT 10h/AH=0Bh palette,
-0Ch/0Dh pixels in modes 04h/05h/06h, page zero and foreground ownership.
-Text operations use the native console. Selecting native EGA mode 10h does
-not enable DOS EGA planar drawing, AH=10h palette services or later BIOS calls.
+Planar graphics uses the captured adapter ROM through the XIOS IRQ/PIC
+and private-stack guard, without calling the intercepted INT 10h. Page zero
+and foreground graphics ownership are required. Pixel operations validate
+coordinates; planar modes retain the BIOS bit-7 XOR convention, while mode
+13h accepts the entire colour byte through a dedicated chain-4 memory backend
+that saves/restores graphics-controller registers, sequencer masks and index selectors. Cursor, character, TTY and rectangular
+scroll services use the adapter's graphics font and layout. Text restoration
+reloads the firmware text mode/font and redraws the native console.
+
+INT 10h/AH=10h implements AL=00h (single EGA palette write), 07h (VGA palette read) and
+10h/15h (single VGA DAC RGB write/read, entries 0–255, components 0–63).
+EGA palette entry services apply to the planar modes; mode 13h uses DAC entries.
+Block palettes, arbitrary pages, font loading and VESA services are not added.
+Native XIOS function 31 uses the nine-byte AX,BX,CX,DX,console packet; setting
+bit 7 of its BIOS selector requests that packet ABI for cursor/cell/TTY too.
+Palette selector 90h uses AX's low byte as its AH=10h subfunction. Results
+are returned in AX for pixel/character reads, and in the packet's BX/CX/DX
+for cursor and palette reads. Legacy native simple selectors retain their ABI.
 
 Sources: [xconout.lib](kernel/con/xconout.lib), [xpcmode.lib](kernel/con/xpcmode.lib),
 [xbegin.lib](kernel/con/xbegin.lib), [xinit.lib](kernel/con/xinit.lib).
@@ -139,10 +158,10 @@ Sources: [xconout.lib](kernel/con/xconout.lib), [xpcmode.lib](kernel/con/xpcmode
 
 | INT | Selector | Service | Status / limit | Implementation | Extension |
 | --- | --- | --- | --- | --- | --- |
-| 10 | AH=00 | Set video mode | Text/CGA mode bridge; native EGA mode 10h is separate (see graphics table) | PCTMP + XIOS | — |
+| 10 | AH=00 | Set video mode | Implemented: text/CGA and EGA/VGA modes in the graphics table | PCTMP + XIOS | — |
 | 10 | AH=01 | Set cursor shape | Implemented | PCTMP + XIOS | — |
 | 10 | AH=02 | Set cursor position | Implemented; bounded to console | PCTMP + XIOS | — |
-| 10 | AH=03 | Get cursor position/shape | Partial: position returned, CX=0 (shape missing) | PCTMP + XIOS | NEW |
+| 10 | AH=03 | Get cursor position/shape | Partial in text/CGA: position returned, CX=0; enhanced graphics returns ROM position/shape | PCTMP + XIOS | NEW |
 | 10 | AH=04 | Light pen | No operation | PCTMP | — |
 | 10 | AH=05 | Select display page | No operation; one page exposed | PCTMP | NEW |
 | 10 | AH=06 / 07 | Scroll up / down | Implemented; bounded rectangle | PCTMP + XIOS | — |
@@ -150,9 +169,10 @@ Sources: [xconout.lib](kernel/con/xconout.lib), [xpcmode.lib](kernel/con/xpcmode
 | 10 | AH=09 | Write character/attribute | Implemented; cursor unchanged, page forced to zero | PCTMP + XIOS | — |
 | 10 | AH=0A | Write character | Implemented; console default attribute, page forced to zero | PCTMP + XIOS | — |
 | 10 | AH=0B | CGA palette | Implemented; foreground graphics console | PCTMP + XIOS | — |
-| 10 | AH=0C / 0D | Write / read pixel | CGA modes 4/5/6, page 0, bounded coordinates, foreground only | PCTMP + XIOS | — |
+| 10 | AH=0C / 0D | Write / read pixel | Implemented: CGA and listed EGA/VGA modes, page 0, bounded coordinates, foreground only | PCTMP + XIOS | — |
 | 10 | AH=0E | Teletype | Native console output path | PCTMP + XIOS | — |
 | 10 | AH=0F | Get video mode | Implemented; BH=0 | PCTMP + XIOS | — |
+| 10 | AH=10 | Palette / DAC | Partial: AL=00 EGA entry writes; AL=07 VGA entry reads; AL=10/15 VGA DAC entries; enhanced graphics owner only | PCTMP + XIOS | NEW |
 | 10 | AH=10–FF | Later video functions | No operation | PCTMP | — |
 | 11 | — | Equipment word | Cached equipment; display bits from console DOS-entry mode | PCTMP + XIOS | — |
 | 12 | — | Memory size | Allocation end in KiB; not a general physical-memory entitlement | PCTMP | — |

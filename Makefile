@@ -24,6 +24,7 @@ chkcpmfs-live-images: kernel boot
 	$(MAKE) -C media ccpm86.img ccpmtools.img
 
 check: all
+	python3 tools/graphics_unit_check.py
 	$(MAKE) -C boot check
 	$(MAKE) -C commands/sysdisk check
 	$(MAKE) -C commands/batch check
@@ -92,3 +93,11 @@ check-batch-live: all
 .PHONY: check-exe
 check-exe: all
 	python3 tools/exe_header_check.py
+
+# Enhanced EGA/VGA drawing; NASM fixtures and disposable PCE disks only.
+.PHONY: check-graphics
+check-graphics: all
+	python3 tools/graphics_unit_check.py
+	python3 tools/graphics_check.py
+	python3 tools/graphics_check.py ega
+	python3 tools/graphics_check.py cga
