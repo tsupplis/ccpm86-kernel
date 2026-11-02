@@ -712,6 +712,20 @@ video_bios:
 	mov	ax,video_bios_ax
 if PCMODE_XIOS
 ; Reach captured firmware through the existing native PIC/stack guard.
+	; EGA ROM TTY/scroll helpers can issue INT 10h themselves. While
+	; the PIC is masked, route those synchronous calls to firmware too.
+	push	es ! push ax
+	xor	ax,ax
+	mov	es,ax
+	pop	ax
+	push	es:word ptr .40h
+	push	es:word ptr .42h
+	push	ax
+	mov	ax,cs:word ptr pc_video_rom
+	mov	es:word ptr .40h,ax
+	mov	ax,cs:word ptr pc_video_rom+2
+	mov	es:word ptr .42h,ax
+	pop	ax
 	pushf
 	callf	cs:dword ptr pc_video_rom
 endif
@@ -724,6 +738,13 @@ endif
 	mov	cs:video_result_cx,cx
 	mov	cs:video_result_dx,dx
 	cli
+if PCMODE_XIOS
+	xor	ax,ax
+	mov	es,ax
+	pop	es:word ptr .42h
+	pop	es:word ptr .40h
+	pop	es
+endif
 	push	cs ! pop ds
 	mov	ax,video_bios_ss
 	mov	ss,ax

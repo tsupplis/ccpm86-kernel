@@ -426,3 +426,11 @@ XIOS programs a physical CGA directly. The ROM pixel writer then treats
 now synchronize BDA mode, column count, page size and page-zero offset;
 text restoration updates the same fields. CGA drawing stays on its existing
 backend; this does not route CGA through the enhanced planar driver.
+
+Original EGA ROM graphics teletype can issue nested INT 10h calls. The
+existing masked firmware guard now saves the live INT 10h vector on its
+private stack, temporarily points it at captured firmware, and restores
+the intercepted vector before restoring the PIC mask. Nested ROM services
+therefore stay in the ROM instead of reentering PCTMP and overwriting its
+per-console interrupt frame. The native-only build has no PCTMP vector to
+replace. The graphics live fixture checks teletype drawing and cursor advance.
