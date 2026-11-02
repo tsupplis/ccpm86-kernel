@@ -1,4 +1,5 @@
 #include "win.h"
+extern int w_command();
 main()
 {
     char tail[129]; int i,n;

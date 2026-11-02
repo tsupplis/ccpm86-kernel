@@ -1852,7 +1852,7 @@ $endif
 $if cpm3
             call printx(.('CP/M 3 PIP VER 3.3$'));
 $else
-            call printx(.('CONCURRENT CP/M-86 PIP VER 3.1N$'));
+            call printx(.('CONCURRENT PIP VERSION 4.1N$'));
 $endif
             call crlf;
             end;
@@ -1995,4 +1995,3 @@ $endif
         END; /* DO FOREVER */
     end plm;
     END PIPMOD;
-

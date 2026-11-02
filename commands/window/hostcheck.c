@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "win.h"
+extern int w_command();
 static unsigned char mem[8192];
 static int calls;
 static int paints;
