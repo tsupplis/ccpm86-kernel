@@ -52,6 +52,8 @@ and verification details, and [distributions](#distributions) for all seven disk
 <img src="images/setup.png" alt="XIOS configuration menu" width="48%">
 <img src="images/basic.png" alt="Microsoft BASIC 5.50A" width="48%">
 <br><sub>System setup &nbsp;·&nbsp; Microsoft BASIC 5.50A</sub>
+<br><img src="images/rose.png" alt="Rose screenshot" width="48%">
+<br><sub>Rose</sub>
 </p>
 
 
