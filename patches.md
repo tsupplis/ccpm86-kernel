@@ -404,7 +404,7 @@ restoring XIOS registers. There is no new component dependency or call back
 from XIOS into PCTMP; each project contains its own helper and build inputs.
 
 The graphics owner can use cursor, character read/write, TTY, scroll,
-pixel read/write, EGA palette entry and VGA DAC entry services. Pixel
+pixel read/write, EGA palette entry writes, VGA palette entry reads and VGA DAC entry services. Pixel
 coordinates, page zero, scroll rectangle order/bounds and palette fields
 are checked before firmware entry. Mode 13h is the firmware-configured
 chain-4 byte-per-pixel mode, with a separate A000h byte backend. It restores
@@ -417,7 +417,7 @@ ROM text mode/font before redrawing the console. No saved graphics contexts,
 EGA monochrome 0Fh, VESA, arbitrary pages or font-loading API is introduced.
 
 `make check-graphics` runs assembled-XIOS validation with synthetic ROM
-results, then a disposable PCE graphics program. NASM builds only these
+results, then disposable PCE VGA, EGA and CGA graphics runs. NASM builds only these
 host-side test fixtures; production assembly still uses ASM86.
 
 The CGA regression also exposed stale BIOS mode metadata when the native

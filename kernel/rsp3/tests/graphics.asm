@@ -221,6 +221,21 @@ palette_done:
     mov [actualdx],dx
     cmp al,'A'
     jne failed
+    ; Graphics teletype uses BL colour and advances the firmware cursor.
+    mov ax,0e42h
+    mov bx,1
+    int 10h
+    mov ah,3
+    int 10h
+    cmp dx,0103h
+    jne failed
+    mov ah,2
+    mov dx,0102h
+    int 10h
+    mov ah,8
+    int 10h
+    cmp al,'B'
+    jne failed
     mov byte [stage],7
     ; Scroll a valid single-cell rectangle, then return to text.
     mov ax,0600h
