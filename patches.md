@@ -434,3 +434,6 @@ the intercepted vector before restoring the PIC mask. Nested ROM services
 therefore stay in the ROM instead of reentering PCTMP and overwriting its
 per-console interrupt frame. The native-only build has no PCTMP vector to
 replace. The graphics live fixture checks teletype drawing and cursor advance.
+
+Validation: 177 assembled-XIOS cases; live PCE VGA/EGA/CGA graphics,
+including teletype; kernel regressions and every packaged image payload.

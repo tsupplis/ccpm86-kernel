@@ -144,12 +144,15 @@ reloads the firmware text mode/font and redraws the native console.
 INT 10h/AH=10h implements AL=00h (single EGA palette write), 07h (VGA palette read) and
 10h/15h (single VGA DAC RGB write/read, entries 0–255, components 0–63).
 EGA palette entry services apply to the planar modes; mode 13h uses DAC entries.
-Block palettes, arbitrary pages, font loading and VESA services are not added.
+Mode-set bit 7 (preserve display memory), block palettes, arbitrary pages,
+font loading and VESA services are not added.
 Native XIOS function 31 uses the nine-byte AX,BX,CX,DX,console packet; setting
 bit 7 of its BIOS selector requests that packet ABI for cursor/cell/TTY too.
 Palette selector 90h uses AX's low byte as its AH=10h subfunction. Results
 are returned in AX for pixel/character reads, and in the packet's BX/CX/DX
-for cursor and palette reads. Legacy native simple selectors retain their ABI.
+for cursor and palette reads. Native requests rejected before hardware access
+return FFFFh; DOS rejected reads retain the original result registers.
+Legacy native simple selectors retain their ABI.
 
 Sources: [xconout.lib](kernel/con/xconout.lib), [xpcmode.lib](kernel/con/xpcmode.lib),
 [xbegin.lib](kernel/con/xbegin.lib), [xinit.lib](kernel/con/xinit.lib).

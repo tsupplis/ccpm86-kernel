@@ -371,7 +371,7 @@ eg_simple_read:
 
 ; VGA mode 13h uses a linear chain-4 byte, with no XOR interpretation.
 ; Establish ordinary write mode temporarily, restoring GC/SEQ registers and
-; their index selectors afterwards. No firmware pixel-colour truncation.
+; their index selectors afterwards. All eight colour bits are retained.
 eg_chain4_pixel:
 	push	bx ! push es ! push si
 	mov	ax,es:word ptr 6[di]
