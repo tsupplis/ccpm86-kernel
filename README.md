@@ -152,7 +152,7 @@ affected. See `HELP PUT`, `HELP GET` and `HELP RDR`.
 | --- | --- | --- |
 | `ccpm86.img` | Yes | PC-MODE/PCTMP kernel, core commands, ED, full HELP, BATCH, SYSDISK, SETDEF, PIP |
 | `ccpmnative.img` | Yes | Native TMP/XIOS alternative, with the same core commands and shared kernel fixes |
-| `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, WINDOW/WMENU, PRINT, sample SUB files, PIP, TOD |
+| `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, CHKCPMFS, WINDOW/WMENU, PRINT, sample SUB files, PIP, TOD |
 | `ccpmext.img` | No | PUT, GET, RDR (console redirection), DREDIX, PIP |
 | `ccpmmaint.img` | Yes | PC-MODE kernel, disk maintenance tools, CONFIG, FUNCTION, SETUP, SYSTAT, PIP, TOD |
 | `ccpmdev.img` | No | Native DR development/BASIC tools, Microsoft BASIC CMD, ASM80, HEXCOM, GENTAB |
@@ -186,6 +186,7 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `batch` | Run PC-MODE BAT command files | Original | Reverse engineered from CCP/M-86 |  |
 | `cls` | Clear the terminal screen | — | TMP built-in; VT52 ESC-E |  |
 | `chset` | Inspect or change CMD header flags | — | Recompiled from CCP/M-86 3.1 and adapted |  |
+| `chkcpmfs` | Read-only CP/M directory allocation consistency check | — | New shared PL/M-86 checker for CDOS, CCP/M-86 and CP/M-86 | ✓ |
 | `config` | Configure serial ports | Original |  Reverse engineered from CCP/M-86 |  |
 | `date` | Display or set the date | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K patched |  |
 | `dcomp` | Compare floppy diskettes | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |

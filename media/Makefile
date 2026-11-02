@@ -29,6 +29,7 @@ TOOLS_COMMANDS = ../commands/asm86/asm86.cmd ../commands/ddt86/ddt86.cmd \
     ../commands/gencmd/gencmd.cmd ../commands/genccpm/genccpm.cmd \
     ../commands/print/print.cmd ../commands/vcmode/vcmode.cmd \
     ../commands/tod/tod.cmd ../commands/era/eraq.cmd \
+    ../commands/chkcpmfs/chkcpmfs.cmd \
     $(WINDOW_COMMANDS) $(WINDOW_SAMPLES)
 
 # Extension disk: console redirection and DREDIX.

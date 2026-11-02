@@ -19,10 +19,15 @@ boot:
 media: commands kernel boot
 	$(MAKE) -C media all
 
+.PHONY: chkcpmfs-live-images
+chkcpmfs-live-images: kernel boot
+	$(MAKE) -C media ccpm86.img ccpmtools.img
+
 check: all
 	$(MAKE) -C boot check
 	$(MAKE) -C commands/sysdisk check
 	$(MAKE) -C commands/batch check
+	$(MAKE) -C commands/chkcpmfs check-bdos
 	$(MAKE) -C media check-media
 
 check-paging: all
