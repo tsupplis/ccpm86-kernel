@@ -5,11 +5,11 @@
 format(dst,fmt) char *dst,*fmt;
 {
     char **args,*s,*begin,*q,number[8];
-    int width,len,n,negative;
+    int width,len,n,negative,pad;
     args=(char **)(&fmt+1); begin=dst;
     while(*fmt) {
         if(*fmt!='%') { *dst++=*fmt++; continue; }
-        ++fmt; width=0;
+        ++fmt; width=0; pad=(*fmt=='0')?'0':' ';
         while(*fmt>='0' && *fmt<='9') width=width*10+*fmt++-'0';
         if(*fmt=='d') {
             n=(int)*args++; negative=n<0; if(negative) n=-n;
@@ -20,7 +20,7 @@ format(dst,fmt) char *dst,*fmt;
         else { *dst++=*fmt++; continue; }
         ++fmt;
         for(q=s,len=0;*q++;++len) ;
-        while(width-->len) *dst++=' ';
+        while(width-->len) *dst++=pad;
         while(*s) *dst++=*s++;
     }
     *dst=0; return dst-begin;

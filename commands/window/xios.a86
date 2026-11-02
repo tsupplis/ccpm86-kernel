@@ -107,4 +107,37 @@ bdos:
 DATASEG:
         mov ax,ds
         ret
+; Repaint the 24x80 virtual console exactly as OEM WINDOW does. Only
+; attribute bytes change; characters, cursor and the status line survive.
+; The per-console mutex at VS+52 protects the image against console output.
+        public recolor
+recolor:
+        push bp
+        mov bp,sp
+        push di
+        push es
+        mov es,4[bp]
+        mov bx,6[bp]
+recolor_lock:
+        mov al,0ffh
+        xchg al,es:52[bx]
+        cmp al,0ffh
+        je recolor_lock
+        push es
+        mov es,es:22[bx]
+        mov di,1
+        mov cx,24*80
+        mov ax,8[bp]
+recolor_cell:
+        mov es:[di],al
+        add di,2
+        loop recolor_cell
+        pop es
+        mov al,0
+        xchg al,es:52[bx]
+        pop es
+        pop di
+        pop bp
+        xor ax,ax
+        ret
         end

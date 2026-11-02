@@ -73,6 +73,12 @@ clean:
 check-wmenu: all
 	python3 tools/wmenu_check.py
 
+.PHONY: check-window
+check-window: all
+	$(MAKE) -C commands/window check livetest.cmd
+	python3 tools/wmenu_check.py
+	python3 tools/wmenu_check.py ccpmnative.img
+
 .PHONY: check-batch-live
 check-batch-live: all
 	python3 tools/batch_check.py

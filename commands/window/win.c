@@ -4,6 +4,7 @@
  */
 #include "win.h"
 WORD xdata=0;
+int window_first=0;
 char *colors[] = {"Black","Blue","Green","Cyan","Red","Magenta","Yellow","White"};
 
 conchar(c) int c; { bdos(2,c); return 0; }
@@ -17,6 +18,8 @@ w_init()
     int version;
     version=bdos(12,0);
     if ((version&0xff00)!=0x1400 || (version&255)<0x31) return 0;
+    /* CCP/M 3.x starts at 31h; CDOS 4.x starts at 40h. */
+    window_first=(version&255)>=0x40;
     xinit();
     return 1;
 }
@@ -51,7 +54,7 @@ w_read(n,w) int n; struct window *w;
  * the public interface; XIOS remains responsible for overlap and clipping. */
 w_apply(w) struct window *w;
 {
-    int p,a;
+    int p,a,old;
     if (w->prow<1 || w->prow>24 || w->pcol<1 || w->pcol>80 ||
         w->nrows<1 || w->nrows>24 || w->ncols<1 || w->ncols>80 ||
         w->vrow<1 || w->vrow>24 || w->vcol<1 || w->vcol>80) return 0;
@@ -61,13 +64,20 @@ w_apply(w) struct window *w;
     if(w->pcol+w->ncols-1>80) w->ncols=81-w->pcol;
     xcall(24,0,w->display,w->number);
     p=xcall(16,0,0,w->number);
-    a=farword(xdata,p+28);
-    a=(a&0xff00)|(w->foreground&7)|((w->background&7)<<4);
+    old=farword(xdata,p+28);
+    a=(old&0xff88)|(w->foreground&7)|((w->background&7)<<4);
     farput(xdata,p+28,a);
-    xcall(21,0,((w->vrow-1)<<8)|(w->vcol-1),
-          (w->tracking<<8)|w->number);
     xcall(20,((w->prow+w->nrows-2)<<8)|(w->pcol+w->ncols-2),
           ((w->prow-1)<<8)|(w->pcol-1),w->number);
+    xcall(21,0,((w->vrow-1)<<8)|(w->vcol-1),
+          (w->tracking<<8)|w->number);
+    if (a!=old) {
+        /* Service 24 above synchronizes a full foreground console via
+         * copy_full_top before geometry changes. Repaint the image, then
+         * redraw the same rectangle without clearing text or cursor. */
+        recolor(xdata,p,a);
+        xcall(20,farword(xdata,p+4),farword(xdata,p+2),w->number);
+    }
     return 1;
 }
 w_top(n) int n; { return xcall(19,0,3,n); }
@@ -82,9 +92,9 @@ w_view()
     message("------ ---- ---- ----- ----- ---- ---- -------- ------- ------- -------\r\n");
     for(n=0;n<w_status(1);++n) {
         w_read(n,&w);
-        format(line,"%4d %5d %4d %4d %5d %5d %4d %8s %7s %7s %7s\r\n",n,
+        format(line,"  %d     %02d   %02d   %02d    %02d    %02d   %02d     %s    %s  %s   %s\r\n",n+window_first,
           w.prow,w.pcol,w.nrows,w.ncols,w.vrow,w.vcol,
-          w.tracking?"ROW":"NO",w.display?"COLOR":"B&W",
+          w.tracking?"Row":"No",w.display?"Color":"B&W",
           colors[w.foreground],colors[w.background]);
         message(line);
     }
@@ -133,23 +143,31 @@ w_write(n,type,name) int n,type; char *name;
 {
     struct window w; int p,seg,r,c,row,col,nr,nc;
     char line[160];
+    int end;
     if(!filename(name)) { message("Filename requested is not an acceptable filename.\r\n"); return 0; }
     if(!w_read(n,&w)) return 0;
     bdos(19,fcb);
     if((bdos(22,fcb)&255)==255) return 0;
     used=failed=0;
     if(type==2) {
-        format(line,"window ch n=%d pr=%d,pc=%d,nr=%d,nc=%d,vr=%d,vc=%d,tr=%s,d=%s,fg=%s,bg=%s\r\n",
-          n,w.prow,w.pcol,w.nrows,w.ncols,w.vrow,w.vcol,
-          w.tracking?"row":"no",w.display?"color":"b&w",
-          colors[w.foreground],colors[w.background]);
-        text(line);
+        /* OEM SETUP writes the complete PC-window configuration. */
+        for(n=0;n<w_status(1);++n) {
+            w_read(n,&w);
+            format(line,"window ch n=%d pr=%02d,pc=%02d,nr=%02d,nc=%02d,vr=%02d,vc=%02d,tr=%s,d=%s,fg=%s,bg=%s\r\n",
+              n+window_first,w.prow,w.pcol,w.nrows,w.ncols,w.vrow,w.vcol,
+              w.tracking?"Row":"No",w.display?"Color":"B&W",
+              colors[w.foreground],colors[w.background]);
+            text(line);
+        }
     } else {
         p=xcall(16,0,0,n); seg=farword(xdata,p+22);
         row=type==0?w.vrow-1:0; col=type==0?w.vcol-1:0;
         nr=type==0?w.nrows:24; nc=type==0?w.ncols:80;
         for(r=0;r<nr;++r) {
-            for(c=0;c<nc;++c) out(farbyte(seg,2*((row+r)*80+col+c)));
+            /* Native text snapshots omit trailing spaces on each row. */
+            end=nc;
+            while(end && farbyte(seg,2*((row+r)*80+col+end-1))==' ') --end;
+            for(c=0;c<end;++c) out(farbyte(seg,2*((row+r)*80+col+c)));
             text("\r\n");
         }
     }

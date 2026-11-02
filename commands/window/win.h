@@ -5,11 +5,14 @@
 #define farword FARWORD
 #define farbyte FARBYTE
 #define farput FARPUT
+#define recolor RECOLOR
 #define bdos BDOS
 /* Shared Concurrent CP/M-86 window services. Coordinates exposed to users
  * are one-based; XIOS row/column words use zero-based row in the high byte.
  * ABI reference: kernel/con/xbegin.lib and xconout.lib, VS_* definitions.
  */
+/* XIOS numbers windows 0..3; OEM command numbers depend on the OS. */
+extern int window_first;
 typedef unsigned short WORD;
 struct window {
     int number, prow, pcol, nrows, ncols, vrow, vcol;
@@ -18,7 +21,7 @@ struct window {
 #ifndef WIN_IMPLEMENTATION
 extern WORD xdata;
 #endif
-extern int xinit(), xcall(), farword(), farbyte(), farput();
+extern int xinit(), xcall(), farword(), farbyte(), farput(), recolor();
 extern int w_init(), w_read(), w_apply(), w_top(), w_full(), w_manager();
 extern int w_key(), w_status(), w_write(), w_view(), w_command();
 extern int bdos(), message(), conchar();

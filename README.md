@@ -226,13 +226,14 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 
 ✓ = confirmed compatible with BDOS 2.2.
 
-After installing WMENU, **Ctrl+Alt+Esc** opens its menu;
+After installing WMENU, **Ctrl+Alt+0** (top row) or **Ctrl+Alt+Esc** opens its menu;
 Ctrl+keypad-Plus remains available.
 
-WINDOW and WMENU share a C implementation in `commands/window`. The default
-build produces both programs, and `ccpmtools.img` installs their rebuilt
-binaries. See [WINDOW/WMENU build and usage notes](commands/window/README.md)
-for commands, shared modules, validation and current compatibility limits.
+WINDOW and WMENU share a C implementation with CDOS 4.1 in `commands/window`.
+BDOS 12 selects CCP/M's original 0..3 numbering or CDOS's 1..4 numbering.
+The highlighted WMENU follows the original CCP/M interface. The default build
+produces both programs, and `ccpmtools.img` installs them. See
+[WINDOW/WMENU build and usage notes](commands/window/README.md) for validation.
 
 PRINT is built from the original C sources in `commands/print` using the
 historical `SQLINK.INP` module list. The tools disk, `ccpmtools.img`,
@@ -328,4 +329,3 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 ## License
 
 CP/M-derived material is covered by the [CP/M license](LICENSE.md); other material uses the [MIT license](LICENSE-bis.md), unless specified otherwise in a subdirectory.
-

@@ -1,8 +1,8 @@
-# WINDOW and WMENU: C rewrite trial
+# WINDOW and WMENU
 
-Both programs are built in this directory. This is a new C implementation
-based on the original commands' visible interfaces and the Concurrent 3.1
-XIOS source, rather than a byte-identical reconstruction.
+Both programs use the same C sources as the CDOS 4.1 tools. BDOS 12 selects
+the native public window numbering at startup: CCP/M uses N=0..3 and CDOS
+uses N=1..4. Both map to XIOS indices 0..3.
 
 ```sh
 make -C commands/window
@@ -52,39 +52,40 @@ Public coordinates are one-based; the shared layer translates to zero-based
 XIOS coordinates. CHANGE is parsed and validated before applying it. WRITE
 creates/replaces its destination and writes CP/M 128-byte records with Ctrl-Z
 padding. Window/console snapshots copy character bytes from the virtual
-screen image; SETUP output is a WINDOW CHANGE command.
+screen image and omit trailing spaces. SETUP writes commands for all four
+windows.
 
 ## WMENU
 
 WMENU registers manager state 1, detaches with BDOS 147 and waits on XIOS
-service 17. Ctrl+Alt+Esc activates it; Ctrl+keypad-Plus remains available. ESC returns it to
+service 17. Ctrl+Alt+0 (top-row zero) or Ctrl+Alt+Esc activates it; Ctrl+keypad-Plus remains available. ESC returns it to
 idle; Abort followed by RETURN unregisters it and exits.
 
-The trial UI explicitly maps P to Place, S to Size, R to Scroll, T to
-Tracking, D to Display, C to Color and W to Write. Digits select a console.
-Arrow keys edit geometry, RETURN accepts, and ESC restores saved settings.
-Color uses digits 0..7, with TAB switching foreground/background. Write uses
-TAB to select Window, Console or Setup output.
+The highlighted menu uses arrows or Space to select Place, Size, Scroll,
+Tracking, Display, Color, Write or Abort; Return opens the selection.
+Digits 0..3 select a window. Esc hides the menu without unloading it.
+
+Geometry uses arrows. Tracking and Display use Up/Down or Space. Color uses
+Left/Right to choose foreground/background and Up/Down to change it. Esc or
+Return leaves these submenus with changes in effect. Write defaults to
+`A:WINDOW0.TXT`, permits a replacement filename and output-type selection,
+and writes on Return; Esc cancels. Abort followed by Return unregisters the
+manager and exits.
+
+Setting VS_ATTRIB alone colors only later output, so a color change (WMENU
+Color or WINDOW CHANGE FG/BG) also repaints the attribute bytes of the
+virtual-console image (`RECOLOR` in `xios.a86`, under the VS+52 mutex) and
+redraws the window. No kernel change is involved.
 
 ## Validation and remaining comparison
 
-Both CMD files compile and link without unresolved symbols. A QEMU smoke
-test on Concurrent 3.1 verifies all four WINDOW VIEW rows, CHANGE, the full
-GLASS layout/colors/TOP sequence and WMENU installation/detachment.
-The tools-disk smoke test uses a temporary bootable copy, leaving the released
-data-only disk unchanged. Both reject an
-ordinary CP/M environment under emu2 with the corresponding Concurrent-only
-message. Host checks cover coordinate conversion, CHANGE fields, numerical
-validation, invalid commands, required WRITE arguments and TOP/FULL dispatch.
-
-These are initial trial binaries, not validated drop-in replacements. Live
-window edits, resident wake/sleep behavior, video output, screenshot
-file contents and detailed error/abbreviation compatibility still require
-comparison with the original programs. WMENU's explicit key map is a new UI;
-its equivalence to the original has not been established. The host tests
-simulate the documented ABI and do not execute the real XIOS or assembly
-bridge. In particular, screen clipping/stride and terminal-specific key
-behavior must be checked on the target before promoting this rewrite.
+Both CMD files compile and link without unresolved symbols. Host checks cover
+both BDOS 1431h and 1441h, confirming that the shared command parser presents
+the OS-native window numbering while addressing the same XIOS indices.
+`make check-wmenu` exercises wake/hide/abort and every menu action on disposable
+PCTMP media. `python3 tools/wmenu_check.py ccpmnative.img` repeats the menu
+check under native TMP. `make check-window` runs both menu checks and builds
+the real-XIOS GLASS regression program.
 
 The default command build produces both programs. The tools disk selects
 `commands/window/window.cmd` and `commands/window/wmenu.cmd`, and `make dist`
@@ -94,8 +95,9 @@ behavioral equivalence; the comparison limitations above still apply.
 
 The compatibility check uses BDOS 12. It requires Concurrent 8086 identity
 1400h in the high byte and BDOS revision 31h or newer in the low byte.
-Host regression cases include the real 1431h return, ordinary CP/M 0022h,
-0031h without Concurrent identity, and the unsupported 1430h revision.
+CCP/M 3.1 (1431h) selects public numbering 0..3; CDOS 4.1 (1441h) selects
+1..4. Ordinary CP/M 0022h, 0031h without Concurrent identity, and revision
+1430h are rejected.
 
 `make livetest.cmd` builds the target regression program. The QEMU tools-disk
 check installs it only in its temporary fixture and runs it automatically.

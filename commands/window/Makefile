@@ -7,21 +7,25 @@ RASM86=pcdev_rasm86
 DRC86=drccpm_cc
 DRCLINK86=drccpm_link
 RM=rm -f
+PYTHON=python3
 
 TOOLS=window.cmd wmenu.cmd
 
 all: $(TOOLS)
 
-window.cmd: window.obj start.obj command.obj win.obj format.obj xios.obj Makefile
+window.cmd: window.obj start.obj command.obj win.obj format.obj xios.obj Makefile trim.py
 	$(DRCLINK86) window=start,window,command,win,format,xios
+	$(PYTHON) trim.py $@
 	$(CMDINFO) $@
 
-livetest.cmd: livetest.obj start.obj command.obj win.obj format.obj xios.obj Makefile
+livetest.cmd: livetest.obj start.obj command.obj win.obj format.obj xios.obj Makefile trim.py
 	$(DRCLINK86) livetest=start,livetest,command,win,format,xios
+	$(PYTHON) trim.py $@
 	$(CMDINFO) $@
 
-wmenu.cmd: wmenu.obj start.obj command.obj win.obj format.obj xios.obj Makefile
-	$(DRCLINK86) wmenu=start,wmenu,command,win,format,xios
+wmenu.cmd: wmenu.obj start.obj win.obj format.obj xios.obj Makefile trim.py
+	$(DRCLINK86) wmenu=start,wmenu,win,format,xios
+	$(PYTHON) trim.py $@
 	$(CMDINFO) $@
 
 xios.obj: xios.a86 Makefile

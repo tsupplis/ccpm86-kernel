@@ -292,12 +292,39 @@ malformed options and extra arguments. Detailed behavior is documented in
 commands/type/README.md. Regression checks cover the numeric limits,
 case-insensitivity, EOF boundaries and rejection of the removed syntax.
 
-## XIOS: WMENU compact-keyboard shortcut
+## XIOS: WMENU compact-keyboard shortcuts
 
-Ctrl+Alt+Esc emits the existing window-manager wake event (7Dh), the same
-as Ctrl+keypad-Plus. The original binding remains available. No manager is
-loaded automatically; WMENU must already be installed. Console shortcuts
-Ctrl+Alt+1..4 and Ctrl+Alt+Tab retain their existing behavior.
+Ctrl+Alt+0 (top-row zero) and Ctrl+Alt+Esc emit the existing window-manager
+wake event (7Dh), the same as Ctrl+keypad-Plus. All three bindings are decoded
+in `kernel/con/xbegin.lib`; WMENU waits for the existing XIOS event and needs
+no binary change. Boot a rebuilt system image to enable the new binding.
+No manager is loaded automatically; WMENU must already be installed.
+Console shortcuts Ctrl+Alt+1..4 and Ctrl+Alt+Tab retain their existing behavior.
+`make check-wmenu` exercises all three wake keys, hide, Abort, uninstalled
+hotkey suppression and ordinary zero input on disposable PCE media.
+
+WMENU/WINDOW color changes previously updated only VS_ATTRIB, so the window
+kept its old colors until new text was written and the C menu command appeared
+to do nothing. The tools now repaint the virtual-console attributes and redraw
+the window (`RECOLOR`, ported from the Concurrent DOS 4.1 tools). This is a
+tools-only fix: the kernel, PCTMP and TMP are unchanged. The live check runs
+every displayed menu command and passes under both PCTMP (`ccpm86.img`) and
+native TMP (`python3 tools/wmenu_check.py ccpmnative.img`).
+
+## Shared WINDOW/WMENU sources
+
+The CCP/M and CDOS WINDOW/WMENU C sources are shared. BDOS 12 selects the
+original public window numbering at runtime (1431h: 0..3; 1441h: 1..4),
+while XIOS calls always use indices 0..3. WMENU now uses the original
+highlighted selector interface from both retained OEM implementations.
+Host checks cover both OS identities; PCE menu checks run under both PCTMP
+and native TMP. `../check_shared_commands` confirms the shared window source
+files are identical.
+
+Under PCE, `media/ccpm86.cfg` sets `escape = "F12"`. PCE otherwise uses Esc as
+its magic-key prefix: Esc is swallowed and the next key release becomes an
+emulator command (for example, 0 sets CPU speed 0), so Esc/Ctrl+Alt chords
+were unreliable interactively. F12 has no XT scan code and never reaches the OS.
 
 WMENU's status-line call now passes its offset in CX and segment in DX,
 matching XIOS. This corrects the blank menu exposed by the live wake test.

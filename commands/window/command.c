@@ -40,15 +40,26 @@ static number(s) char *s;
     while(*s>='0' && *s<='9') { n=n*10+*s++-'0'; if(n>3276) return -1; }
     return *s?-1:n;
 }
+static number_range()
+{
+    conchar('0'+window_first); conchar('-'); conchar('0'+window_first+3);
+    return 0;
+}
 static help()
 {
-    message("Valid window commands are:\r\n  WINDOW VIEW\r\n  WINDOW TOP N=<0-3>\r\n  WINDOW FULL N=<0-3>\r\n");
-    message("  WINDOW WRITE N=<0-3> Type=<Window, Console, or Setup>,File=<filename>\r\n");
-    message("  WINDOW CHANGE N=<0-3> PRow=<1-24>,PCol=<1-80>\r\n");
-    message("  WINDOW CHANGE N=<0-3> NRows=<1-24>,NCols=<1-80>\r\n");
-    message("  WINDOW CHANGE N=<0-3> VRow=<1-24>,VCol=<1-80>\r\n");
-    message("  WINDOW CHANGE N=<0-3> Tracking=<No or Row>,Display=<B&W or Color>\r\n");
-    message("  WINDOW CHANGE N=<0-3> FGColor=<color>,BGColor=<color>\r\nAbbreviations are allowed.\r\n");
+    message("Valid window commands are:\r\n  WINDOW VIEW\r\n");
+    message("  WINDOW TOP N=<"); number_range(); message(">\r\n  WINDOW FULL N=<");
+    number_range(); message(">\r\n  WINDOW WRITE N=<"); number_range();
+    message("> Type=<Window, Console, or Setup>,File=<filename>\r\n");
+    message("  WINDOW CHANGE N=<"); number_range();
+    message("> PRow=<1-24>,PCol=<1-80>\r\n  WINDOW CHANGE N=<");
+    number_range(); message("> NRows=<1-24>,NCols=<1-80>\r\n");
+    message("  WINDOW CHANGE N=<"); number_range();
+    message("> VRow=<1-24>,VCol=<1-80>\r\n  WINDOW CHANGE N=<");
+    number_range(); message("> Tracking=<No or Row>,Display=<B&W or Color>\r\n");
+    message("  WINDOW CHANGE N=<"); number_range();
+    message("> FGColor=<color>,BGColor=<color>\r\n");
+    message("Abbreviations are allowed.\r\n");
     return 0;
 }
 static error(s) char *s; { message(s); message("\r\n"); return 0; }
@@ -86,8 +97,11 @@ w_command(tail) char *tail;
         values[k]=v;
     }
     if(cmd==0) { w_view(); return 1; }
-    n=values[0];
-    if(!seen[0] || !w_read(n,&w)) return error("Sub-command requires NUMBER=<0-3>");
+    n=values[0]-window_first;
+    if(!seen[0] || !w_read(n,&w)) {
+        message("Sub-command requires NUMBER=<"); number_range(); message(">\r\n");
+        return 0;
+    }
     if(cmd==1) { w_top(n); return 1; }
     if(cmd==2) { w_full(n); return 1; }
     if(cmd==3) {

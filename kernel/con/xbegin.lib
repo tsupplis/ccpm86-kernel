@@ -775,8 +775,11 @@ key_make:
     and ah,ctrl_bit or alt_bit
     cmp ah,ctrl_bit or alt_bit
     jne key_translate
-    cmp al,1                    ; Ctrl-Alt-Esc: wake the window manager
+    cmp al,1                    ; Ctrl-Alt-Esc
+    je key_wake_manager
+    cmp al,11                   ; Ctrl-Alt-0 (top row)
     jne key_console_shortcuts
+key_wake_manager:
     mov al,07dh                 ; native Ctrl-keypad-Plus event
     mov key_type,0ffh
     jmp save_key_code
