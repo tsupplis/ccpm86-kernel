@@ -1,4 +1,4 @@
-$ TITLE('SHOW 2.1: Show Disk Data')
+$ TITLE('CONCURRENT SHOW 4.1N: Show Disk Data')
 $ COMPACT
 
 
@@ -23,7 +23,8 @@ show:
 do;
 declare
     cpmversion literally '20h', /* requires 2.0 cp/m */
-    cpm3       literally '30h';
+    cpm3       literally '30h',
+    cdos       literally '41h';  /* BDOS 12 low byte: CCP/M 31h, CDOS 41h */
 
 
 declare copyright(*) byte data 
@@ -31,7 +32,7 @@ declare copyright(*) byte data
 
 
 declare verdate (*) byte data('10/19/82');
-declare version (*) byte data ('SHOW 2.1',0);
+declare version (*) byte data ('CONCURRENT SHOW 4.1N',0);
 
 
 
@@ -719,6 +720,33 @@ select$disk: procedure(d);
     call set$bpb; /* bytes per block */
     end select$disk;
 
+/* Match SHOW 3.3's media test. BLACK supplies a DOS pseudo-label at
+   DMA offsets 0/15 (20h/80h), even if the DOS root is otherwise empty.
+   Use a private buffer and restore the caller's DMA offset afterwards. */
+declare media$buffer (128) byte;
+declare media$fcb (16) byte initial ('????????????',0,0,0,0);
+
+dos$media: procedure byte;
+    declare (old$dma,junk) address, n byte;
+    old$dma = mon3(52,0);
+    do n = 0 to 127;
+        media$buffer(n) = 0;
+    end;
+    media$fcb(0) = '?';
+    media$fcb(12),media$fcb(13),media$fcb(14),media$fcb(15) = 0;
+    call setdma(.media$buffer);
+    junk = mon2(17,.media$fcb);
+    call setdma(old$dma);
+    return media$buffer(0) = 20h and media$buffer(15) = 80h;
+end dos$media;
+
+require$cpm: procedure;
+    if dos$media then do;
+        call print(.('This command/option requires CP/M media.',0));
+        call terminate;
+    end;
+end require$cpm;
+
 getalloc: procedure(i) byte;
     /* return the ith bit of the alloc vector */
     declare i address;
@@ -1084,10 +1112,6 @@ help: procedure;
     call print(.('User Status     : SHOW USERS:  SHOW d:USERS:',0));
     call print(.('Directory Label : SHOW LABEL:  SHOW d:LABEL:',0));
     call print(.('Free Disk Space : SHOW SPACE:  SHOW d:SPACE:',0));
-/*
-    call print(.('Locked Records  : LOCKED:',0));
-    call print(.('Open Files      : OPEN:',0)); 
-*/
     call crlf;
     end help;
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -1175,9 +1199,9 @@ prstatus: procedure;
 		if fcb(0)-1 = d then
 	            call stat(rodisk);		/* do specific disk */
 	        end;
-	    else do;
+	    else if d < 13 or cversion < cdos then do;
                 call select$disk(d);
-	        call stat(rodisk);		/* do all disks */
+	        call stat(rodisk);       /* CDOS: 3.3 A:..M: limit */
 	        end;
             end;
         login = shr(login,1); rodisk = shr(rodisk,1);
@@ -1250,6 +1274,7 @@ userstatus: procedure;
     /*declare user(15) byte;
     declare ufcb(*) byte data ('????????????',0,0,0);*/
  
+    call require$cpm;
     call set$bpb;
     call crlf;
     call show$drive;
@@ -1300,20 +1325,6 @@ versionerr: procedure;
     call terminate;
     end versionerr;
 
-openfiles: procedure;
-
-    if cversion < cpm3 then
-	call versionerr;
-    call print(.('Not yet implemented',0));
-    end openfiles;
-
-lockedstatus: procedure;
-
-    if cversion < cpm3 then
-	call versionerr;
-    call print(.('Not yet implemented',0));
-    end lockedstatus;
-
 /*******************************************************
 
 		L A B E L   S T A T U S
@@ -1362,9 +1373,11 @@ labelstatus: procedure;
 	end;
     end printfn;
 
+    call require$cpm;
     if cversion < cpm3 then
 	call versionerr;
     lbl = getlbl(cdisk);
+    make = (lbl and 10h) = 10h;    /* 3.3: creation stamping, not a stale local */
     if lbl > 0 then do;
 	call readlbl;
 	fcbp = shl(dcnt,5) + .dirbuf;
@@ -1489,16 +1502,8 @@ if cversion < cpmversion then
             	else
             		call diskstatus;
             	end;
-            else if fcb(1) = 'O' then
-            	call openfiles;
-            else if fcb(1) = 'L' then do;
-            	if fcb(2) = 'A' then 
-            		call labelstatus;
-            	else if fcb(2) = 'O' then
-            		call lockedstatus;
-            	else
-            		call parse$error;
-            	end;
+            else if fcb(1) = 'L' then
+                call labelstatus;       /* 3.3 dispatches any L-prefix here */
             else
             	call parse$error;
             end;

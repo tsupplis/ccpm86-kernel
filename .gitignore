@@ -39,7 +39,7 @@ local/**
 /commands/dskmaint/*.bin
 /commands/dskmaint/*.inc
 
-/commands/help/help.hlp
+/commands/helphlp/help.hlp
 /kernel/sysgen/ccpm.old
 
 # Recovered, immutable PC-MODE inputs (hashes/provenance live beside them).

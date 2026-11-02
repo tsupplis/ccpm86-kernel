@@ -282,6 +282,11 @@ exit:
 
 declare (ver, error$code)  address;
 
+/* BLACK's DOS FCB carries the exact byte size at 28..31. Keep a local
+   copy: sequential reads update other FCB fields. CP/M remains record based. */
+declare dos$length$known byte;
+declare (bytes$left$low,bytes$left$high) address;
+
 declare last$dseg$byte byte
   initial (0);
 
@@ -390,12 +395,24 @@ plm$start: procedure public;
       end;                                   /* Error Checks */
     if low(error$code) <> 0FFH then
     do;
+      dos$length$known = (fcb(16) = fcb(17)) and ((fcb(16) and 80h) <> 0);
+      if dos$length$known then do;
+          bytes$left$low = double(fcb(28)) + shl(double(fcb(29)),8);
+          bytes$left$high = double(fcb(30)) + shl(double(fcb(31)),8);
+      end;
       call return$errors(0);        /* reset error mode */
       call setdma(.tbuff);
       fcb(32) = 0;
       eod = 0;
       do while (not eod) and (read$record (.fcb) = 0);
         do i = 0 to 127;
+          if dos$length$known and not eod then do;
+              if bytes$left$low = 0 and bytes$left$high = 0 then eod = true;
+              else do;
+                  if bytes$left$low = 0 then bytes$left$high = bytes$left$high - 1;
+                  bytes$left$low = bytes$left$low - 1;
+              end;
+          end;
           if (char := tbuff(i)) = control$z
             then eod = true;
           if not eod then

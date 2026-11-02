@@ -47,9 +47,9 @@ end read$char;
 
 /* -------- in sort.plm -------- */
 
-mult23: procedure(f$info$index) address external;
+file$address: procedure(f$info$index) address external;
     dcl f$info$index address;
-end mult23;
+end file$address;
 
 
 /* -------- in util.plm -------- */
@@ -155,6 +155,15 @@ declare
         sfcbs$present byte,
         x$i$adr address public,
         xfcb$info based x$i$adr x$info$structure;
+
+/* DOS entries are translated by black.a86: duplicate flag bytes at
+   16/17, bit 80h set, and bit 40h marks a subdirectory. The byte-0
+   guard excludes CP/M XFCBs; CP/M allocation bytes alone are not a type. */
+is$dos$directory: procedure boolean public;
+    return ((buf$fcb(f$drvusr) and 10h) = 0) and
+           (buf$fcb(f$diskmap) = buf$fcb(f$diskmap+1)) and
+           ((buf$fcb(f$diskmap) and 0c0h) = 0c0h);
+end is$dos$directory;
 
 compare: procedure(length, str1$adr, str2$adr) boolean;
     dcl (length,i) byte,
@@ -293,6 +302,8 @@ func   /__ letters      |          .            |                        |
                     /* XFCB came first in directory                         */
         
         file$info.name(f$arc-1) = file$info.name(f$arc-1) and buf$fcb(f$arc);
+        /* A DOS directory has no regular-file byte/record size. */
+        if file$info.subdir then return;
                         	       /* 0 archive bit if it is 0 in any dir entry */
 				       /* count kilobytes for current dir entry     */
 		                       /* 1 or 2 byte block numbers ?    */
@@ -369,7 +380,7 @@ func   /__ letters      |          .            |                        |
     if not hash$look$up then           /* not in table already            */ 
                            /* hash$entry is where to put adr of new entry */ 
       do;                  /* copy to new position in file info array     */
-        if (temp := mult23(files$found + 1)) > x$i$adr then
+        if (temp := file$address(files$found + 1)) > x$i$adr then
             return(false);                     /* out of memory           */
         if (temp < first$f$i$adr) then
             return(false);                 /* wrap around - out of memory */
@@ -377,6 +388,7 @@ func   /__ letters      |          .            |                        |
         filesfound = filesfound + 1;
         call move(f$namelen + f$typelen, .buf$fcb(f$name),.file$info.name);
         file$info.usr = buf$fcb(f$drvusr) and 0fh;
+        file$info.subdir = is$dos$directory;
         file$info.onekblocks,file$info.kbytes,file$info.recs$lword,
             file$info.recs$hbyte, file$info.x$i$adr,file$info.hash$link = 0;
         hash$entry = f$i$adr;           /* save the address of file$info    */

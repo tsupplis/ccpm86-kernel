@@ -10,7 +10,7 @@ all: $(IMAGES)
 
 SYSTEM_COMMANDS = ../commands/chset/chset.cmd ../commands/date/date.cmd \
     ../commands/era/era.cmd \
-    ../commands/help/help.cmd ../commands/help/help.hlp \
+    ../commands/help/help.cmd ../commands/helphlp/help.hlp \
     ../commands/ed/ed.cmd ../commands/ren/ren.cmd \
     ../commands/sdir/sdir.cmd ../commands/set/set.cmd ../commands/show/show.cmd \
     ../commands/submit/submit.cmd \

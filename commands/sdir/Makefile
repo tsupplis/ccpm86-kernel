@@ -1,5 +1,5 @@
-# SDIR — Intel PL/M compilation, link/locate, then GENCMD packaging.
-# all builds the declared tools; check validates them; clean removes generated files.
+# SDIR — Intel PL/M-86 / Intel ASM86 build.
+# all builds local outputs; check validates them; clean removes generated files.
 
 CMDINFO=cmdinfo
 INTEL_PLM86=intel_plm86
@@ -13,6 +13,7 @@ TOOLS=sdir.cmd
 
 .PHONY: all check clean
 .DELETE_ON_ERROR:
+
 all: $(TOOLS)
 
 # BBB and MMM for gencmd's data[bBBB,mMMM,xfff], derived from sdir.mp2:
@@ -43,20 +44,25 @@ sdir.loc: scd.obj sdir.obj search.obj scan.obj sort.obj disp.obj util.obj Makefi
 	$(INTEL_LOC86) $(basename $@).lnk 'od(sm(code,dats,data,stack,const))' \
 		'ad(sm(code(0),dats(10000h)))' 'ss(stack(+32))'  to $(basename $@).loc
 
+# Convert the located Intel object to H86.
 %.h86: %.loc Makefile
 	$(INTEL_OH86) $<
 	mv $*.hex $*.h86
 
-%.obj: %.a86 Makefile
+# Assemble relocatable objects; retain the module-specific linker layout.
+%.obj: %.a86 Makefile $(wildcard *.lib *.equ *.def *.inc)
 	$(INTEL_ASM86) $<
 
-%.obj: %.plm Makefile $(wildcard *.lit *.def *.equ *.lib *.h *.dcl *.inc) mon.plm sdirmain.plm
+
+# Compile PL/M sources; declarations and Makefile changes trigger recompilation.
+%.obj: %.plm Makefile $(wildcard *.lit *.def *.equ *.lib *.h *.dcl *.inc *.ext)
 	$(INTEL_PLM86) $< debug 'optimize(3)' xref
 
+# Remove generated outputs only; preserve sources and reference files.
 clean:
-	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img
+	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn
 	rm -f *.loc *.mp? *.lnk
 
-# Structural validation; byte comparisons or runtime checks are separate where available.
+# Validate the structure of each rebuilt command/component.
 check: all
-	@set -e; for file in $(TOOLS); do $(CMDINFO) $$file; done
+	@set -e; for f in $(TOOLS); do $(CMDINFO) $$f; done

@@ -129,9 +129,9 @@ end display$time$stamp;
 terminate: procedure external;                       /* in main.plm */
 end terminate;
 
-mult23: procedure(index) address external;           /* in sort.plm */
+file$address: procedure(index) address external;           /* in sort.plm */
     dcl index address;
-end mult23;
+end file$address;
 
 
 /* -------- From dpb86.plm or dpb80.plm -------- */
@@ -177,6 +177,10 @@ dcl     total$kbytes structure (    /* grand total k bytes of files matched */
  
 add$totals: procedure;
 
+    if file$info.subdir then do;
+        directories$shown = directories$shown + 1;
+        return;
+    end;
     call add3byte(.total$kbytes,file$info.kbytes);
     call add3byte3(.total$recs,.file$info.recs$lword); /* records in file */
     call add3byte(.total$1k$blocks,file$info.onekblocks);
@@ -185,6 +189,7 @@ end add$totals;
 
 dcl files$per$line byte;
 dcl cur$line address;
+dcl directories$shown address;
 
 dcl hdr (*) byte data      ('    Name     Bytes   Recs   Attributes $');
 dcl hdr$bars (*) byte data ('------------ ------ ------ ------------$');
@@ -198,11 +203,15 @@ display$file$info: procedure;
                                                     /* print filename.typ   */
     call printfn(.file$info.name(0));
     call printb;
-    call pdecimal(file$info.kbytes,10000,true);
-    call printchar('k');                           /* up to 32 Meg - Bytes  */
+    if file$info.subdir then call print(.(' <DIR>$'));
+    else do;
+        call pdecimal(file$info.kbytes,10000,true);
+        call printchar('k');
+    end;                           /* up to 32 Meg - Bytes  */
                                                    /* or 32,000k            */
     call printb;
-    call p3byte(.file$info.recs$lword,1);          /* records               */
+    if file$info.subdir then call print(.('      $'));
+    else call p3byte(.file$info.recs$lword,1);          /* records               */
     call printb;
     if rol(file$info.name(f$dirsys-1),1) then      /* Type                  */
        call print(.('Sys$'));
@@ -281,8 +290,8 @@ display$title: procedure;
     first$title = false;
 end display$title;
 
-short$display: procedure (fname$adr);
-    dcl fname$adr address;
+short$display: procedure (fname$adr,subdir);
+    dcl fname$adr address, subdir boolean;
     if cur$file mod files$per$line = 0 then
         do;
             if cur$line mod page$len = 0 then
@@ -297,7 +306,8 @@ short$display: procedure (fname$adr);
             call printchar(cur$drv + 'A');
         end;
     else call printb;
-    call print(.(': $'));
+    if subdir then call print(.(':\$'));
+    else call print(.(': $'));
     call printfn(fname$adr);
     cur$file = cur$file + 1;
 end short$display;
@@ -319,23 +329,6 @@ right$attributes: procedure(name$adr) boolean;
         test$att(name(f$dirsys-1),find.dir,find.sys);
 end right$attributes;
 
-short$dir: procedure;             /* looks like "DIR" command */
-    dcl dcnt byte;
-    fcb(f$drvusr) = '?';
-    files$per$line = 4;
-    dcnt = search$first(.fcb);
-    do while dcnt <> 0ffh;
-        buf$fcb$adr = shl(dcnt and 11b,5)+.buff;    /* dcnt mod 4 * 32      */
-        if (buf$fcb(f$drvusr) and 0f0h) = 0 and
-            buf$fcb(f$ex) = 0 and
-            buf$fcb(f$ex)<= dpb$byte(extmsk$b) then /* no dir labels, xfcbs */
-            if match then
-                if right$attributes(.buf$fcb(f$name)) then
-                    call short$display(.buf$fcb(f$name));
-        dcnt = search$next;
-    end;
-end short$dir;
-
 dcl (last$plus$one,index) address;
 
 getnxt$file$info: procedure;     /* set f$i$adr to base file$info on file    */
@@ -344,11 +337,11 @@ dcl right$usr boolean;           /* to be displayed, f$i$adr = 0ffffh if end */
     if sorted then do;
       index = index + 1;
       if index < filesfound then do;
-        f$i$adr = mult23(f$i$indices(index));
+        f$i$adr = file$address(f$i$indices(index));
         do while (file$info.usr <> cur$usr) and (index < filesfound);
           index = index + 1;
           if index < filesfound then
-          f$i$adr = mult23(f$i$indices(index));
+          f$i$adr = file$address(f$i$indices(index));
          end; 		
        end;
        if index = files$found then
@@ -363,6 +356,19 @@ dcl right$usr boolean;           /* to be displayed, f$i$adr = 0ffffh if end */
     end;
 end getnxt$file$info;
 
+/* SHORT uses the same collected records as FULL/SIZE: no second BDOS
+   scan while output is being redirected, and SORT/NOSORT apply equally. */
+short$dir: procedure;
+    files$per$line = 4;
+    do while f$i$adr <> last$plus$one;
+        if ((file$info.x$i$adr <> 0 and find.xfcb) or
+            (file$info.x$i$adr = 0 and find.nonxfcb)) and
+            right$attributes(.file$info.name(0)) then
+            call short$display(.file$info.name(0),file$info.subdir);
+        call getnxt$file$info;
+    end;
+end short$dir;
+
 size$display: procedure;
     if (format and form$size) <> 0 then
         files$per$line = 3;
@@ -373,9 +379,12 @@ size$display: procedure;
         right$attributes(.file$info.name(0)) then 
         do;
             call add$totals;
-            call short$display(.file$info.name(0));
-            call pdecimal(file$info.kbytes,10000,true);
-            call print(.('k$'));
+            call short$display(.file$info.name(0),file$info.subdir);
+            if file$info.subdir then call print(.('<DIR>$'));
+            else do;
+                call pdecimal(file$info.kbytes,10000,true);
+                call print(.('k$'));
+            end;
         end;
         call getnxt$file$info;
     end;
@@ -443,6 +452,7 @@ end display$with$dirlabel;
 
 display$files: procedure public; /* MODULE ENTRY POINT         */
                                  /* display the collected data */
+    directories$shown = 0;
     cur$line, cur$file = 0;      /* force titles and new line  */
     totalkbytes.lword, totalkbytes.hbyte, totalrecs.lword, totalrecs.hbyte =0;
     total$1k$blocks.lword, total$1k$blocks.hbyte = 0;
@@ -497,7 +507,11 @@ display$files: procedure public; /* MODULE ENTRY POINT         */
         call print(.('  Total Records = $'));
         call p3byte(.total$recs,10);      /* 7 digit max */
         call print(.('  Files Found = $'));
-        call pdecimal(cur$file,1000,true);    /* 4 digit max */
+        call pdecimal(cur$file - directories$shown,1000,true);
+        if directories$shown <> 0 then do;
+            call print(.('  Directories Found = $'));
+            call pdecimal(directories$shown,1000,true);
+        end;    /* 4 digit max */
         call print(.(cr,lf,'Total 1k Blocks = $'));
         call p3byte(.total$1k$blocks,1);           /* 6 digit max */
         call print(.('   Used/Max Dir Entries For Drive $'));

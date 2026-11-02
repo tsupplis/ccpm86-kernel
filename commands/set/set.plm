@@ -1,4 +1,4 @@
-$ TITLE('SET: Sets BDOS/XFCB options for MP/M & CCP/M')
+$ TITLE('CONCURRENT SET 4.1N: Sets file and drive attributes')
 $ COMPACT
 
 /* Revised:
@@ -25,7 +25,7 @@ declare copyright (*) byte data (
   ' Copyright (c) 1983, Digital Research ');
 
 declare versiondate (*) byte data ('02/15/83');
-declare version     (*) byte data ('SET 2.1',0);
+declare version     (*) byte data ('CONCURRENT SET 4.1N',0);
 
 
 
@@ -363,6 +363,35 @@ terminate: procedure;
     call crlf;
     call mon1 (0,0);
     end terminate;
+
+/* SET 3.1 probes BLACK's DOS pseudo-label before CP/M-only writes.
+   Use private mutable storage; preserve the caller's DMA offset and FCB.
+   Directory/search state used by wildcard iteration is saved separately. */
+declare media$buffer (128) byte;
+declare media$fcb (16) byte initial ('????????????',0,0,0,0);
+
+dos$media: procedure byte;
+    declare (old$dma,junk) address, n byte;
+    old$dma = mon3(52,0);
+    do n = 0 to 127;
+        media$buffer(n) = 0;
+    end;
+    media$fcb(0) = '?';
+    media$fcb(12),media$fcb(13),media$fcb(14),media$fcb(15) = 0;
+    call setdma(.media$buffer);
+    junk = mon2(17,.media$fcb);
+    call setdma(old$dma);
+    return media$buffer(0) = 20h and media$buffer(15) = 80h;
+end dos$media;
+
+require$cpm: procedure;
+    if dos$media then do;
+        call print(.('This command/option requires CP/M media.',0));
+        call terminate;
+    end;
+end require$cpm;
+
+
 $ eject
 
 
@@ -966,6 +995,7 @@ readlbl: proc;
     call terminate;
     end readlbl;
 
+    call require$cpm;
     if lblcmd then
         return;  
     mode = getlbl(cdisk);
@@ -1372,6 +1402,7 @@ write$label: procedure;
         call bdos$error;
         end err;
 
+    call require$cpm;
     error$code = wrlbl(fcbp);
     if low(error$code) = 0ffh then 
         if high(error$code) <> 0 then do;
@@ -1403,6 +1434,7 @@ write$label: procedure;
                  /* write out new xfcb */
 write$xfcb: procedure;
 	
+    call require$cpm;
     call put$file;
     error$code = wrxfcb(.xfcb);
     if low(error$code) = 0ffh then 

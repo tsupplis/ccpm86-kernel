@@ -27,11 +27,11 @@ declare
         mid$file$info based mid$adr f$info$structure;
 
 
-mult23: procedure(index) address public;
+file$address: procedure(index) address public;
     dcl index address;   /* return address of file$info numbered by index */
-    return shl(index, 4) + shl(index,2) + shl(index,1) + index + first$f$i$adr;
+    return index * size(file$info) + first$f$i$adr;
         /* index * size(file$info) + base of file$info array */
-end mult23;
+end file$address;
 
 lessthan: procedure( str1$adr, str2$adr) boolean;
     dcl (i,c1,c2) byte,                   /* true if str1 < str2            */
@@ -60,17 +60,17 @@ dcl (l,r,i,j,temp) address,/* partition first                             */
         l = stack(sp).l; r = stack(sp).r; sp = sp - 1;
         do while l < r;
             i = l; j = r;
-            mid$adr = mult23(f$i$indices(shr(l+r,1)));
+            mid$adr = file$address(f$i$indices(shr(l+r,1)));
             do while i <= j;
-                f$i$adr = mult23(f$i$indices(i));
+                f$i$adr = file$address(f$i$indices(i));
                 do while lessthan(f$i$adr,mid$adr);
                     i = i + 1;
-                    f$i$adr = mult23(f$i$indices(i));
+                    f$i$adr = file$address(f$i$indices(i));
                 end;
-                f$i$adr = mult23(f$i$indices(j));
+                f$i$adr = file$address(f$i$indices(j));
                 do while lessthan(mid$adr,f$i$adr);
                     j = j - 1;
-                    f$i$adr = mult23(f$i$indices(j));
+                    f$i$adr = file$address(f$i$indices(j));
                 end;
                 if i <= j then
                 do; temp = f$i$indices(i); f$i$indices(i) = f$i$indices(j); 

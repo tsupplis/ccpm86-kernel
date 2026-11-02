@@ -1,34 +1,41 @@
 # TYPE
 
-Built from the Concurrent CP/M-86 3.1 PL/M source.
+Recompiled from the CCP/M-86 3.1 PL/M source.
+
+Shared source: `ccpm86-kernel` and `cdos41-kernel` carry identical copies
+(see `check_shared_commands`). The DOS-media code is inert on CCP/M 3.1,
+which is built without PCMODE: it never presents a DOS pseudo-label, never
+writes directory-label byte 15, and its block numbers stay below 8000h, so
+the FCB disk-map flag tests cannot match.
 
 ## Syntax
 
 ```text
-TYPE filespec
+TYPE filespec[;password]
 TYPE filespec [PAGE]
 TYPE filespec [PNN]
 ```
 
-TYPE displays one text file, ending at Ctrl-Z or BDOS record EOF. Wildcards
-are rejected. Passwords may be supplied as `filespec;password` or entered
-when prompted. A final line does not need CR/LF; CP/M files have record,
-not exact-byte, lengths.
+- One file; wildcards are rejected. A missing password is prompted once
+  (Backspace, Ctrl-X, Ctrl-C), then the open is retried once.
+- Text ends at the first Ctrl-Z or the last record. The final line needs no
+  CR/LF. There is deliberately no explicit close (historical behaviour).
+- `[PAGE]` pauses after 23 physical rows (tabs and wrapping counted);
+  `[PNN]` selects 01..23 rows, exactly two digits. Options are trailing and
+  case-insensitive. The prompt reads a key via BDOS 6/FDh; Ctrl-C stops.
+  The old unbracketed `P`/`PNN` forms are rejected.
 
-Paging is off by default. `[PAGE]` uses 23 physical screen rows. `[PNN]`
-requires exactly two decimal digits from 01 through 23: `[P01]`, `[P10]`,
-`[P23]`, for example. Options are case-insensitive and must be trailing.
-Unbracketed `P`/`PNN` have been removed. `[P]`, `[P00]`, `[P24]`, `[P99]`,
-`[P1]`, malformed brackets and extra arguments are rejected.
+## DOS exact EOF
 
-Both bracketed forms use the same physical-row counter, including tabs and
-wrapping. The prompt is `Press any key to continue...`; input is raw and
-non-echoing. Ctrl-C stops output. A pause occurs only when another output
-character follows a full page, so EOF at an exact boundary needs no key.
-This replaces the old linefeed-only P/PNN mechanism.
+CP/M files are record based: without Ctrl-Z, the whole last 128-byte record
+is shown. On CDOS, BLACK marks DOS FCBs with equal flag bytes 16/17 (bit 80h)
+and the exact 32-bit size in bytes 28..31; TYPE then stops at the real DOS
+EOF instead of printing the zero padding.
 
-`make check-paging` tests the built TYPE on disposable CCP/M QEMU images:
-PAGE, numeric limits, case-insensitivity, short/exact/wrapped output,
-resume/Ctrl-C, default-off and rejection of old/out-of-range syntax. It also
-checks SDIR and both DIR variants. The original parse/open/password behavior
-is retained; CDOS-specific adaptations belong to the separate CDOS project.
+## Verification
+
+PCE regressions against the OEM binaries (`base/`) run from the CDOS
+root; CCP/M uses `make check` (structural) only.
+`make check-type` covers empty/unterminated files, embedded Ctrl-Z,
+record boundaries, passwords, paging/Ctrl-C and an unaligned 65537-byte DOS
+file.

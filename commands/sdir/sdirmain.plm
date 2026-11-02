@@ -40,9 +40,9 @@ end get$files;
 sort: procedure external;          /* entry to sort.plm */
 end sort;
 
-mult23: procedure (num) address external;    /* in sort.plm */
+file$address: procedure (num) address external;    /* in sort.plm */
 dcl num address;
-end mult23;
+end file$address;
 
 display$files: procedure external;    /* entry to disp.plm */
 end display$files;
@@ -327,8 +327,16 @@ get$options: procedure;
                 call set$vec(.usr$vector,temp);
             else goto op$err;
         end;
-        /* else if token(1) = 'H' then
-            call help; */
+        else if token(1) = 'H' then do;
+            call print(.(cr,lf,'SDIR [options] filespec ...',cr,lf,
+              'FULL SIZE SHORT DATE ATTRIBUTES SORT NOSORT',cr,lf,
+              'DIR SYS RO RW XFCB NONXFCB EXCLUDE MESSAGE',cr,lf,
+              'DRIVE=ALL DRIVE=(A,B) DISK=B USER=ALL USER=(0,1) G0',cr,lf,
+              'LENGTH=n (n>=5) FF PAGE NOPAGE HELP',cr,lf,
+              'DIR means non-system files; DOS directories use <DIR> or \',cr,lf,
+              'PAGE: Press any key to continue...; Ctrl-C stops',cr,lf,'$'));
+            call terminate;
+        end;
         else if token(1) = 'M' then
             message = true;
         else if token(1) = 'N' then
@@ -355,6 +363,8 @@ get$options: procedure;
                 format = form$size;
             else if token(2) = 'O' then
                 sort$op = true;
+            else if token(2) = 'H' then
+                format = form$short;
             else goto op$err;
         else if token(1) = 'X' then
             find.xfcb = true;
@@ -561,7 +571,7 @@ plmstart:
         active$usr$vector = 0;           /* users active on cur$drv      */
         cur$usr = get$nxt(.usr$vector);  /* get first user num and mask  */ 
         get$all$dir$entries = false;     /* off it off                   */
-        if usr$vector <> 0 and format <> form$short then
+        if usr$vector <> 0 then
                                          /* find high water mark if      */
         do;                              /* more than one user requested */
             fcb(f$drvusr) = '?';
@@ -572,7 +582,7 @@ plmstart:
                 i = search$next;
             end;                         /* is there enough space in the */
                                          /* worst case ?                 */
-            if maxb > mult23(temp) + shl(temp,1) then
+            if maxb > file$address(temp) + shl(temp,1) then
                 get$all$dir$entries = true;  /* location of last possible   */
         end;                                 /* file info record and add    */
         first$pass = true;                   /* room for sort indices       */
@@ -583,8 +593,7 @@ plmstart:
             call set$vec(.temp,cur$usr);
             if (temp and active$usr$vector) <> 0 then
             do;
-                if format <> form$short and
-                    (first$pass or not get$all$dir$entries)  then
+                if first$pass or not get$all$dir$entries then
                 do;
                     call getfiles;      /* collect files in memory and  */
                     first$pass = false; /* build the active usr vector  */

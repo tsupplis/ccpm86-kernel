@@ -1,4 +1,5 @@
 # HELP — Intel PL/M compilation, link/locate, then GENCMD packaging.
+# The indexed database (help.hlp) is built by ../helphlp.
 # all builds the declared tools; check validates them; clean removes generated files.
 
 CMDINFO=cmdinfo
@@ -11,25 +12,9 @@ GENCMD=cpm86_gencmd
 
 TOOLS=help.cmd
 
-DATA=help.hlp
-
 .PHONY: all check clean
 .DELETE_ON_ERROR:
-all: $(TOOLS) $(DATA)
-
-# HELP's native indexer requires CRLF. Convert a temporary copy so the
-# repository's text remains editable without rebuilding a malformed index.
-# Tabs replace eight-space leading indents in that copy only; displayed
-# columns are asserted identical, saving a block on the 320 KB system disk.
-help.hlp: help.cmd help.dat Makefile
-	@set -e; tmp=$$(mktemp -d); \
-	trap 'rm -rf "$$tmp"' EXIT HUP INT TERM; \
-	cp help.cmd "$$tmp/help.cmd"; \
-	cp help.dat "$$tmp/help.dat"; \
-	python3 -c "from pathlib import Path; import re; p=Path('$$tmp/help.dat'); b=p.read_bytes(); c=re.sub(rb'(?m)^( {8})+',lambda m:b'\t'*(len(m[0])//8),b); assert c.expandtabs(8)==b.expandtabs(8); p.write_bytes(c)"; \
-	unix2dos "$$tmp/help.dat"; \
-	(cd "$$tmp" && emu2 help.cmd '[C]') && cp "$$tmp/help.hlp" $@
-	@test -s $@
+all: $(TOOLS)
 
 # BBB and MMM for gencmd's data[bBBB,mMMM,xfff], derived from help.mp2:
 #   BBB = start of dats segment / 16 (e.g. 1000)
@@ -54,16 +39,15 @@ help.loc: help.obj scd.obj Makefile
 	$(INTEL_OH86) $<
 	mv $*.hex $*.h86
 
-%.obj: %.a86 Makefile
+%.obj: %.a86 Makefile $(wildcard *.lib *.equ *.def *.inc)
 	$(INTEL_ASM86) $<
 
-%.obj: %.plm Makefile $(wildcard *.lit *.def *.equ *.lib *.h *.dcl *.inc)
+%.obj: %.plm Makefile $(wildcard *.lit *.def *.equ *.lib *.h *.dcl *.inc *.ext)
 	$(INTEL_PLM86) $< debug 'optimize(3)' xref
 
 clean:
-	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn ccpmtest.img
+	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn
 	rm -f *.loc *.mp? *.lnk
-	rm -f help.hlp
 
 # Structural validation; byte comparisons or runtime checks are separate where available.
 check: all

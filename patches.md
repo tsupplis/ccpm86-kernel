@@ -124,7 +124,7 @@ remain outside this check.
 | --- | --- |
 | SDIR | Link missing disk-parameter code and terminate command tails correctly. |
 | DATE, SHOW, TOD, SDIR | Y2K date input/display corrections. |
-| PIP | Ship PIP4 fixes with the 3.1N banner; BDOS requirement remains 3.1. |
+| PIP | Ship PIP4 fixes; the source is shared with CDOS and prints `CONCURRENT PIP VERSION 4.1N`. BDOS requirement remains 3.1. |
 | HELP | Rebuild indexed help, restore original CONFIG/maintenance/DDT86/SET/FILESPEC/window topics and examples, correct function-key defaults, and document PIP archive/confirmation options and HEX validation; support topics beyond 64 KiB. |
 | DREDIX | Use BDOS keyboard input and console escapes with a local 80x24 screen buffer; preserve navigation, highlighting and console restoration. |
 | SYSDISK | Reconstruct readable source with byte-identical output; retain the original OS-version guard. |
@@ -328,6 +328,21 @@ were unreliable interactively. F12 has no XT scan code and never reaches the OS.
 
 WMENU's status-line call now passes its offset in CX and segment in DX,
 matching XIOS. This corrects the blank menu exposed by the live wake test.
+
+## Shared DATE, DIR, TYPE, SDIR, SHOW and SET sources
+
+These sources and Makefiles are identical to CDOS 4.1 and build byte-identical
+CMD files; `../check_shared_commands` covers them. Backported features:
+SDIR SHORT/HELP (SHORT now uses the buffered, sorted scan), the SHOW
+creation-stamp flag fix (label bit 10h, previously an uninitialised local)
+and removal of SHOW's OPEN/LOCKED placeholders. SHOW and SET report
+`CONCURRENT SHOW 4.1N` / `CONCURRENT SET 4.1N`.
+
+The CDOS DOS-media code (TYPE exact EOF, SDIR `<DIR>`, SET/SHOW CP/M-media
+guards) runs ungated: this kernel is built without PCMODE, never writes label
+byte 15 and keeps block numbers below 8000h, so its tests cannot match. Only
+SHOW's 3.3 A:..M: implicit SPACE limit is gated on BDOS version 41h; CCP/M
+still lists every logged drive.
 
 ## BATCH: shell message and alias alignment
 

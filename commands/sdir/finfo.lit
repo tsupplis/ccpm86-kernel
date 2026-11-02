@@ -1,12 +1,12 @@
 
 /* file info record for SDIR - note if this structure changes in size  */
-/* the multXX: routine in the sort.plm module must also change         */
+/* file$address in sort.plm uses SIZE, including the DOS subdir flag.  */
 
 declare
         f$info$structure lit 'structure(
             usr byte, name (8) byte, type (3) byte, onekblocks address,
             kbytes address, recs$lword address, recs$hbyte byte,
-            hash$link address, x$i$adr address)';
+            hash$link address, x$i$adr address, subdir byte)';
 declare
         x$info$structure lit 'structure (
             create (4) byte,
