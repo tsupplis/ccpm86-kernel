@@ -12,7 +12,7 @@ import tempfile
 
 ROOT=Path(__file__).resolve().parent.parent
 MEDIA=ROOT/'media'
-CDOS=ROOT.name.startswith('cdos')
+CDOS=(MEDIA/'cdos86.cfg').exists()
 SYSTEM='cdos86' if CDOS else 'ccpm86'
 TOOLS='cdostools' if CDOS else 'ccpmtools'
 FIXTURE=ROOT/'kernel/rsp3/tests/exe_header.asm'
@@ -33,8 +33,9 @@ def check(start):
             return result
         twist=str(ROOT/'tools/cpm86twist.py')
         shutil.copyfile(MEDIA/(SYSTEM+'.img'),folder/(SYSTEM+'.img'))
-        logical=folder/'files.logical'
-        run('python3',twist,'untwist',str(MEDIA/'base.img'),str(logical))
+        logical=folder/'logical.img'
+        run('python3',twist,'untwist',str(MEDIA/(SYSTEM+'base.img')),str(logical))
+        assert logical.exists(), ('twist output missing',list(folder.iterdir()))
         for local,(header_bytes,image_bytes,kind) in enumerate(cases):
             number=start+local
             payload=folder/'payload.bin'

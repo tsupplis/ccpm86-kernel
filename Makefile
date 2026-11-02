@@ -82,3 +82,8 @@ check-window: all
 .PHONY: check-batch-live
 check-batch-live: all
 	python3 tools/batch_check.py
+
+# Same independent loader fixtures in CCP/M and CDOS; disposable PCE disks only.
+.PHONY: check-exe
+check-exe: all
+	python3 tools/exe_header_check.py

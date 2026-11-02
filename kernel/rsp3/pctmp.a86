@@ -2095,8 +2095,8 @@ prepare_exe_entry:
 	mov	word ptr .exe_records_left,ax
 
 ; The original calculation discards a partial 512-byte header page. The
-; experimental path selects bulk record reads or a header-tail copy reader.
-	jmp	load_exe_header_tail			; choose record-aligned or byte-shifting path
+; bounded reader handles aligned headers and tails within a CP/M record.
+	jmp	load_exe_header_tail			; exact, bounded image reader
 exe_aligned_record_index:
 	mov	cl,3
 	shr	ax,cl					; header paragraphs / 8 = CP/M records

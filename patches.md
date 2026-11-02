@@ -355,3 +355,28 @@ PAUSE, alias behavior and preservation of unrelated files.
 
 DREDIX's original HELP.EDX/LSN.EDX are now kept beside its sources and
 packaged on the extension disk with the editor.
+
+## PCTMP: exact EXE header positioning
+
+This is the same EXE-loader defect documented for DOS Plus 1.2 in the
+[Seasip DOS Plus EXE-loader analysis](https://www.seasip.info/Cpm/dosplus_exe.html).
+The historical calculation converts header paragraphs to bytes, divides by
+512 and multiplies by four. It therefore discards a partial 512-byte page.
+Changing the divisor alone fixes record-aligned headers but still fails on
+headers such as 96 bytes. MZ header sizes are paragraphs, so the full reader
+must also handle an image starting inside a 128-byte CP/M record.
+
+The production implementation in `kernel/rsp3/pcguard.lib` already had
+this complete bounded-reader correction, including image and relocation
+bounds. It is retained as the reference model; no duplicate reader is added.
+Its per-console CODE sidecars preserve the reconstructed DATA layout.
+
+Both independent projects contain the same local `tools/exe_header_check.py`
+and `kernel/rsp3/tests/exe_header.asm` fixtures. `make check-exe` exercises
+32/48/64/80/96/112/128/144/256/512/528/65552-byte headers, a >64-KiB image,
+both full-final-page conventions, relocation, nonzero CS:IP, final image bytes,
+malformed/truncated input, and COM execution after errors. NASM is used only
+for disposable test programs; production assembly tools remain unchanged.
+
+The reported DOS version is unchanged. Fixing MZ loading does not establish
+full DOS 2.11 API compatibility.

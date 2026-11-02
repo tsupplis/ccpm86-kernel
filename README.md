@@ -38,6 +38,8 @@ pcfloppy ccpm86.img ccpmdos.img
 
 PC-MODE supports a bounded DOS/BIOS subset; application compatibility varies.
 The supplied disks use the CP/M filesystem—DOS FAT support is not enabled.
+- **EXE headers:** fixes the same [DOS Plus loader defect](https://www.seasip.info/Cpm/dosplus_exe.html); valid headers need not be 512-byte aligned.
+
 See the [API tables](api.md) for DOS, BIOS and native interrupt coverage.
 See [patch notes](patches.md#pc-mode-and-loader-hardening) for the implementation
 and verification details, and [distributions](#distributions) for all seven disks.
