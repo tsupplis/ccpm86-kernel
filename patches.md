@@ -380,3 +380,9 @@ for disposable test programs; production assembly tools remain unchanged.
 
 The reported DOS version is unchanged. Fixing MZ loading does not establish
 full DOS 2.11 API compatibility.
+
+Verification: all 18 EXE cases and six COM recovery runs pass on CCP/M and
+CDOS independently. Packaged disk payloads, boot tracks and sizes verify.
+CDOS additionally passes the 32-byte-header EXE test on FAT with output
+redirection, append/echo and stderr isolation, plus the existing assembled
+DOS/EXEC/critical-error regressions.
