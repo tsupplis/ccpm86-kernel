@@ -37,8 +37,6 @@ ccpm_local:
 	mov	dx,offset msg_background
 	jmp	ccpm_stop
 ccpm_equipment:
-        xor dx,dx
-        xor si,si
 	xor	cx,cx
 	mov	al,14
 	call	ccpm_call
@@ -52,26 +50,6 @@ ccpm_equipment:
 	jmp	bad_drive
 ccpm_init_done:
 	ret
-
-; Probe only existing service 14; old XIOS ignores the signature registers.
-; DOS formatting requires variable format 29 and physical raw I/O 35/36.
-require_dos_xios:
-        test options,opt_dos
-        jz dos_xios_ready
-        xor cx,cx
-        mov dx,444bh
-        mov si,534bh
-        mov al,14
-        call ccpm_call
-        cmp ax,4b44h
-        jne dos_xios_missing
-        cmp result_dx,0101h
-        jne dos_xios_missing
-dos_xios_ready:
-        ret
-dos_xios_missing:
-        mov dx,offset msg_dos_xios
-        jmp ccpm_stop
 
 ; Lock only after Y confirmation. Recheck the open-file vector while holding
 ; the queue token, closing the race between the initial test and acquisition.
@@ -150,7 +128,6 @@ ccpm_call:
 	mov	es,word ptr uda_segment
 	mov	ds,word ptr system_segment
 	callf	dword ptr .28h
-        mov cs:result_dx,dx
 	pop	es
 	pop	ds
 	pop	bp
@@ -174,9 +151,6 @@ ccpm_io:
 	push	bp
 	push	ds
 	push	es
-        mov native_format_extra,0
-        test options,opt_dos
-        jnz ccpm_dos_packet
 	mov	ch,8
 	mov	cl,drive
 	push	cx
@@ -201,51 +175,11 @@ ccpm_not_format:
 	jmp	ccpm_issue
 ccpm_read:
 	mov	al,10
-        jmp ccpm_issue
-ccpm_dos_packet:
-        cmp operation,5
-        jne ccpm_dos_drive
-        mov ax,0f650h              ; F6 fill, gap 50h, caller-owned CHRN DMA.
-        push ax
-        mov native_format_extra,2
-ccpm_dos_drive:
-        mov ch,sector_count
-        mov cl,drive
-        push cx
-        cmp operation,5
-        jne ccpm_dos_physical
-; Variable format 29 retains DSKMAINT's reversed logical track numbering.
-        xor cx,cx
-        mov cl,track
-        jmp ccpm_dos_track_ready
-ccpm_dos_physical:
-        call track_chs
-        mov cl,ch
-        mov ch,dh                  ; Physical packet: head in high byte.
-ccpm_dos_track_ready:
-        push cx
-        xor cx,cx
-        push cx
-        mov cx,buffer_segment
-        push cx
-        xor cx,cx
-        push cx
-        mov al,29
-        cmp operation,5
-        je ccpm_issue
-        mov al,36
-        cmp operation,3
-        je ccpm_issue
-        mov al,35
 ccpm_issue:
 	mov	es,word ptr uda_segment
 	mov	ds,word ptr system_segment
 	callf	dword ptr .28h
 	add	sp,10
-        cmp cs:native_format_extra,0
-        je ccpm_packet_removed
-        add sp,2
-ccpm_packet_removed:
 	pop	es
 	pop	ds
 	pop	bp
@@ -320,8 +254,6 @@ ccpm_finished:
 	ret
 
 	dseg
-result_dx       dw      0
-native_format_extra db  0
 result_es	dw	0
 result_bx	dw	0
 system_segment	dw	0
@@ -339,7 +271,6 @@ io_mode_held	db	0
 disk_queue	db	0,0,0,0,0,0,0,0
 	db	'MXdisk  '
 	db	0,0,0,0,0,0
-msg_dos_xios db 'DOS formatting requires the updated CCP/M raw-floppy XIOS.',13,10,'$'
 msg_terminal	db	'DFORM requires a local virtual console.',13,10,'$'
 msg_background	db	'DFORM cannot run in background or buffered mode.',13,10,'$'
 msg_open_files	db	'Close all open files before formatting.',13,10,'$'

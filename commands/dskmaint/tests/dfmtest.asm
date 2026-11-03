@@ -8,13 +8,6 @@ cpu 8086
 %ifndef IGNORE_ERRORS
 %define IGNORE_ERRORS 0
 %endif
-%ifndef DOS_FORMAT
-%define DOS_FORMAT 0
-%endif
-%ifndef EXTENDED
-%define EXTENDED 0
-%endif
-%define SECTORS (8+DOS_FORMAT)
 org 100h
 start:
     mov ax,cs
@@ -113,8 +106,6 @@ resetdrive:
     xor ax,ax
     jmp corrupt
 rawio:
-    cmp dl,0fdh
-    je input
     cmp dl,0ffh
     je input
     push dx
@@ -143,7 +134,7 @@ input:
     jmp corrupt
 .poll:
 %if ABORT_VERIFY
-    cmp byte [cs:write_count],1+DOS_FORMAT
+    cmp byte [cs:write_count],1
     jne .format_poll
     mov al,3
     jmp corrupt
@@ -270,7 +261,7 @@ xios:
 %endif
     cmp byte [ss:bp+14],DRIVE
     jne bad
-    cmp byte [ss:bp+15],SECTORS
+    cmp byte [ss:bp+15],8
     jne bad
     cmp word [ss:bp+10],0
     jne bad
@@ -281,28 +272,8 @@ xios:
     jnz bad
     mov es,bx
     mov bx,[ss:bp+12]
-%if DOS_FORMAT
-    cmp al,29
-    je .logical_track
-    cmp bh,1
-    ja bad
-    cmp bl,40
-    jae bad
-    test bh,bh
-    jz .logical_track
-    neg bl
-    add bl,79
-    xor bh,bh
-.logical_track:
-%endif
     cmp bx,SIDES*40
     jae bad
-    cmp al,29
-    je .format
-    cmp al,36
-    je .write
-    cmp al,35
-    je .verify
     cmp al,15
     je .format
     cmp al,11
@@ -311,19 +282,6 @@ xios:
     je .verify
     jmp bad
 .equipment:
-%if DOS_FORMAT
-    cmp dx,444bh
-    jne .normal_equipment
-    cmp si,534bh
-    jne bad
-%if EXTENDED
-    mov ax,4b44h
-    mov dx,0101h
-    pop bp
-    retf
-%endif
-.normal_equipment:
-%endif
     cmp cx,0
     jne bad
     mov ax,300h
@@ -338,39 +296,6 @@ xios:
     cmp byte [cs:failed_requests],FAIL_LIMIT
     jb .failed
 %endif
-%if DOS_FORMAT
-    cmp word [ss:bp+16],0f650h
-    jne bad
-    push cx
-    push dx
-    push si
-    mov ch,bl
-    xor dh,dh
-    cmp ch,40
-    jb .format_chs
-    neg ch
-    add ch,79
-    mov dh,1
-.format_chs:
-    xor si,si
-    mov cl,1
-.check_ids:
-    cmp [es:si],ch
-    jne bad
-    cmp [es:si+1],dh
-    jne bad
-    cmp [es:si+2],cl
-    jne bad
-    cmp byte [es:si+3],2
-    jne bad
-    add si,4
-    inc cl
-    cmp cl,10
-    jne .check_ids
-    pop si
-    pop dx
-    pop cx
-%endif
     xor bh,bh
     cmp bl,[cs:format_count]
     jne bad
@@ -382,34 +307,16 @@ xios:
     cmp byte [cs:failed_requests],FAIL_LIMIT
     jb .failed
 %endif
-%if DOS_FORMAT
-    cmp byte [cs:write_count],0
-    jne .write_second
     cmp bx,0
     jne bad
-    jmp .write_geometry_ok
-.write_second:
-    cmp bx,79
-    jne bad
-.write_geometry_ok:
-%else
-    cmp bx,0
-    jne bad
-%endif
     cmp byte [cs:format_count],SIDES*40
     jne bad
     push ds
     push cs
     pop ds
     mov si,expected_track
-%if DOS_FORMAT
-    cmp byte [cs:write_count],0
-    je .expected_head_ready
-    add si,4608
-.expected_head_ready:
-%endif
     xor di,di
-    mov cx,SECTORS*256
+    mov cx,1000h
     cld
     repe cmpsb
     jne bad
@@ -463,7 +370,7 @@ bios:
     and word [ss:bp+6],0fffeh
     cmp ah,0
     je .success
-    cmp al,SECTORS
+    cmp al,8
     jne bad
     cmp cl,1
     jne bad
@@ -534,7 +441,7 @@ bios:
     jne bad
     inc cl
     add si,4
-    cmp cl,SECTORS+1
+    cmp cl,9
     jne .ids
     pop si
     pop cx
@@ -543,11 +450,7 @@ bios:
 .write:
     cmp ch,0
     jne bad
-%if DOS_FORMAT
-    cmp dh,[cs:write_count]
-%else
     cmp dh,0
-%endif
     jne bad
     cmp byte [cs:format_count],SIDES*40
     jne bad
@@ -555,14 +458,8 @@ bios:
     push cs
     pop ds
     mov si,expected_track
-%if DOS_FORMAT
-    cmp byte [cs:write_count],0
-    je .expected_head_ready
-    add si,4608
-.expected_head_ready:
-%endif
     xor di,di
-    mov cx,SECTORS*256
+    mov cx,1000h
     cld
     repe cmpsb
     jne bad
@@ -648,7 +545,7 @@ write_count db 0
 verify_count db 0
 failed_requests db 0
 login_reset db 0
-params db 0cfh,02h,25h,02h,SECTORS,2ah,0ffh,50h,(0e5h+DOS_FORMAT*11h),19h,04h
+params db 0cfh,02h,25h,02h,08h,2ah,0ffh,50h,0e5h,19h,04h
 tail db TAIL
 tail_end:
 expected_track:

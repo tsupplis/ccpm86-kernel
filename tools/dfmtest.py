@@ -13,12 +13,12 @@ def case(tail='A:', sides=2, verify=False, answer='Y', abort=-1,
          drive=0, retry=False, abort_verify=False, native=False,
          console_state=0, open_files=0, queue_fail=0, console_number=0,
          floppy_count=2, full_version=0x1431, initial_keep=0,
-         open_after_lock=0, initial_error_mode=7, ignore_errors=False, dos=False, extended=False):
+         open_after_lock=0, initial_error_mode=7, ignore_errors=False):
     global count
     if native and version == 0x22:
         version = 0x0431
     formats = sides * 40
-    writes = 1+int(dos)
+    writes = 1
     verifies = sides * 40 if verify else 0
     failures = (1 if retry else 5) if fail else 0
     if error or answer.upper() != 'Y':
@@ -34,7 +34,7 @@ def case(tail='A:', sides=2, verify=False, answer='Y', abort=-1,
     elif fail == 4 and not retry:
         verifies = 0
     reset = int(bool(formats or fail))
-    options = dict(DOS_FORMAT=int(dos), EXTENDED=int(extended), SIDES=sides, ANSWER=ord(answer), TAIL=f'"{tail}"',
+    options = dict(SIDES=sides, ANSWER=ord(answer), TAIL=f'"{tail}"',
                    ABORT_AT=abort, ABORT_VERIFY=int(abort_verify), FAIL_OP=fail,
                    FAIL_LIMIT=failures, FAIL_STATUS=status,
                    OSVER=version, EQUIPMENT=equipment, DRIVE=drive,
@@ -55,12 +55,6 @@ def case(tail='A:', sides=2, verify=False, answer='Y', abort=-1,
     track[0x1ff] = sides - 1
     track[0x900:0x900 + len(loader)] = loader
     track[0x951] = 3 if native else 2
-    if dos:
-        track = bytearray(18*512)
-        boot = (ROOT / 'fatboot.bin').read_bytes()
-        assert len(boot)==512 and boot[510:]==b'\x55\xaa'
-        track[:512]=boot
-        track[512:515]=track[1536:1539]=b'\xfd\xff\xff'
     with tempfile.TemporaryDirectory(prefix='dform-test-') as temp:
         temp = Path(temp)
         (temp / 'track.bin').write_bytes(track)
@@ -150,19 +144,4 @@ for op in (5, 3, 4):
     case('A:[V]', native=True, verify=True, fail=op, ignore_errors=True)
     case('A:[V]', native=True, verify=True, fail=op, retry=True,
          ignore_errors=True)
-for native in (False,True):
-    for drive in (0,1):
-        for verify in (False,True):
-            case(('A:' if drive==0 else 'B:')+'[DOS]'+(' [V]' if verify else ''),dos=True,extended=True,native=native,drive=drive,verify=verify)
-    for tail in ('A:[dosv]','A:[DOS2V]','A:[DOS] [2] [V'):
-        case(tail,dos=True,extended=True,native=native,verify=True)
-    for tail in ('A:[DOS1]','A:[1] [DOS]','A:[DOS] [1]', 'A:[D]', 'A:[DO]', 'A:[DOSX]', 'A:[DOS] [8]'):
-        case(tail,dos=True,extended=True,native=native,error='Invalid parameter.')
-    case('A:[DOS]',dos=True,extended=True,native=native,answer='N')
-    case('A:[DOS]',dos=True,extended=True,native=native,abort=0)
-    case('A:[DOSV]',dos=True,extended=True,native=native,verify=True,abort_verify=True)
-    for op in (5,3,4):
-        case('A:[DOSV]',dos=True,extended=True,native=native,verify=True,fail=op)
-        case('A:[DOSV]',dos=True,extended=True,native=native,verify=True,fail=op,retry=True)
-case('A:[DOS]',dos=True,native=True,error='requires the updated CCP/M')
 print(f'PASS: {count} dual-OS DFORM cases; boot images, BIOS/XIOS, locks and cleanup checked')
