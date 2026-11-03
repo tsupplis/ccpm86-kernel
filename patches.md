@@ -496,3 +496,15 @@ four bytes per sector rather than the read/write sector byte count. Its
 active state is cleared on return. These privileged maintenance entries rely
 on the caller's existing MXdisk/console/process exclusion protocol. No FAT
 mounting, DOS interrupt routing or ordinary filesystem geometry is changed.
+
+Original CCP/M kernels retain the legacy eight-sector path. The rebuilt tools
+refuse nine-sector access unless the capability query succeeds; the extended
+XIOS and new commands must therefore be installed together for 360K support.
+CP/M-86 needs no kernel change: its backend uses BIOS INT 13h and temporarily
+installs its own INT 1Eh table. CDOS uses its existing equivalent services.
+
+Validation covers both XIOS profiles (62 assembled boundary/state/DMA cases),
+266 command simulations per project, and actual PCE copy/compare tests on all
+three kernels. Mixed eight/nine-sector comparisons are rejected; BPB arithmetic
+preserves the selected drive before probing its ninth sector. These tests use
+only disposable images, and compare the complete physical image after copying.
