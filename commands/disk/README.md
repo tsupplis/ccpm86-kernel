@@ -42,8 +42,6 @@ for known single-sided media. A failed read is not evidence that a head is absen
 
 CP/M-86 uses BIOS and a private INT 1Eh parameter table. The table supplies
 the actual eight/nine ID count for BIOS formatting, then returns to nine
-for geometry probes. The table supplies
-the actual eight/nine ID count for BIOS formatting, then returns to nine
 for geometry probes. Concurrent versions
 use SYSDAT:28h, the caller UDA and stack IOPBs under MXdisk, P_KEEP and console
 NOSWITCH. CDOS uses physical raw read/write 35/36 and variable format 29.
