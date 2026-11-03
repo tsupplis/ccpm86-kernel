@@ -472,8 +472,9 @@ end get$file$spec;
 
 set$defaults: procedure;            
     /* set defaults if not explicitly set by user */ 
-    if not (find.dir or find.sys) then
-        find.dir, find.sys = true;
+    /* Deliberate shared UI default: normal files only on CP/M and FAT.
+       Explicit [DIR SYS] retains the old all-files view. */
+    if not (find.dir or find.sys) then find.dir = true;
     if not(find.ro or find.rw) then
         find.rw, find.ro = true;
 

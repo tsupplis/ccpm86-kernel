@@ -24,6 +24,8 @@ chkcpmfs-live-images: kernel boot
 	$(MAKE) -C media ccpm86.img ccpmtools.img
 
 check: all
+	$(MAKE) -C commands/disk check
+	python3 tools/disk_xios_unit_check.py
 	python3 tools/graphics_unit_check.py
 	$(MAKE) -C boot check
 	$(MAKE) -C commands/sysdisk check
@@ -101,3 +103,11 @@ check-graphics: all
 	python3 tools/graphics_check.py
 	python3 tools/graphics_check.py ega
 	python3 tools/graphics_check.py cga
+
+# Raw floppy maintenance checks; live tests use disposable images only.
+.PHONY: check-disk check-disk-live
+check-disk:
+	$(MAKE) -C commands/disk check
+
+check-disk-live: all
+	python3 tools/disk_live_check.py

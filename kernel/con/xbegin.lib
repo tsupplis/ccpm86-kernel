@@ -486,7 +486,7 @@ function_table:
 	dw	io_ret			;26 dummy
 	dw	io_ret			;27 dummy
 	dw	io_ret			;28 dummy
-	dw	io_ret			;29 dummy
+	dw	io_variable_format	;29 local 8/9-sector variable format
 	dw	get_set_screen		;30 alpha/graphics screens
 if not PCMODE_XIOS
 	dw	eg_native_video		;31 enhanced graphics packets, native-only build
@@ -498,6 +498,12 @@ if PCMODE_XIOS
 	dw	pc_shift_status	;33 BIOS shift status
 	dw	pc_equipment		;34 BIOS equipment word
 endif
+; Keep 35/36 at the same numbers in PC-MODE and native-only builds.
+if not PCMODE_XIOS
+	dw io_ret,io_ret,io_ret
+endif
+	dw io_raw_read		;35 local physical floppy read
+	dw io_raw_write		;36 local physical floppy write
 
 io_ret:
 	ret			; for null function calls

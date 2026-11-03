@@ -1118,6 +1118,18 @@ io_auxout:
 ;		     1 => setup data
 
 io_pointer:
+; Safe discovery through an existing entry: old kernels ignore DX/SI and
+; cannot return the matching signature AND changed version word in DX.
+        cmp cx,0
+        jne disk_pointer_normal
+        cmp dx,444bh
+        jne disk_pointer_normal
+        cmp si,534bh
+        jne disk_pointer_normal
+        mov ax,4b44h
+        mov dx,0101h
+        ret
+disk_pointer_normal:
 	mov	bx,cx
 	add	bx,bx		; word index
 	mov	ax,ptr_list[bx]	; here's the return value

@@ -213,8 +213,12 @@ display$file$info: procedure;
     if file$info.subdir then call print(.('      $'));
     else call p3byte(.file$info.recs$lword,1);          /* records               */
     call printb;
-    if rol(file$info.name(f$dirsys-1),1) then      /* Type                  */
-       call print(.('Sys$'));
+    /* Selection groups SYS/HIDDEN together; display keeps their identity. */
+    if file$info.hidden then do;
+        if rol(file$info.name(f$dirsys-1),1) then call print(.('S+H$'));
+        else call print(.('Hid$'));
+    end;
+    else if rol(file$info.name(f$dirsys-1),1) then call print(.('Sys$'));
     else call print(.('Dir$'));
     call printb;
     if rol(file$info.name(f$rw-1),1) then
@@ -322,11 +326,12 @@ test$att: procedure(char,off,on) boolean;
 end test$att;
 
 right$attributes: procedure(name$adr) boolean;
-    dcl name$adr address,
+    dcl name$adr address, system$group byte,
         name based name$adr (1) byte;
-    return 
-        test$att(name(f$rw-1),find.rw,find.ro) and
-        test$att(name(f$dirsys-1),find.dir,find.sys);
+    system$group = name(f$dirsys-1);
+    if file$info.hidden then system$group = system$group or 80h;
+    return test$att(name(f$rw-1),find.rw,find.ro) and
+           test$att(system$group,find.dir,find.sys);
 end right$attributes;
 
 dcl (last$plus$one,index) address;

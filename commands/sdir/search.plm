@@ -35,6 +35,7 @@ dcl search (max$search$files) search$structure external;
 
 dcl cur$usr byte external,
     cur$drv byte external,        /* current drive   "     "           */
+    fat$scan byte public,      /* true only after the raw FAT metadata probe */
     dir$label byte public;      /* directory label for BDOS 3.0      */
 
 
@@ -160,7 +161,7 @@ declare
    16/17, bit 80h set, and bit 40h marks a subdirectory. The byte-0
    guard excludes CP/M XFCBs; CP/M allocation bytes alone are not a type. */
 is$dos$directory: procedure boolean public;
-    return ((buf$fcb(f$drvusr) and 10h) = 0) and
+    return fat$scan and ((buf$fcb(f$drvusr) and 10h) = 0) and
            (buf$fcb(f$diskmap) = buf$fcb(f$diskmap+1)) and
            ((buf$fcb(f$diskmap) and 0c0h) = 0c0h);
 end is$dos$directory;
@@ -389,6 +390,11 @@ func   /__ letters      |          .            |                        |
         call move(f$namelen + f$typelen, .buf$fcb(f$name),.file$info.name);
         file$info.usr = buf$fcb(f$drvusr) and 0fh;
         file$info.subdir = is$dos$directory;
+        /* Preserve HIDDEN separately: never manufacture a CP/M SYS bit.
+           Bytes 16/17 are allocation data on CP/M and may contain anything. */
+        file$info.hidden = fat$scan and
+          (buf$fcb(f$diskmap) = buf$fcb(f$diskmap+1)) and
+          ((buf$fcb(f$diskmap) and 0a0h) = 0a0h);
         file$info.onekblocks,file$info.kbytes,file$info.recs$lword,
             file$info.recs$hbyte, file$info.x$i$adr,file$info.hash$link = 0;
         hash$entry = f$i$adr;           /* save the address of file$info    */
@@ -448,6 +454,15 @@ get$files: procedure public;       /* with one scan through directory get   */
     used$de = 0;
     fcb(f$drvusr) = '?';                           /* match all dir entries */
     dcnt = search$first(.fcb);
+    fat$scan = false;
+    if dcnt <> 255 then do;
+        buf$fcb$adr = shl(dcnt and 11b,5)+.buff;
+        /* BLACK synthesizes this first metadata record even without a
+           volume name. Test it before decoding any FAT disk-map flags. */
+        fat$scan = buf$fcb(f$drvusr) = 20h and
+                   buf$fcb(15) = 80h and buf$fcb(16) = 80h and
+                   buf$fcb(17) = 80h;
+    end;
     sfcb$adr = 96 + .buff;	         /* determine if SFCB's are present */
     if dir$type = sfcb$type then
       do;

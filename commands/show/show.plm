@@ -724,7 +724,7 @@ select$disk: procedure(d);
    DMA offsets 0/15 (20h/80h), even if the DOS root is otherwise empty.
    Use a private buffer and restore the caller's DMA offset afterwards. */
 declare media$buffer (128) byte;
-declare media$fcb (16) byte initial ('????????????',0,0,0,0);
+declare media$fcb (36) byte initial ('????????????',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
 
 dos$media: procedure byte;
     declare (old$dma,junk) address, n byte;
@@ -1373,6 +1373,24 @@ labelstatus: procedure;
 	end;
     end printfn;
 
+    if dos$media then do;
+        call readlbl;
+        if dcnt = 0ffh then return;
+        fcbp = shl(dcnt,5) + .dirbuf;
+        if fcbv(1) = ' ' then do;
+            call print(.('No volume label exists for drive ',0));
+            call show$drive;
+        end;
+        else do;
+            declare k byte;
+            call print(.('Volume label for drive ',0));
+            call show$drive;
+            call printx(.(' ',0));
+            do k = 1 to 11; call printchar(fcbv(k)); end;
+        end;
+        call crlf;
+        return;
+    end;
     call require$cpm;
     if cversion < cpm3 then
 	call versionerr;

@@ -191,8 +191,8 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `chkcpmfs` | Read-only CP/M directory allocation consistency check | — | New shared PL/M-86 checker for CDOS, CCP/M-86 and CP/M-86 | ✓ |
 | `config` | Configure serial ports | Original |  Reverse engineered from CCP/M-86 |  |
 | `date` | Display or set the date | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K patched |  |
-| `dcomp` | Compare floppy diskettes | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |
-| `dcopy` | Copy floppy diskettes | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |
+| `dcomp` | Compare raw 8/9-sector CP/M/FAT floppies | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |
+| `dcopy` | Copy raw 8/9-sector CP/M/FAT floppies | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |
 | `ddt86` | Interactive machine-code debugger | — | Recompiled from CCP/M-86 3.1 and adapted | ✓ |
 | `dir` | List directory contents | — | Recompiled from CCP/M-86 3.1 and adapted; command/RSP |  |
 | `dform` | Command-line floppy formatter | — | New | ✓ |
@@ -229,6 +229,9 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `asm80` | 8080 assembler | — | Translated using XLT86 from CP/M-80 2.2 and adapted | ✓ |
 | `hexcom` | Convert Intel HEX to COM binaries | — | HEXCOM 3.00-compatible C from [tpzasm](https://github.com/johnsonjh/tpzasm) | ✓ |
 | `dredix` | Full-screen text editor | — | DREDIX C Backported from Concurrent DOS 4.1 |  |
+
+DCOPY/DCOMP support 160/180/320/360K raw media. Nine-sector access needs the
+updated XIOS; see [disk tools](commands/disk/README.md).
 
 ✓ = confirmed compatible with BDOS 2.2.
 

@@ -93,6 +93,13 @@ mon2	equ	xdos		; returns byte in AL
 mon3	equ	xdos		; returns address or word BX
 mon4    equ     xdos		; returns pointer in BX and ES
 
+; PL/M ADDRESS cannot express its data segment; supply it for far packets.
+public getds
+getds proc near
+        mov ax,ds
+        ret
+getds endp
+
 patch:
 	nop 
 	nop

@@ -437,3 +437,62 @@ replace. The graphics live fixture checks teletype drawing and cursor advance.
 
 Validation: 177 assembled-XIOS cases; live PCE VGA/EGA/CGA graphics,
 including teletype; kernel regressions and every packaged image payload.
+
+## Shared SET source: guarded CDOS FAT HIDDEN option
+
+SET retains the shared CDOS source and adds `[HIDDEN=ON|OFF]` only for
+actual FAT media with the project-local BDOS 230 capability handshake.
+The CCP/M kernel does not implement 230 and its current PC-MODE build has
+no FAT support: the media guard rejects HIDDEN before calling that function.
+Existing CP/M attributes, passwords, labels and stamps are unchanged.
+The common `scd.a86` supplies a small PL/M data-segment helper for the far
+FCB packet when running on a supporting CDOS kernel. Both command builds
+and maintained help are refreshed; no CCP/M kernel API or FCB bit assignment
+is changed. See the SET README for the conditional option.
+
+## Shared DIR/SDIR and explicit SYSTEM/HIDDEN browsing
+
+DIR.CMD now uses the shared CDOS parser/filter source, including [Gn]
+validation and exclusive [S] selection. Actual FAT metadata guards HIDDEN
+recognition; native CP/M files retain their normal interpretation.
+SDIR retains HIDDEN separately and displays Sys/Hid/S+H in FULL. Its default
+is deliberately normal-only on both projects; [DIR SYS] restores the old
+all-files view. [SYS] groups SYSTEM and FAT HIDDEN. No BDOS 230 dependency.
+
+### DCOPY/DCOMP: 8/9-sector raw floppy support
+
+The shared command sources now select BIOS (CP/M-86 1.1), legacy XIOS
+(CCP/M-86 3.1), capability-checked updated CCP/M XIOS, or CDOS 4.1 physical
+XIOS I/O. FAT12 BPB validation and retried sector-nine probes select eight/nine
+sectors conservatively; [8]/[9] provide explicit selection. Unknown media is
+never treated as eight sectors merely because a ninth-sector read failed.
+DCOMP checks both geometries. DCOPY formats the target to the source geometry
+before writes, removing leftover sector-nine tracks when copying eight-sector
+media. Both remain filesystem-independent and copy existing boot code unchanged.
+
+All head buffers and verification/format DMA use physical 8 KiB alignment,
+avoiding 64 KiB DMA boundary crossings for 4608-byte tracks. Padding is zeroed
+before comparison. Uninitialized DMA buffers are at the end of the CMD group:
+MIN reserves them, while LEN omits checked zero bytes from disk. Native prompt
+reads use raw function 6/FDh to sleep for PIN instead of starving its lower
+priority in a busy loop. Cleanup restores the original INT 1Eh vector, locks,
+priority, console state and media login records. Each project owns its sources,
+Makefile and simulations, without sibling build dependencies.
+
+### Native raw-floppy XIOS services for nine-sector maintenance
+
+The original driver fixes both EOT and legacy format commands at eight
+sectors. Added variable format 29 and physical read/write 35/36, with safe
+capability discovery through existing function 14 (CX=0, DX=444Bh, SI=534Bh;
+AX=4B44h/DX=0101h). Original kernels ignore the extra query registers and are
+never called through an unknown new entry. Both PC-MODE and native-only XIOS
+builds retain identical service numbers; legacy 10/11/15 remain unchanged.
+
+`xdiskraw.lib` preserves the 8080-model flat ORG layout explicitly. Raw I/O
+validates physical head/cylinder, drive and a single-head 1–9 sector request,
+uses nine-sector EOT only for that request and restores eight afterward.
+Variable formatting accepts caller CHRN DMA and gap/fill, with a DMA count of
+four bytes per sector rather than the read/write sector byte count. Its
+active state is cleared on return. These privileged maintenance entries rely
+on the caller's existing MXdisk/console/process exclusion protocol. No FAT
+mounting, DOS interrupt routing or ordinary filesystem geometry is changed.

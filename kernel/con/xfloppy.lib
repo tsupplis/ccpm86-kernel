@@ -348,6 +348,11 @@ format_floppy:
 
 	mov	ax,ds		; local dma buffer for c,h,r,n
 	mov	bx,offset format_block
+        cmp raw_format_count,0
+        je variable_format_dma_ready
+        mov ax,dma_seg
+        mov bx,dma_off
+variable_format_dma_ready:
 	call	comp_dma	; set up dma pointers
 
 	mov	al,drive	; current drive (on stack)
@@ -368,7 +373,8 @@ flp_io:
 			;note: SECTOR, TRACK is 0 relative
 			;MCNT, SECTORS_PER_TRACK are relative to 1
 
-	mov ax,sectors_per_track;max sectors - starting sector =
+	xor ax,ax
+	mov al,raw_eot	; legacy 8; explicit raw entry 9
 	sub ax,sector		;sectors left on track
 	xor bh,bh
 	mov bl,mcnt		;multi sector count is byte variable
@@ -520,7 +526,8 @@ floppy_io:
 	mov cur_sec,ax		; set sector
 
 	mov d_a_number,r_bytes
-	mov d_a_eot,r_sectors
+	mov al,raw_eot
+	mov d_a_eot,al
 	mov d_a_gpl,r_gap
 	mov d_a_dtl,r_dtl
 
@@ -620,6 +627,17 @@ disk_operation:
 	jmp fdc_command_put		;fire off the disk controller
 
 disk_op_format:
+        cmp raw_format_count,0
+        je legacy_format_command
+        mov d_a_cylinder,f_bytes
+        mov al,raw_format_count
+        mov d_a_head,al
+        mov ax,raw_gap_fill
+        mov d_a_record,al
+        mov d_a_number,ah
+        mov disk_arguments,6
+        jmp fdc_command_put
+legacy_format_command:
 	push es				;first set up the format block
 	push ds ! pop es		;  for the current cylinder/head.
 	mov di,offset format_block	;this is done most easily
@@ -783,8 +801,15 @@ dma_setup:
 	mov al,dma_high4		;high 4 bits of 20 bit DMA address
 	out dma_page_fdc,al
 	xor ax,ax
+        cmp raw_format_count,0
+        je legacy_dma_count
+        mov al,raw_format_count
+        shl ax,1 ! shl ax,1       ; four CHRN bytes per formatted sector
+        jmps variable_dma_count
+legacy_dma_count:
 	mov ah,num_sec			;shl num_sec,8 (* 256)
 	shl ah,1			;*512
+variable_dma_count:
 	dec ax				;0 relative
 	out dma_c2_count,al		;set up the low byte
 	mov al,ah			;get the low byte

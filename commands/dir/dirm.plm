@@ -226,6 +226,25 @@ declare
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 
+declare fat$listing byte;
+declare media$fcb (36) byte initial ('????????????',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
+declare media$buf (128) byte;
+
+fat$media: procedure(drive) byte;
+  declare drive byte, (saved, junk, answer) byte;
+  saved = mon2(25,0);
+  junk = mon2(14,drive);
+  if junk = 0ffh then return(false);
+  call setdma(.media$buf);
+  call setb(0,@media$buf,128);
+  media$fcb(0) = '?';
+  junk = mon2(17,.media$fcb);
+  answer = media$buf(0) = 20h and media$buf(15) = 80h;
+  junk = mon2(14,saved);
+  call setdma(.dirbuf);
+  return(answer);
+end fat$media;
+
                   /* display directory heading */
 heading: procedure;
 
@@ -273,6 +292,7 @@ directory: procedure boolean;
        then set to current disk */
     if fcb(0) = 0
       then fcb(0) = mon2 (m$curdsk,0) + 1;
+    fat$listing = fat$media(fcb(0)-1);
     if fcb(1) = ' ' then
     /* check for blank filename => wildcard */
     do i = 1 to 11;
@@ -283,8 +303,10 @@ directory: procedure boolean;
     do while dcnt <> 0ffh;
       temp = shl(dcnt,5);
       sys = ((dirbuf(temp+10) and 80h) = 80h);
+      if fat$listing and ((dirbuf(temp+16) and 20h) <> 0) then
+        sys = true;
       if (dirbuf(temp) = user) and
-         (incl$sys or not sys) then
+         ((incl$sys and sys) or (not incl$sys and not sys)) then
       do;
         if ((cnt:=cnt+1) mod 4) = 0 then
         do;
@@ -403,12 +425,15 @@ parse$options: procedure boolean;
             incl$sys = true;
           else if dirbuf(1) = 'G' then
           do;
-            if dirbuf(3) <> ' ' then
-              temp = dirbuf(3) - '0' + 10;
-            else if dirbuf(2) <> ' ' then
-              temp = dirbuf(2) - '0';
-            if temp < 16 then
-            do;
+            temp = dirbuf(2) - '0';
+            if dirbuf(2) < '0' or dirbuf(2) > '9' then error = true;
+            if dirbuf(3) <> ' ' then do;
+              if dirbuf(3) < '0' or dirbuf(3) > '9' or
+                 dirbuf(4) <> ' ' then error = true;
+              temp = temp * 10 + dirbuf(3) - '0';
+            end;
+            if temp > 15 then error = true;
+            if not error then do;
               call mon1(m$setusr, (user:=temp));
               new$user = true;
             end;

@@ -12,7 +12,7 @@ all: $(SNIPPETS)
 
 # Included assembly sources must invalidate their parent object.
 xios.h86 xiosnat.h86: xbegin.lib xchar.lib xconout.lib xfloppy.lib xhard.lib xrtc.lib xinit.lib \
-  pcmode.lib xpcmode.lib egvideo.lib
+  pcmode.lib xpcmode.lib egvideo.lib xdiskraw.lib
 bdos.obj: $(wildcard *.bdo) uda.cic xioscb.def
 sup.h86: $(wildcard *.sup) patch.cod
 rtm.h86: $(wildcard *.rtm) s8087.lib

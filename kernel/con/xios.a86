@@ -45,6 +45,8 @@ include		xconout.lib	; console out only, including windows
 
 include		xfloppy.lib	; floppy, mdisk, disk error handling
 
+include		xdiskraw.lib
+
 include		xhard.lib	; XT hard disk, FIDDS
 
 include		xrtc.lib	; BIOS RTC read/write and calendar conversion

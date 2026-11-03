@@ -131,6 +131,8 @@ declare
       1000000000000000b );
 
 
+getds: procedure address external; end getds;
+
 mon1: procedure(f,a) external;
     declare f byte, a address;
     end mon1;
@@ -368,7 +370,7 @@ terminate: procedure;
    Use private mutable storage; preserve the caller's DMA offset and FCB.
    Directory/search state used by wildcard iteration is saved separately. */
 declare media$buffer (128) byte;
-declare media$fcb (16) byte initial ('????????????',0,0,0,0);
+declare media$fcb (36) byte initial ('????????????',0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
 
 dos$media: procedure byte;
     declare (old$dma,junk) address, n byte;
@@ -436,6 +438,9 @@ $ eject
             passwd (17) byte;           /* password buffer */
 
         declare
+            hidden$pending byte initial(false),
+            hidden$value byte,
+            fat$packet (8) address initial(16,1,0,0,0,0,0,0),
             scase   byte initial(-1),    /* file attributes */
             fileref byte initial(false), /* file reference  */
             lblcmd  byte initial(false), /* label attribute */
@@ -521,6 +526,7 @@ help: procedure;
                  'set *.prl [ro, sys]',0));
     call print(.(
                  'set *.dat [archive=on,f1=off,f2=on,f3=on]',0));
+    call print(.('set *.dat [hidden=on|off] (FAT media; BDOS 230 required)',0));
     call print(.(
                  'set *.asm [password = xyz]',
                  tab,tab,'(Password Protection)',0));
@@ -868,6 +874,33 @@ rd$attributes: procedure;
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
+/* HIDDEN is a FAT-only, explicit masked update: ordinary BDOS 30 remains
+   unchanged. This source is shared verbatim with CCP/M-86: its current
+   PC-MODE has no FAT, so the media guard rejects HIDDEN before calling
+   the project-local 230 service. Earlier CDOS FAT kernels may also lack
+   230: require both successful status and the FA capability signature,
+   plus the HIDDEN mask bit. Never infer this feature from BDOS version.
+   Capabilities uses no FCB/disk; it is safe before staging any mutations.
+   FCB filename bits F5'-F8' keep their historical interface meanings. */
+set$hidden: procedure;
+    if not fileref then call parse$error;
+    if not dos$media then do;
+        call print(.('HIDDEN requires DOS media.',0));
+        call terminate;
+    end;
+    fat$packet(2),fat$packet(5),fat$packet(6) = 0;
+    if mon3(230,.fat$packet) <> 0 or
+       fat$packet(6) <> 4146h or (fat$packet(5) and 2) = 0 then do;
+        call print(.('FAT attribute service unavailable.',0));
+        call terminate;
+    end;
+    call rd$attributes;
+    call parse$value;
+    hidden$value = 0;
+    if bool then hidden$value = 2;
+    hidden$pending = true;
+end set$hidden;
+
                   /* set up file attributes */
 set$attributes: procedure;
 
@@ -1164,8 +1197,55 @@ getbool: procedure;
 
 
                  /* sets the label name */
+/* FAT NAME is an eleven-character volume string, not an 8.3 filename.
+   Keep this path inert on CCP/M, whose raw media probe never reports FAT. */
+declare fat$label (36) byte, fat$pending byte initial(false);
+fat$name: procedure;
+    declare (p,start,last,n,q) address, c based p byte,
+            tail based q byte, quoted byte;
+    if fileref then call parse$error;
+    call fill(.fat$label,0,36);
+    call fill(.fat$label(1),' ',11);
+    fat$label(0) = cdisk+1;
+    p = parse$fn.buff$adr;
+    do while c = ' ' or c = tab; p = p+1; end;
+    quoted = false;
+    if c = 22h then quoted = true;
+    if quoted then p = p+1;
+    start = p;
+    if quoted then do while c <> 0 and c <> cr and c <> lf and c <> 22h;
+        p = p+1;
+    end;
+    else do while c <> 0 and c <> cr and c <> lf and c <> ']' and c <> ',';
+        p = p+1;
+    end;
+    last = p;
+    if quoted then do;
+        if c <> 22h then call parse$error;
+        p = p+1;
+        do while c = ' ' or c = tab; p = p+1; end;
+    end;
+    else do while last > start;
+        q = last-1;
+        if tail <> ' ' and tail <> tab then goto fat$trimmed;
+        last = last-1;
+    end;
+fat$trimmed:
+    n = last-start;
+    if n > 11 then call parse$error;
+    if n <> 0 then call copy(start,.fat$label(1),n);
+    if c = ']' then optdel = false;
+    else if c <> ',' and c <> 0 and c <> cr and c <> lf then
+        call parse$error;
+    if c = ']' or c = ',' then p = p+1;
+    parse$fn.buff$adr = p;
+    fat$pending,lblcmd = true;
+    ibp = parse;
+end fat$name;
+
 lname: procedure;
 
+    if dos$media then do; call fat$name; return; end;
     call getbool;
     call copy(.cmd(1),.fcbv(1),11);      /* copy label name */
     end lname;
@@ -1361,6 +1441,32 @@ put$file: procedure;
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
+/* Eight WORDs match the native little-endian packet: size/version/op,
+   FCB offset/segment, mask, values, reserved. PL/M ADDRESS gives only the
+   offset, so getds supplies the DATA segment. The kernel does not alter
+   this FCB or consume the caller DMA. A HIDDEN-only request deliberately
+   avoids BDOS 30, which cannot express HIDDEN and might rewrite other bits.
+   BDOS 230 preserves every attribute outside bit 02h. In wildcard mode,
+   its disk search must not replace the saved UDA enumeration position. */
+put$hidden: procedure;
+    fat$packet(2) = 2;
+    fat$packet(3) = fcbp;
+    fat$packet(4) = getds;
+    fat$packet(5) = 2;
+    fat$packet(6) = hidden$value;
+    if mon3(230,.fat$packet) <> 0 then do;
+        call put$file;
+        call print(.('Cannot change HIDDEN attribute.',0));
+    end;
+    else do;
+        call put$file;
+        call printx(.set$to);
+        if hidden$value <> 0 then call printx(.('HIDDEN=ON',0));
+        else call printx(.('HIDDEN=OFF',0));
+    end;
+    hidden$pending = false;
+end put$hidden;
+
                  /* write file attributes */
 put$attributes: procedure;
     if (not fileref) then do;
@@ -1402,6 +1508,26 @@ write$label: procedure;
         call bdos$error;
         end err;
 
+    if fat$pending then do;
+        error$code = wrlbl(.fat$label);
+        if low(error$code) = 0ffh then do;
+            if high(error$code) <> 0 then call err;
+            call print(.('Cannot set DOS volume label.',0));
+            call terminate;
+        end;
+        call print(.('Volume label for drive ',0));
+        call printdrv;
+        call printx(.(' ',0));
+        if fat$label(1) = ' ' then
+            call printx(.('(none)',0));
+        else do;
+            declare k byte;
+            do k = 1 to 11; call printchar(fat$label(k)); end;
+        end;
+        call crlf;
+        fat$pending,lblcmd = false;
+        return;
+    end;
     call require$cpm;
     error$code = wrlbl(fcbp);
     if low(error$code) = 0ffh then 
@@ -1569,8 +1695,10 @@ parse$option: procedure;
         end;
     else if cmd(1) = 'F' then                /* F */
         call set$attributes;    
-    else if cmd(1) = 'H' then                /* H */
-        call help;
+    else if cmd(1) = 'H' then do;            /* H: HELP / HIDDEN */
+        if cmd(2) = 'I' then call set$hidden;
+        else call help;
+        end;
     else if cmd(1) = 'N' then                /* N */
         call lname;
     else if cmd(1) = 'P' then do;            /* P */
@@ -1682,6 +1810,7 @@ PLMSTART:
                     call write$label;
                 if scase <> -1 then        /* file attributes */
                     call put$attributes;
+                if hidden$pending then call put$hidden;
                 if xfcbcmd then            /* xfcb attributes */
                     call write$xfcb;
                 call return$errors(0);  

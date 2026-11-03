@@ -361,7 +361,9 @@ Sources: [xconout.lib](kernel/con/xconout.lib), [xpcmode.lib](kernel/con/xpcmode
 | A8 / A9 | 168 / 169 | Set / get AUX device (later CDOS API) | SUP | Unimplemented; illegal, error 2 | NEW |
 | AA / AB | 170 / 171 | AUX input / output status (later CDOS API) | SUP | Unimplemented; illegal, error 2 | NEW |
 | AC / AD | 172 / 173 | AUX block input / output (later CDOS API) | SUP | Unimplemented; illegal, error 2 | NEW |
-| AE–EF | 174–239 | Unassigned | SUP | Illegal; error 2 | — |
+| AE–E5 | 174–229 | Unassigned | SUP | Illegal; error 2 | — |
+| E6 | 230 | FAT file attributes (CDOS project API) | SUP | Not implemented; illegal, error 2. Shared SET rejects HIDDEN on CP/M media before calling it | — |
+| E7–EF | 231–239 | Unassigned | SUP | Illegal; error 2 | — |
 | F0 | 240 | Per-console command search path/order | SUP | Project-only SETDEF extension; matching kernel/callers required | NEW (implemented) |
 | F1–FF | 241–255 | Unassigned | SUP | Illegal; error 2 | — |
 
@@ -397,6 +399,21 @@ Packet at DS:DX: byte selector, word CX argument, word DX argument.
 | 9 | Byte | Returned system drive |
 | 10 | Byte | v2: SUB bit 0; v3: SUB bit 0, disable DOS bit 1; absent in v1 |
 | Return | AX/BX, CX | Success 0; invalid packet FFFFh with error; native TMP ignores DOS selection |
+
+## Native XIOS — floppy maintenance extensions
+
+These entries use the existing SYSDAT:28h far-call interface with ES=caller
+UDA. Callers hold MXdisk and protect foreground console/process state.
+
+| Function (decimal) | Service | Status | Contract | Extension |
+| --- | --- | --- | --- | --- |
+| 14 | Raw-floppy capability query | Implemented | CX=0, DX=444Bh, SI=534Bh; AX=4B44h and DX=0101h confirm these extensions. Other pointer queries retain their previous behavior | NEW |
+| 29 | Variable floppy format | Implemented | Stack IOPB: drive 0/1, logical track 0–79, count 8/9, DMA far pointer to CHRN entries; extra gap/fill word at BP+16 | NEW |
+| 35 / 36 | Physical floppy read / write | Implemented | Stack IOPB: drive 0/1, TRACK=(head<<8)\|cylinder, sector 0–8, count 1–9 confined to that head, caller DMA buffer | NEW |
+
+The legacy 10/11/15 entries keep eight-sector behavior. New operations return
+native AL status; they do not add a FAT filesystem or a new INT E0h service.
+Old kernels must not be called at unknown entry numbers; query 14 first.
 
 ## INT E6h — native XIOS compatibility entry
 
