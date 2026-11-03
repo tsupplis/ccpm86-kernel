@@ -11,6 +11,7 @@
 ;	drive:	Required installed floppy drive, A: or B:.
 ;	1	Single-sided, 160 KiB (40 cylinders, eight 512-byte sectors).
 ;	2	Double-sided, 320 KiB; the default if neither 1 nor 2 appears.
+;	DOS	360 KiB FAT12 data disk; requires updated CCP/M XIOS.
 ;	V	Verify every track after formatting and writing the boot track.
 ;
 ;	Combine options or use separate groups. The closing ] is optional;
@@ -22,7 +23,8 @@
 ;	A fresh disk contains the DSKMAINT boot sector and loader. The system
 ;	file (CPM.SYS or CCPM.SYS) must still be copied to it. Tracks follow
 ;	DSKMAINT's order: head zero cylinders 0..39, then head one
-;	cylinders 39..0. No FAT is generated.
+;	cylinders 39..0. [DOS] selects a separate 360K FAT12 profile.
+;	DOS media has a non-system boot sector; no system file is installed.
 ;
 ;	CP/M-86 1.1 uses ROM BIOS; Concurrent CP/M-86 3.1 uses native XIOS.
 ;	CCP/M uses DSKMAINT 1.5's MXdisk, P_KEEP and console exclusion protocol.
@@ -44,6 +46,7 @@ f_resetdrive	equ	37
 opt_single	equ	1
 opt_double	equ	2
 opt_verify	equ	4
+opt_dos         equ     8
 stack_size	equ	512
 
 start:
@@ -82,6 +85,7 @@ concurrent_version:
 concurrent_ok:
 	mov	byte ptr os_mode,1
 	call	ccpm_init
+	call    require_dos_xios
 	jmp	installed_drive
 system_ok:
 	int	11h
@@ -98,22 +102,26 @@ floppy_present:
 	jmp	bad_drive
 installed_drive:
 
-; Align within an 8 KiB resident reservation; one 4 KiB track fits after
-; rounding up, and never straddles a physical 64 KiB BIOS DMA boundary.
+; Align within a 16 KiB reservation. A nine-sector head fits inside one
+; physical 8 KiB slot and cannot straddle a 64 KiB DMA page.
 	mov	ax,offset buffer_space
 	add	ax,15
 	mov	cl,4
 	shr	ax,cl
 	mov	bx,ds
 	add	ax,bx
-	add	ax,0ffh
-	and	ax,0ff00h
+	add	ax,1ffh
+	and	ax,0fe00h
 	mov	buffer_segment,ax
 	mov	dx,offset msg_double
 	cmp	byte ptr sides,1
 	jz	show_capacity
 	mov	dx,offset msg_single
 show_capacity:
+        test options,opt_dos
+        jz show_capacity_ready
+        mov dx,offset msg_dos360
+show_capacity_ready:
 	call	puts
 	mov	dx,offset msg_no_verify
 	test	byte ptr options,opt_verify
@@ -129,7 +137,7 @@ show_verify_option:
 	jmp	cancelled
 
 ;-----------------------------------------------------------------------------
-; The replacement table is byte-for-byte DSKMAINT's eight-sector table.
+; CP/M retains DSKMAINT's table; DOS selects nine sectors and F6 fill.
 ; Keep it installed through format, boot-track write and optional verify.
 ;-----------------------------------------------------------------------------
 format_disk:
@@ -140,12 +148,19 @@ format_disk:
 format_bios:
 	call	install_vector
 format_ready:
+        mov al,sector_count
+        mov disk_params+4,al
+        mov al,format_fill
+        mov disk_params+8,al
 	mov	dx,offset msg_formatting
 	call	puts
 	mov	byte ptr track,0
 format_loop:
-	cmp	byte ptr os_mode,0
+	test options,opt_dos
+        jnz format_build_ids
+        cmp byte ptr os_mode,0
 	jnz	format_ids_ready
+format_build_ids:
 	call	make_ids
 format_ids_ready:
 	mov	byte ptr operation,5
@@ -155,6 +170,11 @@ format_ids_ready:
 	cmp	al,track_count
 	jnz	format_loop
 
+        test options,opt_dos
+        jz write_cpm_boot
+        call write_fat360
+        jmp boot_tracks_written
+write_cpm_boot:
 ; Build the exact DSKMAINT track-zero image: E5 fill, boot code at zero,
 ; side flag at 1FFh and loader at 900h (sector five, offset 100h).
 	mov	dx,offset msg_writing
@@ -185,6 +205,7 @@ boot_loader_ready:
 	mov	byte ptr track,0
 	mov	byte ptr operation,3
 	call	disk_io
+boot_tracks_written:
 	test	byte ptr options,opt_verify
 	jz	format_complete
 
@@ -257,10 +278,27 @@ next_option:
 	cmp	al,'2'
 	jz	option_two
 	and	al,0dfh
+        cmp al,'D'
+        jz option_dos
 	cmp	al,'V'
 	jnz	bad_syntax
 	or	byte ptr options,opt_verify
 	jmp	next_option
+option_dos:
+        cmp cx,2
+        jb bad_syntax
+        lodsb
+        dec cx
+        and al,0dfh
+        cmp al,'O'
+        jne bad_syntax
+        lodsb
+        dec cx
+        and al,0dfh
+        cmp al,'S'
+        jne bad_syntax
+        or options,opt_dos
+        jmp next_option
 option_one:
 	or	byte ptr options,opt_single
 	jmp	next_option
@@ -283,12 +321,28 @@ args_done:
 	and	al,3
 	cmp	al,3
 	jz	bad_syntax
-	mov	byte ptr sides,1
-	mov	byte ptr track_count,80
-	test	al,opt_single
-	jz	args_return
-	mov	byte ptr sides,0
-	mov	byte ptr track_count,40
+        mov bx,offset profile_cpm320
+        test options,opt_single
+        jz select_dos_profile
+        mov bx,offset profile_cpm160
+select_dos_profile:
+        test options,opt_dos
+        jz apply_profile
+        test options,opt_single
+        jnz bad_syntax
+        mov bx,offset profile_dos360
+apply_profile:
+; Profile: cylinders, last head number, total heads, sectors/head, fill byte.
+        mov al,[bx]
+        mov cylinders,al
+        mov al,1[bx]
+        mov sides,al
+        mov al,2[bx]
+        mov track_count,al
+        mov al,3[bx]
+        mov sector_count,al
+        mov al,4[bx]
+        mov format_fill,al
 args_return:
 	ret
 
@@ -337,7 +391,11 @@ flush_input:
 	or	al,al
 	jnz	flush_input
 wait_confirm:
-	mov	dl,0ffh
+	mov dl,0ffh
+        cmp os_mode,0
+        je confirm_input
+        mov dl,0fdh                 ; Sleep for PIN, rather than priority polling.
+confirm_input:
 	call	bdos
 	or	al,al
 	jz	wait_confirm
@@ -432,10 +490,11 @@ bios:
 track_chs:
 	mov	ch,track
 	xor	dh,dh
-	cmp	ch,40
+	cmp ch,cylinders
 	jc	chs_return
-	neg	ch
-	add	ch,79
+	neg ch
+        add ch,track_count
+        dec ch
 	mov	dh,1
 chs_return:
 	ret
@@ -446,7 +505,8 @@ make_ids:
 	mov	es,word ptr buffer_segment
 	xor	di,di
 	mov	bx,201h
-	mov	cx,8
+	xor cx,cx
+        mov cl,sector_count
 	cld
 id_loop:
 	mov	ax,dx
@@ -480,7 +540,7 @@ io_bios:
 	xor	bx,bx
 	mov	es,word ptr buffer_segment
 	mov	ah,operation
-	mov	al,8
+	mov al,sector_count
 	mov	byte ptr disk_touched,1
 	call	bios
 	jc	io_failed
@@ -582,6 +642,12 @@ quit:
 os_mode		db	0
 options		db	0
 drive		db	0
+cylinders       db      40
+sector_count    db      8
+format_fill     db      0e5h
+profile_cpm160  db      40,0,40,8,0e5h
+profile_cpm320  db      40,1,80,8,0e5h
+profile_dos360  db      40,1,80,9,0f6h
 sides		db	1
 track_count	db	80
 track		db	0
@@ -596,14 +662,16 @@ old_segment	dw	0
 ; Same bytes as the parameter table embedded in DSKMAINT.
 disk_params	db	0cfh,02h,25h,02h,08h,2ah,0ffh,50h,0e5h,19h,04h
 
-msg_banner	db	13,10,'CP/M-86 / CCP/M-86 FLOPPY FORMATTER VER 1.0N',13,10,'$'
+msg_banner	db	13,10,'CP/M-86 / CCP/M-86 FLOPPY FORMATTER VER 1.1N',13,10,'$'
 msg_usage	db	'USAGE: DFORM drive: { [options] ... }',13,10,13,10
 	db	'  A: or B:  Target floppy drive (required)',13,10
 	db	'  1         Single-sided, 160K',13,10
 	db	'  2         Double-sided, 320K (default)',13,10
+	db      '  DOS       FAT12 360K data disk; incompatible with [1]',13,10
 	db	'  V         Verify after formatting',13,10
 	db	'  Combine options: [1V] or [1] [V; closing ] is optional.',13,10
 	db	'  Examples: DFORM A:[1V]   DFORM B: [V',13,10,'$'
+msg_dos360      db      '360K, FAT12 data disk (not a system disk); $'
 msg_single	db	'160K, single-sided; $'
 msg_double	db	'320K, double-sided; $'
 msg_with_verify	db	'verification enabled.',13,10,'$'
@@ -632,10 +700,13 @@ boot_end:
 loader:
 	include	loader.inc
 loader_end:
+fat_boot_sector:
+        include fatboot.inc
 
 stack_space	rs	stack_size
 stack_top:
-; Alignment can consume up to 4095 bytes before the 4096-byte track buffer.
-buffer_space	rs	2000h
+; Alignment can consume up to 8191 bytes before a 4608-byte head buffer.
+buffer_space	rs	4000h
 	include	ccpmio.a86
+        include fat360.a86
 	end

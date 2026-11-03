@@ -1,0 +1,70 @@
+;*****************************************************************************
+; FATBOOT - non-system FAT12 boot sector for DFORM's 360K DOS data disks.
+; 8086 BIOS entry at 0000:7C00 or 07C0:0000. No operating system is loaded.
+; BPB: 40 cylinders, two heads, nine 512-byte sectors; two-sector clusters.
+; Assemble independently with ASM86, convert to 512 raw bytes, embed as data.
+;*****************************************************************************
+        cseg
+        org 0
+        jmps boot_entry
+        nop
+        db 'DFORM1.1'
+        dw 512
+        db 2
+        dw 1
+        db 2
+        dw 112,720
+        db 0fdh
+        dw 2,9,2,0,0
+boot_entry:
+        cli
+        xor ax,ax
+        mov ss,ax
+        mov sp,7c00h
+        mov ds,ax
+        sti
+        cld
+        mov si,7c00h+offset boot_message
+boot_print:
+        lodsb
+        or al,al
+        jz boot_wait
+        mov ah,0eh
+        mov bx,7
+        int 10h
+        jmps boot_print
+boot_wait:
+        xor ax,ax
+        int 16h
+        int 19h
+        jmps boot_wait
+boot_message:
+        db 13,10,'Not a system disk. Insert a boot disk and press any key.',13,10,0
+; Zero-filled BPB/boot-code padding; check requires exactly 512 output bytes.
+boot_padding:
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+        db 0,0,0,0,0,0,0,0,0,0,0,0
+        dw 0aa55h
+        end

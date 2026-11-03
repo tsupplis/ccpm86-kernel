@@ -10,8 +10,8 @@ H862BIN=h862bin
 BIN2ASM=bin2asm
 
 TOOLS=dskmaint.cmd dskmorg.cmd dform.cmd
-IMAGES=bootsect.bin loader.bin
-INCS=bootsect.inc loader.inc
+IMAGES=bootsect.bin loader.bin fatboot.bin
+INCS=bootsect.inc loader.inc fatboot.inc
 REF=../../base/dskmaint.cmd
 
 .PHONY: all check clean check-dsk check-dform
@@ -46,7 +46,7 @@ dskmorg.cmd: dskmorg.h86 Makefile
 	$(BIN2ASM) -m -f $@ $<
 	unix2dos $@
 
-dform.obj: dform.a86 ccpmio.a86 $(INCS) Makefile
+dform.obj: dform.a86 ccpmio.a86 fat360.a86 $(INCS) Makefile
 	unix2dos $<
 	rm -f $@
 	@$(RASM86) $< $$ pz sz > dform.log 2>&1; cat dform.log
