@@ -508,3 +508,8 @@ Validation covers both XIOS profiles (62 assembled boundary/state/DMA cases),
 three kernels. Mixed eight/nine-sector comparisons are rejected; BPB arithmetic
 preserves the selected drive before probing its ninth sector. These tests use
 only disposable images, and compare the complete physical image after copying.
+
+BIOS-format correction: CP/M INT 13h/AH=05h reads the sector-ID count from
+the INT 1Eh table. DCOPY now selects eight/nine there for each format call,
+then restores nine for geometry probes without changing returned AX/CF.
+The regression harness checks this count; native XIOS formatting is unchanged.
