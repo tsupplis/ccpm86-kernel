@@ -188,7 +188,7 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `batch` | Run PC-MODE BAT command files | Original | Reverse engineered from CCP/M-86 |  |
 | `cls` | Clear the terminal screen | — | TMP built-in; VT52 ESC-E |  |
 | `chset` | Inspect or change CMD header flags | — | Recompiled from CCP/M-86 3.1 and adapted |  |
-| `chkcpmfs` | Read-only CP/M directory allocation consistency check | — | New shared PL/M-86 checker for CDOS, CCP/M-86 and CP/M-86 | ✓ |
+| `chkcpmfs` | CP/M allocation check and confirmed metadata repair | — | New shared PL/M-86 checker for CDOS, CCP/M-86 and CP/M-86 | ✓ |
 | `config` | Configure serial ports | Original |  Reverse engineered from CCP/M-86 |  |
 | `date` | Display or set the date | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K patched |  |
 | `dcomp` | Compare raw 8/9-sector CP/M/FAT floppies | — | Ported from [PC DOS 1.10](https://github.com/tsupplis/pcdos11-hacking) | ✓ |

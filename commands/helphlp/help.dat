@@ -62,19 +62,20 @@
     ASM86 filespec ($Ad Hd Pd Sd Fd)
 
     A   source file drive - .A86
-    d = (logical drives A-D)
+    d = (logical drives A-P)
 
     H   hex file drive    - .H86
-    d = (logical drives A-D, X,Y,Z)
+    d = (logical drives A-P, X,Y,Z)
 
     P   print file drive  - .LST
-    d = (logical drives A-D, X,Y,Z)
+    d = (logical drives A-P, X,Y,Z)
 
     S   symbol file drive - .SYM
-    d = (logical drives A-D, X,Y,Z)
+    d = (logical drives A-P, X,Y,Z)
 
     F   format of hex file- .H86
     d = (D=Digital Research, I=Intel)
+
 
 ///1BUFFERED
     You can switch the current (foreground) virtual console into  the
@@ -379,6 +380,10 @@
        in the same position of a filename and/or filetype.
 
 ///1DATE
+  DATE.CMD is the native CP/M command on CCP/M and CDOS. On CDOS,
+  DATE.EXE is the separate DOS interface; use an explicit extension to select it.
+  Short years 00..77 mean 2000..2077; 78..99 mean 1978..1999.
+
     Syntax:
 
     DATE
@@ -416,6 +421,7 @@
 
     Prompts you for date and time entries.
 
+
 ///1dcomp
   Syntax:
 
@@ -436,6 +442,8 @@
       Without [8]/[9], validate a FAT12 BPB and probe sector nine. Success
   proves nine; failed probing alone never proves eight. Unknown eight-sector
   media needs [8]. A known BPB contradicting the selection is rejected.
+  Extended CDOS also detects 720K, 1.2M and 1.44M DOS FAT12 BPBs;
+  these use 80 cylinders. No capacity option is needed.
   [9] does not ignore unreadable sectors. DCOMP checks both geometries.
 
       DCOMP is read-only and reports differences by track and side.
@@ -452,6 +460,7 @@
   Examples:
       A>DCOMP A: B: [9]
       A>DCOMP A: A: [1] [8]
+
 
 ///1dcopy
   Syntax:
@@ -473,6 +482,8 @@
       Without [8]/[9], validate a FAT12 BPB and probe sector nine. Success
   proves nine; failed probing alone never proves eight. Unknown eight-sector
   media needs [8]. A known BPB contradicting the selection is rejected.
+  Extended CDOS also detects 720K, 1.2M and 1.44M DOS FAT12 BPBs;
+  these use 80 cylinders. No capacity option is needed.
   [9] does not ignore unreadable sectors. DCOMP checks both geometries.
 
       DCOPY formats all target tracks to source geometry before writing and
@@ -490,6 +501,7 @@
       A>DCOPY A: B: [9]
       A>DCOPY A: A: [1] [8]
 
+
 ///1DDT86
     Syntax:
 
@@ -505,6 +517,9 @@
     DDT86 and the test program file specified by filespec are  loaded
     into  memory. DDT86  does  not support passwords.  To exit DDT86,
     press CTRL-C.
+
+    Do not use G, T or U until a test program has been loaded.
+    Use E to load a CMD program when starting DDT86 without a filename.
 
     ///2EXAMPLES
     Examples:
@@ -590,6 +605,7 @@
     W           word 16-bit
     wc          word constant
 
+
 ///1DFORM
   Syntax:
 
@@ -668,6 +684,22 @@
     A>DIR B:UTILITY.CMD [S]
     A>DIR A: B: [P]
     A>DIR.CMD A: B: [P]
+
+    ///2CMD
+    DIR.CMD {filespec} {[S]} {[Gn]} {[P]}
+
+    Explicit DIR.CMD invokes the shared standalone native command.
+    [S] lists system files only; on CDOS FAT this includes hidden files.
+    [Gn] selects CP/M user n (0..15). [P] pauses after 23 screen rows,
+    using Press any key to continue...; Ctrl-C stops the listing.
+    Without [P], output is continuous. Options can be combined.
+
+    A>DIR.CMD B:*.CMD [S] [P]
+    A>DIR.CMD A: B: [P]
+
+    Interactive DIR and BATCH may use their own resident implementations;
+    their additional switches are documented in the parent DIR topic.
+
 
 ///1DSKMAINT
     DSKMAINT.CMD is on the bootable maintenance disk (ccpmmaint.img),
@@ -785,12 +817,9 @@
 
     Explanation:
 
-    ED is the Concurrent CP/M  character file editor.  You can rename
+    ED is the CP/M character file editor.  You can rename
     or redirect the  new  version  of  the  file  by  specifying  the
     destination drive or destination filespec.
-
-    Section 10  of the  Concurrent  CP/M  User's  Reference  Guide is
-    devoted to ED.
 
     ///2COMMANDS
     ED Command Summary:
@@ -803,7 +832,7 @@
     B, -B         move CP to the beginning (B) or bottom (-B) of buffer
     nC, -nC       move CP n characters forward (C) or back (-C) through buffer
     nD, -nD       delete n characters before (-D) or from (D) the CP
-    E             save new file and return to Concurrent CP/M
+    E             save new file and return to the command prompt
     Fstring^Z     find character string
     H             save new file, re-edit using new file as the original file
     I<RETURN>     enter insert mode
@@ -818,7 +847,7 @@
     Nstring       extended find string
     O             return to original file
     nP, -nP       move CP n lines forward and display n lines at console
-    Q             abandon new file, return to Concurrent CP/M
+    Q             abandon new file, return to the command prompt
     R             read X$$$$$$$.LIB file into buffer
     Rfilespec^Z   read filespec into buffer
     Sdelete string^Zinsert string^Z     substitute string
@@ -852,6 +881,7 @@
     :5K
     :B5T
     :Rmyfile.txt
+
 
 ///1ERA
     Syntax:
@@ -1102,6 +1132,7 @@
 
     All values represented by n are hexadecimal paragraph addresses.
 
+
 ///1GET
     Syntax:
 
@@ -1134,56 +1165,23 @@
     See also: PUT, RDR
 
 ///1HDMAINT
-    Syntax:
+HDMAINT
 
-    HDMAINT
+The shared HDMAINT 1.1N supports CP/M-86 and Concurrent CP/M-86. It is a
+menu-driven hard-disk maintenance program: use the displayed function keys.
+It creates/changes CP/M partitions and volumes, deletes volumes, selects the
+active boot partition, scans for defects and controls write verification.
+It can enlarge an existing volume's directory where that option is available.
+Only meaningful operations appear in the menus. Partition/volume operations
+can replace existing contents; read each confirmation before proceeding.
 
-    The  HDMAINT  hard-disk  maintenance  utility  is  a  menu-driven
-    program  that prepares your IBM-compatible hard disk for use with
-    Concurrent CP/M.   HDMAINT  works by offering you alternatives in
-    its menus.   You respond to HDMAINT by pressing the function keys
-    that correspond to your choices.
+On CCP/M, use a local dynamic console (VCMODE) and terminate other programs
+and open files before starting. The CP/M single-user path does not require
+VCMODE. The CDOS HDMAINT program is a different implementation and is not
+covered by this shared command topic.
 
-    HDMAINT can perform the following functions:
-
-    o Creates or  changes  a Concurrent CP/M  partition  on  your hard
-      disk and prepares a volume within  that partition for Concurrent
-      CP/M's use.
-
-    o Deletes any existing Concurrent CP/M volume from your hard
-      disk.
-
-    o Makes any partition on the hard disk bootable or not bootable.
-
-    o Toggles the state of a verify switch on or off.  When the
-      switch is on, Concurrent CP/M confirms that everything it
-      writes to the hard disk is correctly written by reading the
-      data back and comparing it to data sent to the disk.
-
-    o Increases the number of possible directory entries within a
-      Concurrent CP/M volume that has fewer than the maximum number
-      of directory entries allowed.
-
-    o Permits you to scan an existing Concurrent CP/M volume for
-      surface defects that developed after the partition was created.
-
-    Before you invoke  HDMAINT, be sure  your current virtual console
-    is in  dynamic mode.  Set it to  dynamic mode with VCMODE.  It is
-    not possible to run HDMAINT when  any  other  programs  are being
-    executed.   Before  invoking  HDMAINT,  close  any open files and
-    terminate any running programs.
-
-    HDMAINT presents only meaningful options.  Options that cannot be
-    executed by HDMAINT at a given time never appear on the screen.
-
-    When  you  use  HDMAINT for  the  first time,  accept the default
-    values HDMAINT proposes whenever it asks you for a decision. This
-    allows  you  to  proceed  quickly  through the partition-creation
-    process. You can use HDMAINT later to change your Concurrent CP/M
-    partition when you have a better idea of your needs.
 
 ///1HELP
-
   Syntax:
 
      HELP {topic} {subtopic1 ... subtopic8} {[NOPAGE|LIST]}
@@ -1191,7 +1189,7 @@
   Explanation:
 
   HELP  displays  a  list  of  topics   and   provides   summarized
-  information for CCP/M commands.
+  information for system commands.
 
   HELP topic displays information about that topic.
   HELP topic subtopic displays information about that subtopic.
@@ -1204,7 +1202,7 @@
    -  Enter ? to display list of main topics.
    -  Enter a period and subtopic name to access subtopics.
    -  Enter a period to redisplay what you just read.
-   -  Press the RETURN key to return to the CCP/M  system prompt.
+   -  Press the RETURN key to return to the system command prompt.
    -  [NOPAGE] doesn't stop at 24 lines; console display keeps scrolling.
    -  [LIST] removes extra lines between headings; use with CTRL-P to print.
    -  Press any key to exit a display and return to the HELP> prompt.
@@ -1222,6 +1220,7 @@
        HELP>SET PASSWORD
        HELP>.
        HELP><cr>
+
 
 ///1INITDIR
     Syntax:
@@ -1259,7 +1258,6 @@
     Do you want the existing time and date stamps cleared (Y/N)?
 
 ///1PIP (copy)
-
   Syntax:
 
               DESTINATION              SOURCE
@@ -1267,8 +1265,6 @@
     PIP d:{Gn} | filespec{[Gn]} = filespec{[o]},... | d:{[o]}
 
   Explanation:
-
-  This build displays CONCURRENT CP/M-86 PIP VERSION 3.1N.
 
   The file copy program  PIP  copies  files,  combines  files,  and
   transfers  files  between  disks,  printers,  consoles,  or other
@@ -1281,7 +1277,7 @@
 
   PIP with no command tail displays an *  prompt  and  awaits  your
   series  of  commands,  entered  and processed one line at a time.
-  The source or destination can be any CCP/M  logical device.
+  The source or destination can be any available logical device.
 
   ///2Examples
 
@@ -1361,6 +1357,7 @@
   All  options  except  C,G,K,O,R,V  and  W  force  an  ASCII  file
   transfer, character by character, terminated by a ^Z.
 
+
 ///1PRINT
     Syntax:
 
@@ -1425,6 +1422,7 @@
 
     The above command causes PRINT to print all of the files with the
     DIR attribute in user 0 of drive B.
+
 
 ///1PRINTER
     Syntax:
@@ -1540,6 +1538,7 @@
     In the last example, the new filename already  exists.  The  user
     overrides the error by entering a Y at the prompt.
 
+
 ///1SDIR
     Syntax:
 
@@ -1571,8 +1570,13 @@
     [EXCLUDE]     Displays only files that do not match filespec.
     [FF]          Prints a Form Feed character at the start of each header.
     [FULL]        The default SDIR option.
+    [SHORT]       Displays names only, with a backslash for DOS directories.
+    [HELP]        Displays a compact summary of the supported options.
     [LENGTH=n]    Displays a new (Page) header every n lines.
     [MESSAGE]     Causes SDIR to display where it is searching for files.
+    [SORT]        Sorts names and types (the default).
+    [ATTRIBUTES]  Displays archive and user-defined attribute bits.
+    [DATE]        Displays timestamps where timestamp information exists.
     [NOSORT]      Displays files in the order that they are found on the disk.
     [PAGE]        Pauses after 23 screen rows, including headers and wraps.
     [NOPAGE]      Disables pauses (the default).
@@ -1580,11 +1584,15 @@
     [RW]          Displays Read/Write attribute files only.
     [SIZE]        Displays only file name and size.
     [SYS]         Displays SYSTEM or FAT HIDDEN files only.
-    [DIR]         Displays normal files only (not subdirectories).
+    [DIR]         Displays non-system files (not a subdirectory-only filter).
     [USER=n]      Displays files on user n only.
     [USER=all]    Displays files on all user numbers.
     [XFCB]        Displays only files with XFCBs or date stamping.
     [NONXFCB]     Displays only files without XFCBs or date stamping.
+
+    On CDOS, DOS subdirectories display <DIR> instead of a file size in FULL/SIZE;
+    SHORT/SIZE prefix directory names with a backslash. Directory counts
+    are separate from regular files. SYSTEM/HIDDEN require [SYS] or [DIR SYS].
 
     Default SDIR shows normal files only on CP/M and FAT.
     [DIR SYS] shows all files. FULL Type: Sys=SYSTEM, Hid=HIDDEN,
@@ -1594,235 +1602,54 @@
     Press a key for the next page, or Ctrl-C to stop. [LENGTH=n] controls
     repeated headers separately; it does not enable interactive pauses.
 
+
 ///1SET
+SET filespec [RO|RW,DIR|SYS,ARCHIVE=ON|OFF,F1=ON|OFF,...,F4=ON|OFF]
+SET filespec [HIDDEN=ON|OFF]
+SET filespec[;password] [PASSWORD=newpassword,PROTECT=READ|WRITE|DELETE|NONE]
+SET {d:} [NAME=label.typ]
+SET {d:} [RO|RW]
+SET {d:} [PROTECT=ON|OFF]
+SET {d:} [DEFAULT=password]
+SET {d:} [CREATE=ON|OFF,ACCESS=ON|OFF,UPDATE=ON|OFF]
+SET [HELP]
+
+File attributes work on CP/M and, on CDOS, DOS media through BDOS. F1-F4 are CP/M
+file flags. FAT supports legacy F1-F3 only: its lowercase-extension flag
+is not F4, and SET leaves FAT case flags unchanged. FAT short names match
+without case. CP/M ARCHIVE=ON clears DOS's archive-needed bit; OFF sets it.
+
+On CDOS FAT, SET d: [NAME=WORK] creates or changes the volume name.
+SET d: [NAME="MY DISK"] accepts spaces, up to eleven characters.
+SET d: [NAME=] removes the FAT label. The physical root is used even
+from a subdirectory; ordinary files with the same name are unaffected.
+CP/M directory-label behavior is unchanged.
+
+HIDDEN=ON/OFF changes only the FAT hidden attribute. Wildcards and other
+file options may be combined. Requires CDOS DOS media and the BDOS 230
+capability handshake; older kernels are rejected. DIR/SDIR visibility and
+ERA/RM behavior are unchanged.
+
+XFCB passwords and timestamp settings require CP/M media. Enable
+drive protection before assigning passwords or a default password:
+  SET A: [PROTECT=ON]
+  SET A:*.TXT [PASSWORD=SECRET,PROTECT=READ]
+
+READ protects reading, writing, renaming and deletion; WRITE protects
+writing, renaming and deletion; DELETE protects renaming and deletion;
+NONE removes file protection. The default password is inherited by
+later commands. Password input supports Backspace, Ctrl-X and Ctrl-C.
+
+To clear passwords, use an empty value followed by another option:
+  SET A:FILE.TXT [PASSWORD=,PROTECT=NONE]
+  SET A: [PASSWORD=,PROTECT=OFF]
+[PASSWORD=] alone is rejected by the historical parser.
+
+CREATE and ACCESS timestamps are mutually exclusive. Enabling either
+replaces the other; selecting both together is invalid. INITDIR must
+format the directory before timestamping can be enabled. UPDATE is
+independent. A bare filespec is not a query: use SDIR or SHOW to inspect.
 
-  Syntax:
-
-          SET [options]
-          SET d: [options]
-          SET filespec [options]
-
-  Explanation:
-
-  SET  initiates  password   protection   and   time  stamping   of
-  files.  It  also  sets  the file and drive attributes Read-Write,
-  Read-Only, DIR and SYS.  It  lets  you  label a disk and password
-  protect  the  label.  To  enable  time  stamping  of  files,  you
-  must  first  run INITDIR to format the disk directory.
-
-  ///2Label
-
-  Syntax:
-
-          SET {d:} [NAME=labelname.typ]
-          SET [PASSWORD=password]
-          SET [PASSWORD=,PROTECT=OFF]
-
-
-  Examples:
-
-  A>SET [NAME=DISK100]
-
-       Labels the disk on the default drive as DISK100.
-
-  A>SET [PASSWORD=SECRET]
-
-       Assigns SECRET to the  disk  label.
-
-  A>SET [PASSWORD=,PROTECT=OFF]
-
-       Removes the label password and disables drive protection.
-
-  ///2Passwords
-
-          SET [PROTECT=ON]
-          SET [PROTECT=OFF]
-          SET filespec [PASSWORD=password]
-          SET filespec [PASSWORD=,PROTECT=NONE]
-          SET filespec [PROTECT=READ]
-          SET filespec [PROTECT=WRITE]
-          SET filespec [PROTECT=DELETE]
-          SET filespec [PROTECT=NONE]
-
-
-          Password Protection Modes
-
-  Mode                        Protection
-
-  READ           The password  is  required  for  reading,  copying
-                 writing, deleting or renaming the file.
-
-  WRITE          The password is required for writing, deleting  or
-                 renaming  the file.  You do not need a password to
-                 read the file.
-
-  DELETE         The password is  only  required  for  deleting  or
-                 renaming  the file.  You do not need a password to
-                 read or modify the file.
-
-  NONE           No password exists for the file.   If  a  password
-                 password  exists,  this  modifier  can  be used to
-                 delete the password.
-
-  ///2Attributes
-
-     SET filespec [attribute]
-
-     HIDDEN=ON|OFF is available only on CDOS FAT media with the local
-     BDOS 230 capability handshake. CP/M/CCP/M media reject this option.
-
-  Attribute      Meaning
-
-  RO             sets the file attribute to Read-Only.
-
-  RW             sets the file attribute to Read-Write.
-
-  SYS            sets the file attribute to SYS.
-
-  DIR            sets the file attribute to DIR.
-
-  ARCHIVE=OFF    means  that  the  file  has  not  been  backed  up
-                 (archived).
-
-  ARCHIVE=ON     means that the file has been backed up (archived).
-                 The  Archive  attribute can be turned on by SET or
-                 by PIP when copying a group of files with the  PIP
-                 [A]  option.  SHOW  and  DIR  display  the Archive
-                 option.
-
-  F1=ON|OFF      turns on or off the user-definable file  attribute
-                 F1.
-
-  F2=ON|OFF      turns on or off the user-definable file  attribute
-                 F2.
-
-  F3=ON|OFF      turns on or off the user-definable file  attribute
-                 F3.
-
-  F4=ON|OFF      turns on or off the user-definable file  attribute
-                 F4.
-
-
-  Examples:
-
-  SET [PROTECT=ON]
-
-       Turns on password protection for all the files on the  disk.
-       You  must  turn on password protection before you can assign
-       passwords to files.
-
-  SET [PROTECT=OFF]
-
-       Disables password protection for the files on your disk.
-
-  A>SET MYFILE.TEX [PASSWORD=MYFIL]
-
-       MYFIL is the password assigned to file MYFILE.TEX.
-
-  B>SET *.TEX [PASSWORD=SECRET, PROTECT=WRITE]
-
-       Assigns the password SECRET to all the TEX files on drive B.
-       Each  TEX  file  is  given  a  WRITE protect mode to prevent
-       unauthorized editing.
-
-  A>SET MYFILE.TEX [RO SYS]
-
-       Sets MYFILE.TEX to Read-Only and SYStem.
-
-  ///2Default
-
-  A>SET [DEFAULT=dd]
-
-       Instructs the system to use dd as a password if you  do  not
-       enter a password for a password-protected file.
-
-  ///2Time-Stamps
-
-  Syntax:
-
-          SET [CREATE=ON|OFF]
-          SET [ACCESS=ON|OFF]
-          SET [UPDATE=ON|OFF]
-
-  Explanation:
-
-  The above SET commands allow you to keep a  record  of  the  time
-  and  date  of file creation and update, or of the last access and
-  update of your files.
-
-
-  Option         Meaning
-
-  [CREATE=ON]    turns on CREATE time stamps on  the  disk  in  the
-                 default   or   specified   drive.  To  record  the
-                 creation time of a file, the CREATE option must be
-                 turned on before the file is created.
-
-  [ACCESS=ON]    turns on ACCESS time stamps on  the  disk  in  the
-                 default  or  specified  drive.  ACCESS  and CREATE
-                 options are mutually exclusive; only one can be in
-                 effect  at a time.  If you turn on the ACCESS time
-                 stamp on  a  disk  that   previously   had  CREATE
-                 time     stamp,   the   CREATE   time   stamp   is
-                 automatically turned off.
-
-  [UPDATE=ON]    turns on UPDATE time stamps on  the  disk  in  the
-                 default  or  specified  drive.  UPDATE time stamps
-                 record the time the file was last modified.
-
-
-  Examples:
-
-          A>SET [ACCESS=ON]
-          A>SET [CREATE=ON,UPDATE=ON]
-
-  ///2Drives
-
-  Syntax:
-
-          SET {d:} [RO]
-          SET {d:} [RW]
-
-
-  Example:
-
-  A>SET B: [RO]
-
-       Sets drive B to Read-Only.
-
-    ///2EXAMPLES
-    Examples:
-
-    A>SET [HELP]
-    A>SET [NAME=mylabel.dsk]
-    A>SET *.CMD [SYS,RO,PASSWORD=secret,PROTECTION=READ]
-    A>SET *.HEX [RW,PROTECTION=NONE,DIR]
-    A>SET *.TEX [PASSWORD=secret,PROTECTION=WRITE]
-    A>SET ONE.TEX,TWO.TEX [PROTECTION=NONE],*.PRN [SYS]
-    A>SET [DEFAULT=secret]
-    A>SET [CREATE=ON]
-    A>SET [ACCESS=ON]
-    A>SET [UPDATE=ON]
-    A>SET B:[RO]
-    A>SET B:[RW]
-
-    ///2OPTIONS
-    Options:
-
-    [ARCHIVE=ON|OFF]      Set or clear the archive attribute.
-    [F1=ON|OFF] ... [F4=ON|OFF]   Set or clear CP/M file flags.
-    [ACCESS=ON|OFF]       Turn access time stamps on/off.
-    [CREATE=ON|OFF]       Turn creation time stamps on/off.
-    [DEFAULT=password]    Specify a default password.
-    [DIR]                 Set file DIRectory attribute.
-    [HELP]                Display a list of examples.
-    [NAME=lablname.typ]   Specify directory label name.
-    [PASSWORD=password]   Specify file or directory label password.
-    [PROTECTION=READ|WRITE|DELETE|NONE]   Set level of password protection.
-    [RO]                  Set file or drive to Read-Only.
-    [RW]                  Set file or drive to Read/Write.
-    [SYS]                 Set file SYStem attribute.
-    [UPDATE=ON|OFF]       Turn update time stamps on/off.
 
 ///1SETUP
     Syntax:
@@ -1877,7 +1704,10 @@
 
     Use the SHOW options to  display  drive  characteristics,  active
     user  numbers,  or the directory label. SHOW HELP displays a list
-    of available options.
+    of available options. SPACE and DRIVE work on CP/M media and, on CDOS, DOS media.
+    On CDOS FAT, LABEL displays the physical-root volume name, or no label.
+    CP/M LABEL retains its password/stamping columns. USERS requires CP/M media.
+    On CDOS, default SPACE listings omit N:/O:/P:, as in the OEM command.
 
     ///2EXAMPLES
     Examples:
@@ -1912,6 +1742,7 @@
     SHOW d:       ; SHOW with the optional drive specifier displays
                   ; information for the specified drive only.
 
+
 ///1SUBMIT
     Syntax:
 
@@ -1932,6 +1763,7 @@
     A>SUBMIT START
     A>SUBMIT B:START
     A>SUBMIT MAX.SUB data1 data2 data3
+
 
 ///1SETDEF
     Syntax:
@@ -2132,6 +1964,7 @@
             C with a space and a one  or two-digit  number causes the
             display to update every n seconds.
 
+
 ///1TYPE
     Syntax:
 
@@ -2142,7 +1975,10 @@
     Explanation:
 
     TYPE displays an ASCII text file up to its CP/M Ctrl-Z end marker.
-    Wildcards are not accepted. [PAGE] pauses after 23 screen rows,
+    CP/M files end at Ctrl-Z or a record boundary; on CDOS, DOS files stop
+    at their exact byte length, avoiding final-record padding. A last
+    line does not need CR/LF. Wildcards are not accepted.
+    [PAGE] pauses after 23 screen rows,
     counting tabs and wrapped text. Paging is off by default.
 
     The prompt is the native PCTMP PAUSE message:
@@ -2152,6 +1988,8 @@
     [PNN] selects a smaller page: NN must be two digits, 01 through 23.
     Example: TYPE notes.txt [P10]. [PAGE] uses 23 physical rows.
     Unbracketed P/PNN, [P], [P00] and [P24] are invalid.
+    A password can be supplied as filespec;password, or entered when
+    prompted. Password entry accepts Backspace, Ctrl-X and Ctrl-C.
 
     Entering ^P before TYPE echoes output to the printer until the next ^P.
 
@@ -2162,6 +2000,7 @@
     B>TYPE a:document.law [PAGE]
     C>TYPE program.bas [PAGE]
     D>TYPE program.a86
+
 
 ///1USER
     Syntax:
@@ -2216,229 +2055,106 @@
              disk.  Thus screen output is preserved.
 
 ///1WINDOW
-    Syntax:
+WINDOW VIEW
+WINDOW TOP N=n
+WINDOW FULL N=n
+WINDOW CHANGE N=n PR=r,PC=c,NR=rows,NC=cols,VR=r,VC=c,TR=ROW,D=COLOR
+WINDOW WRITE N=n TYPE=WINDOW|CONSOLE|SETUP,FILE=filespec
 
-    WINDOW VIEW
-    WINDOW TOP number=n
-    WINDOW FULL number=n
-    WINDOW WRITE number=n type={w|c|s},file=filename
-    WINDOW CHANGE number=n field name=field value
+Window numbers are 0..3 on CCP/M-86 and 1..4 on CDOS. BDOS version
+selects the range at runtime. Screen/virtual coordinates are one-based:
+rows 1..24, columns 1..80. CHANGE validates its fields before changing XIOS;
+extents are clipped to the screen. VIEW reports all windows; TOP brings a
+window forward; FULL expands it to the screen.
 
-    Explanation:
+CHANGE fields (abbreviations allowed):
+  NUMBER/N       Window number: CCP/M 0..3, CDOS 1..4
+  PROW/PR        Physical top row
+  PCOL/PC        Physical left column
+  NROWS/NR       Window height
+  NCOLS/NC       Window width
+  VROW/VR        First visible row in the virtual console
+  VCOL/VC        First visible column in the virtual console
+  TRACKING/TR    NO or ROW cursor tracking
+  DISPLAY/D      B&W or COLOR
+  FGCOLOR/FG     Foreground color
+  BGCOLOR/BG     Background color
+Colors: BLACK BLUE GREEN CYAN RED MAGENTA YELLOW WHITE.
 
-    WINDOW is a  utility that allows you to make changes to your CP/M
-    Windows by entering values in a WINDOW command line.  WINDOW is a
-    command-line version of WMENU,  a menu-driven utility.   WINDOW's
-    principle use is that you can include WINDOW command lines  in  a
-    SUBMIT file.   In fact, by using either WINDOW or WMENU, you  can
-    generate an "instant" SUBMIT file containing WINDOW commands that
-    set up your windows the way you want them.
+WRITE WINDOW saves the visible virtual-screen rectangle. CONSOLE saves
+all 24 rows. Both trim trailing spaces. SETUP saves command lines for
+all four windows, even though a valid N is still required. Output is
+text ending at Ctrl-Z; disk-record padding is not part of the text.
 
-    The Concurrent CP/M window manager does not have to be present in
-    your computer's memory for you to use WINDOW.
+  WINDOW CH N=1 PR=2,PC=4,NR=5,NC=30,FG=WHITE,BG=BLUE
+  WINDOW WRITE N=1 TYPE=SETUP,FILE=B:WINDOWS.SUB
 
-    WINDOW  is divided into five subcommands, VIEW, TOP, FULL, WRITE,
-    and CHANGE.
+WINDOW does not require WMENU to be installed. The resident manager is
+a separate interactive interface to the same window services.
 
-    WINDOW VIEW  allows  you  to  view a  table of the current values
-    associated with your CP/M Windows.
-
-    The  WINDOW TOP  command has the same effect as pressing Ctrl-Alt-1
-    through Ctrl-Alt-4 to select virtual consoles 0 through 3.
-    Ctrl-Alt-Tab selects the next console in round-robin order.
-
-    The WINDOW FULL command has the same effect as  pressing Ctrl-keypad-Del
-    to switch your window between full-screen and its former size and
-    position.
-
-    WINDOW WRITE  allows you to write any of three different kinds of
-    files:
-
-    o the text contained in a window (type=window).
-
-    o the text contained in the entire virtual console that lies
-      beneath that window (type=console).
-
-    o a SUBMIT file that produces the window setup that exists
-      at the time you execute the WINDOW WRITE command (type=setup)
-
-    WINDOW CHANGE is the command to make changes to your windows. You
-    can change the  size, location, colors, and  other  properties of
-    your windows.
-
-    With all of the WINDOW subcommands except VIEW you must specify a
-    virtual console number in a WINDOW command line.
-
-    ///2EXAMPLES
-    Examples:
-
-    The  following  examples  offer a  notion of the way  you can use
-    WINDOW.
-
-    B>window view
-
-    The command in the  above  example  causes  WINDOW  to  produce a
-    display  of  the  values  currently  associated  with  your  CP/M
-    Windows.   Included  in  the WINDOW VIEW display are the windows'
-    size, expressed in rows and columns, their locations, in terms of
-    the row  and  column  coordinates  of the upper right corner of a
-    window, background and foreground colors, and other values.
-
-    A>window top n=2
-
-    This  command  switches  in virtual console 2, just as if you had
-    pressed Ctrl-Alt-3.
-
-    A>window full n=1
-
-    This command makes the  window to  virtual console 1 jump to full
-    screen  size  with  its  location  coinciding  with  the physical
-    console.   If  the  window is already  full-screen,  this command
-    causes the window to return to the size and location it had prior
-    to the invocation of this command.
-
-    B>window write n=0 type=console,file=memo.txt
-
-    This  command  causes  WINDOW  to write the characters in virtual
-    console 0 to the file MEMO.TXT.  WINDOW writes all the characters
-    in the  virtual  console to a file,  regardless  of  the size and
-    position of the window to virtual console 0.
-
-    B>window write n=0 type=window,file=glimpse.txt
-
-    The  above command  causes WINDOW  to write the characters in the
-    window to  virtual  console 0  to the  file GLIMPSE.TXT.   WINDOW
-    writes all of the characters in the window,  even if a portion of
-    the window is off the screen.
-
-    A>window write n=2 type=setup,file=ALIGN.SUB
-
-    The above command causes WINDOW to write a SUBMIT file containing
-    WINDOW  commands that produce the window setup that exists at the
-    time you execute this command.
-
-    B>window change n=2 prow=12,pcol=40,nrows=10,ncols=12
-
-    This  command  changes  the  size  and  location of the window to
-    virtual console 2.  Prow and pcol are short for placement row and
-    placement column.   These two numbers are the coordinates for the
-    placement point,  a point in the  upper  right corner of a window
-    that is always visible in a switched-in window.   Nrows and ncols
-    are short for number of rows and number of columns. These figures
-    indicate the size of a window.
-
-    C>window change n=3 fgc=cyan,bgc=magenta
-
-    This command changes the  foreground  color  (fgc) and background
-    color (bgc) in the window to virtual console 3.  Foreground color
-    is the color of the characters in a window.   Background color is
-    the color of the window that contains those characters.  You must
-    have a  color card and a  color monitor  as part of your Personal
-    Computer system in order to receive color video output. Available
-    colors  are  black,  white,  red, green, blue, cyan, magenta, and
-    yellow.
-
-    B>window change n=0 tracking=row
-
-    This command causes  Concurrent CP/M  to always keep the row that
-    the cursor  is on in view  when you are  scrolling or  sizing the
-    window to virtual console 0.  This is the default setting for all
-    four windows.  Alternatively,  you can specify "tracking=no",  so
-    that  Concurrent CP/M  will not keep track of the cursor's row as
-    you scroll or size a window.
-
-    A>window change n=1 display=color
-
-    This  command causes  Concurrent CP/M  to  display  the window to
-    virtual  console 1 on a color monitor.   If you have both a color
-    and a monochrome monitor connected to your Personal Computer, you
-    can  display  a  window on either  monitor.   If you had only one
-    monitor connected to your computer,  the above command would have
-    no effect.
 
 ///1WMENU
-    Syntax:
+WMENU
+Installs and detaches the resident window manager. Once installed,
+Ctrl-Alt-Esc or Ctrl-Alt-0 opens its menu; Ctrl-keypad-Plus also works.
 
-    WMENU
+Arrows or Space select a highlighted item; Return opens it:
+  Place     Move the window with arrows
+  Size      Change its dimensions with arrows
+  Scroll    Change its view into the virtual console
+  Tracking  Toggle NO/ROW with Up/Down or Space
+  Display   Toggle B&W/COLOR with Up/Down or Space
+  Color     Left/Right selects foreground/background; Up/Down changes it
+  Write     Save Window, Console or Setup output
+  Abort     Return confirms unloading; Esc returns to the menu
 
-    Explanation:
+Window numbers are 0..3 on CCP/M-86 and 1..4 on CDOS. Esc or Return leaves an editing submenu with
+live changes in effect. Esc from the main menu hides it without unloading.
+Write uses a default d:WINDOWn.TXT filename; Return writes, Esc cancels.
+Ctrl-Alt-1..4 and Ctrl-Alt-Tab remain the console-switch shortcuts.
+WINDOW provides the nonresident command-line interface.
 
-    WMENU is a utility that loads the  Concurrent CP/M window manager
-    into your Personal Computer's memory.  Once the window manager is
-    in  memory,  WMENU  lets  you  manipulate  your  CP/M Windows  by
-    pressing the  arrow keys on your  numeric keypad in response to a
-    status-line (twenty-fifth line) menu.
-
-    Type WMENU and press Enter.   WMENU returns the message,  "Window
-    Manager installed." You will notice that the letters "Win" appear
-    on the  Concurrent CP/M status line.   With the window manager in
-    memory,  you can press Ctrl-Alt-Esc to obtain WMENU's main menu.
-    Ctrl-keypad-Plus remains available as a compatibility shortcut.
-    This menu offers you a choice from Place, Size, Scroll, Tracking,
-    Display, Color, Write,  and Abort.  You can press Escape (Esc) to
-    leave the main menu.
-
-    When you press the  arrow  keys on your  numeric  keypad  (or the
-    space bar)  you  can move the menu pointer,  a reverse-video box,
-    from  item to item in the  main menu.   When you press Enter, you
-    receive the submenu for the item that appears in the menu pointer.
-    In the submenus, you make changes to your windows by pressing the
-    arrow keys. The changes take effect instantaneously, as you press
-    the arrow keys.   Press Esc  to return  to the  main menu  from a
-    submenu.
-
-
-    MAIN MENU OPTIONS
-
-    Place allows you to move the window around on the screen.
-
-    Size allows you to change the size of each window.
-
-    Scroll  allows  you  to  change what portion of a virtual console
-    you see through a window.
-
-    Tracking lets  you  select  between row tracking and no tracking.
-    With row tracking selected,  Concurrent CP/M always keeps the row
-    that the  cursor is on in view  when you scroll or size a window.
-    With no tracking,  Concurrent CP/M  does  not  keep  track of the
-    cursor's row when you scroll or size a window.
-
-    The Display option  lets  you  choose  where  a  window  will  be
-    displayed, on a color or on a monochrome monitor. Selections made
-    in this  option  take  effect only if you have both a color and a
-    monochrome monitor connected to your Personal Computer.
-
-    Color lets you  change  the  foreground and background color of a
-    window displayed on a color monitor.
-
-    One of WMENU's more useful  options  is  WRITE.   After selecting
-    WRITE from the main menu, you can, with a single Enter keystroke,
-    create any of three different files:
-
-    1. A  SUBMIT  file  containing  WINDOW  commands that set up your
-       windows  exactly  as  they  are  set up at the moment when you
-       press Enter.
-
-    2. A file containing the characters in a window.
-
-    3. A file  containing  the  characters  in a virtual console that
-       lies beneath a window.
-
-    The Abort  option  allows you to  remove  the window manager from
-    your computer's memory.   After  pressing  Enter  from  the Abort
-    submenu, you must reinvoke WMENU to load the window manager.
-
-    Remember that you can press Ctrl-Alt-Esc to obtain WMENU's main menu
-    even when you are in an application program.  Also you can switch
-    virtual  consoles  when  you are in the  main  menu or while in a
-    submenu.  This means that you could, for example, change the size
-    of the window to virtual console 0, press Ctrl-Alt-2, and immediately
-    change the size of the window to virtual console 1.
 
 ///1CHKCPMFS
 CHKCPMFS drive: [FV]
-Read-only CP/M directory/allocation consistency check on the specified A:..P:.
-Exactly one drive is required; options follow it. V lists checked entries.
-Scans all users 0-15 and restores the original drive and user area.
-F is reserved and not implemented. Run on an idle drive; DOS/FAT is rejected.
+CP/M directory allocation check on the specified A:..P:. Exactly one drive
+is required; options follow it. V lists checked entries. All users 0-15 are
+checked. Without F, no disk writes are made.
+F offers confirmed metadata repairs only: clear reserved extent bits and
+remove fully identical duplicate extents with matching timestamp information.
+File data, allocation maps, names, attributes and recorded lengths are retained.
+Conflicting extents, cross-links, invalid block references, record-count errors
+or ambiguous associated metadata prevent the whole repair plan.
+Run on an idle drive. Repairs use BIOS on CP/M and locked XIOS on CCP/M/CDOS.
+I/O failures stop writes; partial changes are reported. DOS/FAT is rejected.
+
+///1ASM80
+ASM80 basename{.shp}
+
+Assembles basename.ASM as Intel 8080 source and produces basename.HEX
+and basename.PRN. With no suffix, source and output use the current drive.
+The optional three-letter suffix selects source, HEX and listing drives;
+use Z for either output to suppress it, or X for a console listing.
+
+  ASM80 PROG
+  ASM80 PROG.AAZ
+
+The second example reads A:PROG.ASM, writes A:PROG.HEX and suppresses
+PROG.PRN. This is the translated CP/M-80 assembler, not the native 8086
+ASM86 assembler. HEXCOM converts its Intel HEX output to a flat COM image.
+
+
+///1HEXCOM
+HEXCOM basename
+
+Reads basename.HEX and writes basename.COM. A supplied .HEX extension
+is also accepted. The output is a flat memory image from the lowest to
+the highest loaded address, padded to a 128-byte CP/M record with Ctrl-Z.
+
+  HEXCOM PROG
+  HEXCOM B:PROG.HEX
+
+This is a development tool for Intel HEX input. Use GENCMD, not HEXCOM,
+to package native CP/M-86 segmented H86 output as a CMD program.
+
 
