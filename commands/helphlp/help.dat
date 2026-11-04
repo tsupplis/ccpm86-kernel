@@ -2435,4 +2435,10 @@
     of the window to virtual console 0, press Ctrl-Alt-2, and immediately
     change the size of the window to virtual console 1.
 
+///1CHKCPMFS
+CHKCPMFS drive: [FV]
+Read-only CP/M directory/allocation consistency check on the specified A:..P:.
+Exactly one drive is required; options follow it. V lists checked entries.
+Scans all users 0-15 and restores the original drive and user area.
+F is reserved and not implemented. Run on an idle drive; DOS/FAT is rejected.
 
