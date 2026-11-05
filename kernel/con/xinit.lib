@@ -262,7 +262,8 @@ detect_cursor:
  mov bx,0FF10h
  int 10h
  cmp bh,1
- ja detect_cursor_done
+ jbe $+5
+ jmp detect_cursor_done
  mov ax,40h
  mov es,ax
  mov dx,es:.063h
@@ -275,7 +276,8 @@ detect_cursor_height:
  cmp ax,8
  jb detect_cursor_done
  cmp ax,32
- ja detect_cursor_done
+ jbe $+5
+ jmp detect_cursor_done
  dec al                         ; end scan line = height - 1
  mov ah,al
  dec ah                         ; start scan line = height - 2
@@ -302,6 +304,9 @@ detect_ega_done:
  jne detect_vga_done
 detect_vga_found:
  mov enhanced_vga,1
+ mov ax,es:.010h
+ and al,30h
+ mov enhanced_equipment,al
 detect_vga_done:
  pop bx
  mov ah,0Fh
@@ -311,6 +316,8 @@ detect_vga_done:
  jmps detect_cursor_done
 detect_cursor_mono:
  mov var_mono_cursor,ax
+ mov enhanced_mono,1
+ mov enhanced_text,7
 detect_cursor_done:
  pop es
  ret

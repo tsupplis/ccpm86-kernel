@@ -351,7 +351,8 @@ ww_sw_disp2:
 
 get_set_screen:
 	cmp	dl,num_vir_cons
-	jae	screen_bad_param	; skip if too high
+	jb	$+5
+	jmp	screen_bad_param	; skip if too high
 
 	call	point_vs		; bx -> vs_
 	cmp	ch,4
@@ -384,9 +385,24 @@ screen_set:
 	jnz	screen_set_owner
 	jmp	screen_not_sup		; another console must not reset the BIOS
 screen_set_owner:
+	cmp	enhanced_mono,0
+	je	screen_set_color
+	cmp	cl,0B0h
+	je	screen_set_color
+	cmp	cl,9
+	je	screen_set_mono_text
+	cmp	cl,1
+	jne	screen_not_sup
+screen_set_mono_text:
+	mov	ch,9
+	jmp	general_alpha
+screen_set_color:
+	cmp	enhanced_mono,0
+	jne	screen_set_adapter
 	cmp	num_color,0		; if we lack a color card
 	jz	screen_not_sup		;   then forget it
 
+screen_set_adapter:
 	mov	ch,cl			; save a copy of mode
 	mov	al,cl			;   and in al for branch
 	mov	si,offset alpha_vector	; default branch vector
@@ -521,10 +537,10 @@ alpha_vector	dw	screen_bad_param, general_alpha
 
 graph_vector	dw	screen_bad_param, general_graph
 		dw	color_320, black_white_320
-		dw	black_white_640, ega_640_350
-		dw	eg_320_200, eg_640_200
-		dw	eg_vga_mono, eg_vga_color
-		dw	eg_vga_256, eg_ega_mono
+		dw	black_white_640, eg_set_graphics
+		dw	eg_set_graphics, eg_set_graphics
+		dw	eg_set_graphics, eg_set_graphics
+		dw	eg_set_graphics, eg_set_graphics
 		dw	screen_not_sup, screen_not_sup
 		dw	screen_not_sup, screen_not_sup
 
@@ -636,8 +652,11 @@ general_graph:
 	pop	cx			; now we're cooking
 
 general_graph_go:
+	cmp	enhanced_mono,0
+	jne	graph_save_text
 	cmp	enhanced_video,0
 	jz	graph_variables
+graph_save_text:
 	cmp	bios_graphics,0
 	jnz	graph_variables		; never copy graphics into the text image
 	call	copy_full_top		; save direct-to-screen console contents
@@ -660,15 +679,6 @@ black_white_640:
 	mov	ax,071Eh		; video mode / color sel
 	jmp	color_graph_init	; native EGA entry follows
 
-ega_640_350:
-	cmp	enhanced_ega,0
-	jnz	ega_640_go
-	jmp	screen_not_sup
-ega_640_go:
-	call	general_graph
-	mov	al,10h
-	jmp	enhanced_graph_init
-
 color_graph_init:
 	cmp	enhanced_video,0
 	jz	legacy_graph_init
@@ -683,7 +693,7 @@ color_graph_init:
 enhanced_graph_init:
 	sub	ah,ah
 	mov	bios_graphics,1
-	call	video_bios
+	call	enhanced_set_mode
 	sub	ax,ax
 	ret
 legacy_graph_init:
@@ -717,7 +727,7 @@ color_video_init:
 enhanced_alpha:
 	mov	al,enhanced_text
 	sub	ah,ah
-	call	video_bios
+	call	enhanced_set_mode
 	; BIOS mode 2/3 also restores the adapter's standard 25-row font.
 	mov	bios_graphics,0
 	ret
@@ -1455,12 +1465,12 @@ z_video_param:
 	call	restore_state	; back to con_normal
 	cmp	al,0Dh
 	jb	z_video_legacy
-	mov	si,offset eg_bios_modes
+	mov	si,offset eg_modes+24
 	mov	cl,50h
 z_video_enhanced_scan:
 	cmp	al,cs:byte ptr [si]
 	je	z_video_set
-	inc	si
+	add	si,8
 	add	cl,10h
 	cmp	cl,0C0h
 	jb	z_video_enhanced_scan

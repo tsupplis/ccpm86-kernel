@@ -601,6 +601,10 @@ egcaps_no_ega:
 	je	egcaps_done
 	or	bl,0Ch		; VGA 11/12/13 + DAC; bit 3: EGA mono 0F
 egcaps_done:
+	cmp	enhanced_mono,0
+	je	egcaps_return
+	or	bl,8
+egcaps_return:
 	ret
 
 ;	restore normal status line operation

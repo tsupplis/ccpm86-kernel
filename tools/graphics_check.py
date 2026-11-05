@@ -9,10 +9,11 @@ TOOLS='cdostools' if CDOS else 'ccpmtools'
 
 def check():
     adapter=sys.argv[1] if len(sys.argv)>1 else "vga"
-    assert adapter in ("vga","ega","cga")
+    assert adapter in ("vga","ega","cga","egamono","hgc")
     fixture=sys.argv[2] if len(sys.argv)>2 else "graphics"
     assert fixture in ("graphics","text40","text40native")
     defines=[] if adapter=="vga" else ["-D"+adapter.upper()]
+    if adapter=="egamono": defines.append("-DEGA")
     if CDOS: defines.append("-DCDOS")
     folder=Path(tempfile.mkdtemp(prefix=SYSTEM+'-graphics-'))
     print('Diagnostics:',folder,flush=True)
@@ -30,15 +31,17 @@ def check():
     cfg=(ROOT/'media'/(SYSTEM+'.cfg')).read_text().replace('driver = "sdl"','driver = "null"')
     cfg=re.sub(r'(?m)^path\s*=\s*"([^"\n]+)"',lambda m:'path = "'+str((ROOT/'media'/m[1]).resolve())+'"',cfg)
     cfg=cfg.replace('driver      = "sdl:lowpass=5000"','driver      = "null"').replace(TOOLS+'.img','fixtures.img')
+    if adapter=="egamono": cfg=cfg.replace("switches = 0x09","switches = 0x0a")
     (folder/(SYSTEM+'.cfg')).write_text(cfg)
     commands=['c f000000']
     for char in 'b:graphics.'+extension+'\n':
         key={':':'+Shift Semicolon -Shift','.':'Period','\n':'Return'}.get(char,char)
         commands+=['key '+key,'c 200000']
     commands+=['c 4000000']*8
-    commands+=['save "result.bin" bin b800:0000 fa0','save "ram.bin" bin 0000:0000 a0000','q']
+    segment='b000' if adapter in ('egamono','hgc') else 'b800'
+    commands+=[f'save "result.bin" bin {segment}:0000 fa0','save "ram.bin" bin 0000:0000 a0000','q']
     with (folder/'pce.log').open('wb') as log:
-        subprocess.run(['pce-ibmpc','-c',SYSTEM+'.cfg','-t','null','-g',adapter],cwd=folder,
+        subprocess.run(['pce-ibmpc','-c',SYSTEM+'.cfg','-t','null','-g','ega' if adapter=='egamono' else adapter],cwd=folder,
                        input=('\n'.join(commands)+'\n').encode(),stdout=log,stderr=log,
                        timeout=60,check=True)
     video=(folder/'result.bin').read_bytes()
@@ -50,7 +53,9 @@ def check():
     else:
         assert fixture.upper()+' PASS' in screen and 'FAIL' not in screen,screen
     assert [l.strip() for l in screen.splitlines() if l.strip()][-1]=='A>',screen
-    description={"vga":"CGA 4/5/6, EGA 0D/0E/0F/10 and VGA 11/12/13, pixels/XOR, bounds/pages, palettes/DAC, cursor/character/scroll",
+    description={"hgc":"Hercules monochrome text and rejection of unsupported graphics",
+                 "egamono":"EGA monochrome 0F, pixels/XOR, bounds/pages, palette, cursor/character/scroll",
+                 "vga":"CGA 4/5/6, EGA 0D/0E/0F/10 and VGA 11/12/13, pixels/XOR, bounds/pages, palettes/DAC, cursor/character/scroll",
                  "ega":"CGA 4/5/6 and EGA 0D/0E/10, pixels/XOR, bounds/pages, palette writes, cursor/character/scroll",
                  "cga":"CGA 4/5/6 mode/columns, pixels/XOR, bounds/pages, cursor/character/TTY/scroll"}[adapter]
     if fixture=='text40': description='40-column text modes 0/1, query, physical stride, cursor, characters, TTY/wrap, scroll and DOS exit'

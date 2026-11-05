@@ -561,13 +561,17 @@ insertion. No EGA monochrome graphics mode is added.
 CCP/M selection, output and restoration. The existing graphics regression
 suite remains separate.
 
-## EGA monochrome mode through VGA
+## EGA monochrome graphics
 
 Mode 0Fh (640×350 monochrome) follows the existing guarded BIOS graphics
-path. Native mode B0h, ESC a parameter 0Fh and DOS INT 10h expose the same
-mode. Capability bit 3 advertises it only when VGA is detected. Existing
-mode numbers and capability bits keep their meaning. Pixel bounds, video
-and intensity bits, XOR, graphics text and restoration are covered by the
-booted VGA regression; CGA and EGA reject this request unchanged.
+path on EGA with a monochrome monitor and on VGA. Native mode B0h, ESC a
+parameter 0Fh and DOS INT 10h expose the same mode; capability bit 3
+advertises it. Existing mode numbers and capability bits keep their meaning.
+EGA monochrome retains its mode-7 text console and rejects colour modes.
+The IBM VGA BIOS requires matching equipment video bits for mode 0Fh;
+these return to their startup selection for colour graphics and text.
 
-Physical EGA monochrome monitor startup/routing remains deferred.
+`make check-graphics` includes PCE EGA monochrome (switches 0x0a), colour
+EGA, VGA, CGA and Hercules. Tests cover pixel read/write and XOR, bounds,
+page rejection, graphics characters/TTY, scrolling, mode queries, actual
+BIOS modes and text restoration. Hercules retains text-only operation.

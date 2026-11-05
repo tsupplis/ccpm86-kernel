@@ -118,7 +118,7 @@ console escape stream, without executing a DOS program.
 | 11 | 640×480, 2 colours | VGA | 80h | 11h | Implemented |
 | 12 | 640×480, 16 colours | VGA | 90h | 12h | Implemented |
 | 13 | 320×200, 256 colours | VGA | A0h | 13h | Implemented |
-| 0F | 640×350 monochrome, video/intensity planes | VGA emulation; physical EGA monochrome deferred | B0h | 0Fh | Implemented |
+| 0F | 640×350 monochrome, video/intensity planes | EGA with monochrome monitor, or VGA | B0h | 0Fh | Implemented |
 | Other graphics modes | VESA and nonstandard modes | — | Not assigned | Not supported | No compatibility claim |
 
 Text modes use the existing native console/window implementation. DOS mode
@@ -143,7 +143,7 @@ or leaving the DOS session restores the saved native screen and cursor.
 | XIOS function 30 decimal | CH=0 sets the mode byte in CL for console DL; CH=1 retains the historical query; CH=4 returns the actual native mode in AL and column count in AH (40 or 80). DOS AH=0Fh uses CH=4. This is an XIOS entry, **not** BDOS function 30 or a permitted direct-BIOS packet selector |
 | CGA palette extension | XIOS function 30, CH=2, CL=CGA colour-select value (bits 0–5); graphics owner only |
 | EGA palette extension | XIOS function 30, CH=3, CL=palette entry 0–15, DH=6-bit EGA colour, DL=console; requires native planar mode 50h–90h or B0h and graphics ownership |
-| Capability probe | INT E6h, AL=1Eh (30 decimal), input BX=0: AX=4745h (`EG`), BX bit 0 enables BIOS 10h (native 50h), bit 1 enables 0Dh/0Eh, bit 2 enables VGA 11h/12h/13h and DAC, bit 3 enables 0Fh (native B0h) through VGA; probe before selecting |
+| Capability probe | INT E6h, AL=1Eh (30 decimal), input BX=0: AX=4745h (`EG`), BX bit 0 enables BIOS 10h (native 50h), bit 1 enables 0Dh/0Eh, bit 2 enables VGA 11h/12h/13h and DAC, bit 3 enables 0Fh (native B0h) on EGA monochrome or VGA; probe before selecting |
 | Console switching | BIOS-backed graphics keeps the foreground console until the owner restores text mode; there is no per-console saved EGA/VGA graphics framebuffer |
 
 CGA graphics modes 04h/05h/06h use the same guarded packet path for DOS
@@ -154,10 +154,11 @@ are enforced. AH=0Bh retains the existing CGA palette path; AH=10h EGA/VGA
 palette services are rejected in CGA modes. The historical native CH=1 query
 is unchanged, including CDOS's graphics-as-text result; new callers use CH=4.
 
-Mode 0Fh currently requires detected VGA. Its monochrome video and intensity
-use pixel bits 0 and 2 (values 0, 1, 4, 5); planar XOR remains supported.
-Original EGA and CGA reject the request without changing the current mode.
-Physical EGA monochrome monitor detection and console routing remain deferred.
+Mode 0Fh requires an EGA monochrome console or detected VGA. Its video and
+intensity use pixel bits 0 and 2 (values 0, 1, 4, 5); planar XOR is supported.
+EGA monochrome retains its mode-7 text console and rejects colour-mode
+requests. Colour EGA, CGA and Hercules reject mode 0Fh without changing mode.
+Hercules remains supported as a monochrome text console, without graphics.
 
 Planar graphics uses the captured adapter ROM through the XIOS IRQ/PIC
 and private-stack guard, without calling the intercepted INT 10h. Page zero

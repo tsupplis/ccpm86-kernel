@@ -284,7 +284,7 @@ Audit: CCP/M-86/Concurrent DOS 3.2; boot regressions: 3.1.
 cursor, EGA/VGA retrace handling, console shortcuts, configured drives,
 GENCCPM flag records, PIN and build corrections. CGA graphics modes 4/6 now
 use kernel-controlled BIOS mode/palette calls on EGA/VGA, preserving the CGA
-path and restoring text. EGA modes 0Dh/0Eh/10h and VGA modes 11h/12h/13h include graphics drawing and palette services. See [api.md](api.md).
+path and restoring text. EGA modes 0Dh/0Eh/10h, monochrome 0Fh on EGA monochrome/VGA, and VGA modes 11h/12h/13h include graphics drawing and palette services. See [api.md](api.md).
 The SYSDISK B: versus C: selection with two floppies is also fixed.
 
 ## Optional display paging
@@ -304,7 +304,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 | `make` | Commands, kernel/RSPs, boot sources, four images |
 | `make -C commands/sysdisk check` | Byte-identical SYSDISK reconstruction |
 | `make check` | SYSDISK identity, source-built boot identity, every packaged file, sizes |
-| `make check-graphics` | Assembled graphics guards and adapter gates; PCE VGA/EGA/CGA pixels, palettes, graphics text/TTY and restoration |
+| `make check-graphics` | Assembled graphics guards and adapter gates; PCE VGA/EGA/CGA, EGA monochrome and Hercules checks: pixels, palettes, graphics text/TTY and restoration |
 | `make check-text40` | Booted 40-column text tests on CGA/EGA/VGA: cursor, wrapping, scrolling and restoration |
 | `make check-qemu` | Boot, RTC, status, switching, HELP, SDIR, SYSDISK, SETDEF, DREDIX, windows |
 | `make check-paging` | TYPE, SDIR, DIR.RSP and DIR.CMD paging, resume, Ctrl-C and default-off |

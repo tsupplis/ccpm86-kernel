@@ -3129,14 +3129,7 @@ bios_video_try_mode_query:
 	mov	bl,al
 	mov	al,cs:eg_dos_modes[bx]
 	pop	bx
-	mov	ah,80
-	cmp	al,0Dh
-	je	eg_dos_query_narrow
-	cmp	al,13h
-	jne	eg_dos_query_done
-eg_dos_query_narrow:
-	mov	ah,40
-eg_dos_query_done:
+	; AH already contains the column count returned by XIOS CH=4.
 	mov	word ptr .bios_frame_ax,ax
 	mov byte ptr .bios_frame_bh,0
 	jmp bios_video_restore_frame
@@ -7741,21 +7734,10 @@ dos_input_break:
 	jmp	unwind_dos_break			; restore user SS:SP and dispatch INT 23h
 	org	(offset $+15) and 0fff0h
 
-; The recovered packet path discards XIOS AX when it pops the INT 10h frame.
-; Only AH=0Dh defines a pixel-color return here. Copy its successful AL into
-; that frame; preserve original AH and all other packet-operation registers.
-; FFFFh is the bridge's unsupported/rejected result: retain the caller's AL.
-; This helper adds no state and runs on the existing per-console private stack.
+; Copy documented results into the saved INT 10h frame in one place.
 bios_video_packet_result:
 	call	xios_gateway
-	call	eg_dos_result
-	cmp	si,0d1fh
-	jne	bios_video_packet_done
-	cmp	ax,0ffffh
-	je	bios_video_packet_done
-	mov	byte ptr .bios_frame_ax,al
-bios_video_packet_done:
-	ret
+	jmp	eg_dos_result
 	org	(offset $+15) and 0fff0h
 
 	include	pcshell.lib

@@ -2,7 +2,13 @@
 bits 16
 cpu 8086
 org 100h
-%ifdef CGA
+%ifdef HGC
+%define MODE_COUNT 0
+%define MONOTEXT
+%elifdef EGAMONO
+%define MODE_COUNT 1
+%define MONOTEXT
+%elifdef CGA
 %define MODE_COUNT 3
 %define NO_VGA
 %elifdef EGA
@@ -10,6 +16,11 @@ org 100h
 %define NO_VGA
 %else
 %define MODE_COUNT 10
+%endif
+%ifdef MONOTEXT
+%define TEXT_MODE 7
+%else
+%define TEXT_MODE 3
 %endif
 start:
     push cs
@@ -36,6 +47,15 @@ next_mode:
     mov [actualdx],dx
     cmp al,[mode]
     jne failed
+    push es
+    mov ax,40h
+    mov es,ax
+    mov al,[es:49h]
+    pop es
+    cmp al,[mode]
+    jne failed
+    mov ah,0fh
+    int 10h
     mov [columns],ah
     mov al,[mode]
     mov bp,640
@@ -79,7 +99,7 @@ dimensions:
     mov [actual],ax
     mov [actualcx],cx
     mov [actualdx],dx
-    mov ah,0dh
+    mov ax,0d00h
     int 10h
     mov [actual],ax
     mov [actualcx],cx
@@ -97,19 +117,10 @@ dimensions:
     mov [actual],ax
     mov [actualcx],cx
     mov [actualdx],dx
-    mov byte [stage],41
-    mov ah,0dh
+    mov ax,0d00h
     int 10h
-    mov [actual],ax
     cmp al,1
     jne failed
-    mov byte [stage],43
-    mov ah,0dh
-    int 10h
-    mov [actual],ax
-    cmp al,1
-    jne failed
-    mov byte [stage],42
     inc cx
     mov ax,0c00h
     int 10h
@@ -117,8 +128,7 @@ dimensions:
     mov [actualcx],cx
     mov [actualdx],dx
     dec cx
-    mov byte [stage],44
-    mov ah,0dh
+    mov ax,0d00h
     int 10h
     mov [actual],ax
     cmp al,1
@@ -130,13 +140,11 @@ dimensions:
     mov [actualcx],cx
     mov [actualdx],dx
     dec dx
-    mov byte [stage],45
-    mov ah,0dh
+    mov ax,0d00h
     int 10h
     mov [actual],ax
     cmp al,1
     jne failed
-    mov byte [stage],46
     mov bh,1
     mov ax,0c00h
     int 10h
@@ -144,7 +152,7 @@ dimensions:
     mov [actualcx],cx
     mov [actualdx],dx
     xor bh,bh
-    mov ah,0dh
+    mov ax,0d00h
     int 10h
     mov [actual],ax
     mov [actualcx],cx
@@ -159,7 +167,7 @@ dimensions:
     mov [actual],ax
     mov [actualcx],cx
     mov [actualdx],dx
-    mov ah,0dh
+    mov ax,0d00h
     int 10h
     mov [actual],ax
     mov [actualcx],cx
@@ -172,13 +180,13 @@ dimensions:
     mov byte [stage],54
     mov ax,0c05h
     int 10h
-    mov ah,0dh
+    mov ax,0d00h
     int 10h
     cmp al,5
     jne failed
     mov ax,0c84h
     int 10h
-    mov ah,0dh
+    mov ax,0d00h
     int 10h
     cmp al,1
     jne failed
@@ -190,7 +198,7 @@ packed:
     mov [actual],ax
     mov [actualcx],cx
     mov [actualdx],dx
-    mov ah,0dh
+    mov ax,0d00h
     int 10h
     mov [actual],ax
     mov [actualcx],cx
@@ -296,7 +304,7 @@ palette_done:
     mov [actualcx],cx
     mov [actualdx],dx
 restore_text:
-    mov ax,3
+    mov ax,TEXT_MODE
     int 10h
     mov [actual],ax
     mov [actualcx],cx
@@ -307,7 +315,10 @@ restore_text:
     int 21h
     jmp next_mode
 passed:
-%ifdef NO_VGA
+%ifdef HGC
+    mov ax,0fh
+    int 10h
+%elifdef NO_VGA
     mov ax,0fh
     int 10h
     mov ah,0fh
@@ -323,22 +334,52 @@ passed:
     int 10h
     cmp ax,500fh
     jne failed
-    mov ax,3
+    mov ax,TEXT_MODE
     int 10h
 %endif
+%ifdef MONOTEXT
+    ; Unsupported colour requests leave the monochrome console intact.
+    mov si,unsupported
+reject_next:
+    lodsb
+    test al,al
+    jz reject_done
+    xor ah,ah
+    int 10h
+    mov ah,0fh
+    int 10h
+    cmp ax,5007h
+    jne failed
+    jmp reject_next
+reject_done:
+%endif
+    mov ah,0fh
+    int 10h
+    cmp ax,5000h+TEXT_MODE
+    jne failed
+    push es
+    mov ax,40h
+    mov es,ax
+    cmp byte [es:49h],TEXT_MODE
+    pop es
+    jne failed
     cmp byte [passes],MODE_COUNT
     jne failed
     mov dx,success
     jmp finish
 failed:
-    mov ax,3
+    mov ax,TEXT_MODE
     int 10h
     mov dx,error
 finish:
     mov ah,9
     int 21h
     int 20h
-%ifdef CGA
+%ifdef HGC
+modes: db 0
+%elifdef EGAMONO
+modes: db 0fh,0
+%elifdef CGA
 modes: db 4,5,6,0
 %elifdef EGA
 modes: db 4,5,6,0dh,0eh,10h,0
@@ -357,3 +398,5 @@ success: db 'GRAPHICS PASS',13,10,'$'
 error: db 'GRAPHICS FAIL',13,10,'$'
 
 native_mono: db 27,"a",0fh,"$"
+
+unsupported: db 3,4,0dh,0eh,10h,11h,12h,13h,0

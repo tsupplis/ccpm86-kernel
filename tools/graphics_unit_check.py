@@ -113,7 +113,7 @@ print(f'PASS: {count} assembled-XIOS enhanced graphics guards, dimensions, pages
 
 def capability_checks():
     count=0
-    cases=[('eg_ega_mono','enhanced_vga',0x0f),('ega_640_350','enhanced_ega',0x10),('eg_320_200','enhanced_video',0x0d),('eg_640_200','enhanced_video',0x0e),('eg_vga_mono','enhanced_vga',0x11),('eg_vga_color','enhanced_vga',0x12),('eg_vga_256','enhanced_vga',0x13)]
+    cases=[(0xb0,'enhanced_mono',0x0f),(0xb0,'enhanced_vga',0x0f),(0x50,'enhanced_ega',0x10),(0x60,'enhanced_video',0x0d),(0x70,'enhanced_video',0x0e),(0x80,'enhanced_vga',0x11),(0x90,'enhanced_vga',0x12),(0xa0,'enhanced_vga',0x13)]
     for entry,flag,mode in cases:
         for enabled in (0,1):
             with tempfile.TemporaryDirectory(prefix='xios-mode-caps-') as temp:
@@ -121,7 +121,7 @@ def capability_checks():
                 code[S('general_graph')]=0xc3
                 stub=asm('mov [0f100h],ax\ninc byte [0f102h]\nret\n',f,'stub')
                 dest=len(code);code+=stub;at=S('video_bios');code[at:at+3]=b'\xe9'+((dest-at-3)&65535).to_bytes(2,'little')
-                code[:4]=b'\xe8'+((S(entry)-3)&65535).to_bytes(2,'little')+b'\xcb'
+                code[:4]=b'\xe8'+((S('eg_set_graphics')-3)&65535).to_bytes(2,'little')+b'\xcb'
                 (f/'payload.bin').write_bytes(code)
                 body=f'''bits 16
 cpu 8086
@@ -136,8 +136,10 @@ mov es,ax
 mov byte [{S('enhanced_video')}],0
 mov byte [{S('enhanced_ega')}],0
 mov byte [{S('enhanced_vga')}],0
+mov byte [{S('enhanced_mono')}],0
 mov byte [{S(flag)}],{enabled}
 mov byte [0f102h],0
+mov ch,{entry}
 call far [cs:target]
 cmp ax,{0 if enabled else 65535}
 jne failed
@@ -150,7 +152,7 @@ jne failed
                 result=subprocess.run(['emu2','case.bin'],cwd=f,capture_output=True,timeout=5)
                 assert result.returncode==0,(entry,enabled,result.stdout,result.stderr)
                 count+=1
-    print(f'PASS: {count} built-XIOS adapter gates: 64-KB EGA 0D/0E, >=128-KB mode 10 and VGA-only 0F/11/12/13')
+    print(f'PASS: {count} built-XIOS adapter gates: 64-KB EGA 0D/0E, >=128-KB mode 10 and EGA monochrome/VGA 0F and VGA 11/12/13')
 
 capability_checks()
 

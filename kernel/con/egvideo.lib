@@ -146,32 +146,14 @@ eg_reject:
 ; character rectangles. Mode 13h uses 8x8 cells; VGA 480 uses 8x16;
 ; mode 10h uses 8x14. Reject nonzero pages and malformed rectangles.
 eg_owned:
-	mov	bp,200
-	mov	cx,640
-	cmp	vs_screen_mode,50h
-	je	eg_height_350
-	cmp	vs_screen_mode,0B0h
-	je	eg_height_350
-	cmp	vs_screen_mode,80h
-	je	eg_height_480
-	cmp	vs_screen_mode,90h
-	je	eg_height_480
-	cmp	vs_screen_mode,20h
-	je	eg_narrow
-	cmp	vs_screen_mode,30h
-	je	eg_narrow
-	cmp	vs_screen_mode,60h
-	je	eg_narrow
-	cmp	vs_screen_mode,0A0h
-	jne	eg_dimensions
-eg_narrow:
-	mov	cx,320
-	jmp	eg_dimensions
-eg_height_350:
-	mov	bp,350
-	jmp	eg_dimensions
-eg_height_480:
-	mov	bp,480
+	push	di
+	mov	al,vs_screen_mode
+	xor	ah,ah
+	shr	ax,1			; native mode / 16 * eight-byte descriptor
+	mov	di,ax
+	mov	cx,cs:eg_modes-16+4[di]
+	mov	bp,cs:eg_modes-16+6[di]
+	pop	di
 eg_dimensions:
 	test	si,80h
 	jz	$+5
@@ -498,47 +480,40 @@ eg_bda_page_size:
 	pop	es ! pop bx ! pop ax
 	ret
 
-; Capability-gated native mode handlers. CH remains the requested native
-; mode through general_graph's foreground wait and text-image capture.
-eg_320_200:
-	cmp	enhanced_video,0
-	jne	$+5
-	jmp	eg_mode_unsupported
-	mov	al,0Dh
-	jmp	eg_mode_begin
-eg_640_200:
-	cmp	enhanced_video,0
-	jne	$+5
-	jmp	eg_mode_unsupported
-	mov	al,0Eh
-	jmp	eg_mode_begin
-; VGA emulates EGA monochrome without changing the attached monitor.
-; Physical EGA monochrome startup/routing is not enabled by this gate.
-eg_ega_mono:
-	mov	al,0Fh
-	jmps	eg_vga_mode
-eg_vga_mono:
-	mov	al,11h
-	jmps	eg_vga_mode
-eg_vga_color:
-	mov	al,12h
-	jmps	eg_vga_mode
-eg_vga_256:
-	mov	al,13h
-eg_vga_mode:
-	cmp	enhanced_vga,0
-	jne	$+5
-	jmp	eg_mode_unsupported
-eg_mode_begin:
+; One capability-gated entry for enhanced native modes 50h..B0h.
+; CH retains the requested native mode through foreground ownership.
+eg_set_graphics:
+	mov	al,ch
+	xor	ah,ah
+	shr	ax,1
+	mov	si,ax
+	push	bx			; capability query returns BX; preserve console
+	call	xios_v1_graph_caps
+	test	bl,cs:byte ptr eg_modes-16+1[si]
+	pop	bx
+	jnz	$+5
+	jmp	screen_not_sup
+	mov	al,cs:byte ptr eg_modes-16[si]
 	push	ax
 	call	general_graph
 	pop	ax
 	jmp	enhanced_graph_init
-eg_mode_unsupported:
-	jmp	screen_not_sup
 
-; Immutable map used by both native mode query and DOS mode translation.
-eg_bios_modes db 10h,0Dh,0Eh,11h,12h,13h,0Fh
+; Eight-byte descriptors, indexed directly by native mode >> 1.
+; BIOS mode, required capability bit, columns, reserved, pixel width/height.
+; CGA keeps its hardware-specific mode setter; its dimensions live here too.
+eg_modes:
+	db	04h,0,40,0 ! dw 320,200	; 20h
+	db	05h,0,40,0 ! dw 320,200	; 30h
+	db	06h,0,80,0 ! dw 640,200	; 40h
+	db	10h,1,80,0 ! dw 640,350	; 50h
+	db	0Dh,2,40,0 ! dw 320,200	; 60h
+	db	0Eh,2,80,0 ! dw 640,200	; 70h
+	db	11h,4,80,0 ! dw 640,480	; 80h
+	db	12h,4,80,0 ! dw 640,480	; 90h
+	db	13h,4,40,0 ! dw 320,200	; A0h
+	db	0Fh,8,80,0 ! dw 640,350	; B0h
+
 enhanced_vga db 0
 video_result_ax dw 0
 video_result_bx dw 0
@@ -551,18 +526,23 @@ eg_screen_query:
 	mov	al,vs_screen_mode
 	mov	ah,80
 	cmp	al,20h
-	je	eg_query_narrow
-	cmp	al,30h
-	je	eg_query_narrow
-	cmp	al,60h
-	je	eg_query_narrow
-	cmp	al,0A0h
-	je	eg_query_narrow
+	jb	eg_query_text
+	cmp	al,0B0h
+	ja	eg_query_done
+	push	si ! push ax
+	xor	ah,ah
+	shr	ax,1
+	mov	si,ax
+	pop	ax
+	mov	ah,cs:byte ptr eg_modes-16+2[si]
+	pop	si
+	ret
+eg_query_text:
 	cmp	al,2
-	je	eg_query_narrow
+	je	eg_query_40
 	cmp	al,3
 	jne	eg_query_done
-eg_query_narrow:
+eg_query_40:
 	mov	ah,40
 eg_query_done:
 	ret
@@ -579,3 +559,27 @@ eg_text_40:
 	mov	al,40
 eg_text_width_done:
 	ret
+
+; IBM VGA firmware selects its monochrome path from the equipment bits.
+; Keep those consistent with mode 0Fh, then restore the startup selection
+; for colour graphics/text. Other equipment bits remain untouched.
+enhanced_set_mode:
+	cmp	enhanced_vga,0
+	je	enhanced_set_call
+	push	ax ! push es ! push di
+	mov	di,40h
+	mov	es,di
+	mov	di,10h
+	mov	ah,enhanced_equipment
+	cmp	al,0Fh
+	jne	enhanced_set_equipment
+	mov	ah,30h
+enhanced_set_equipment:
+	and	es:byte ptr [di],0CFh
+	or	es:byte ptr [di],ah
+	pop	di ! pop es ! pop ax
+enhanced_set_call:
+	jmp	video_bios
+
+enhanced_mono db 0
+enhanced_equipment db 0
