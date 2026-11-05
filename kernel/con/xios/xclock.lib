@@ -1,0 +1,33 @@
+if      PCMODEXIOS
+; xpcmode: core section
+xcode                   cseg    byte public 'CODE'
+; BIOS INT 1Ah/AH=00 reads the BDA clock directly. CCP/M owns IRQ0 and
+; programs the PIT for 60 Hz, so the ROM timer ISR no longer advances it.
+; Accumulate actual PIT input cycles: overflow at 65536 gives the original
+; BIOS tick rate without changing native scheduling. IRQ0 has saved all
+; registers and disabled interrupts. Do not chain the ROM IRQ handler: it
+; would acknowledge our interrupt and run incompatible floppy housekeeping.
+; Preserve the boot-time BDA value; roll over at the BIOS day boundary.
+pcclocktick:
+                        add     pcclockphase,timer60hz
+                        jnc     pcclockdone
+                        mov     ax,40h
+                        mov     es,ax
+                        xor     bx,bx
+                        add     es:word ptr 6ch[bx],1
+                        adc     es:word ptr 6eh[bx],0
+                        cmp     es:word ptr 6eh[bx],18h
+                        jb      pcclockdone
+                        ja      pcclockmidnight
+                        cmp     es:word ptr 6ch[bx],0b0h
+                        jb      pcclockdone
+pcclockmidnight:
+                        mov     es:word ptr 6ch[bx],0
+                        mov     es:word ptr 6eh[bx],0
+                        mov     es:byte ptr 70h[bx],1
+pcclockdone:
+                        ret
+
+pcclockphase            dw      0
+
+                        endif

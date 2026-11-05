@@ -1,0 +1,1131 @@
+; egvideo: console section
+xcode                   cseg    byte public 'CODE'
+; Preserve the combined XIOS code/data origin across library boundaries.
+xcode                   cseg    byte public 'CODE'
+; Enhanced graphics adapter bridge (local copy in each independent project).
+;
+; Native function 30 assigns 50h=10h, 60h=0Dh, 70h=0Eh,
+; 80h=11h, 90h=12h, A0h=13h, B0h=0Fh (VGA emulation). A single foreground console owns graphics.
+; Function 31 accepts the usual packet AX,BX,CX,DX,console (nine bytes).
+; Set bit 7 of its BIOS selector to use a packet also for cursor/cell/TTY
+; operations. Plain selectors retain the historical native argument ABI.
+; Firmware runs through video_bios with IRQs masked and a private stack.
+; CF=0: handled, AX=result; CF=1: ordinary text/CGA path, inputs unchanged.
+;------------------------------------------------------------------------------
+egnativevideo:
+                        call    egtryvideo
+                        jnc     $+5
+                        mov     ax,0FFFFh
+                        ret
+
+egtryvideo:
+                        push    bx ! push cx ! push dx ! push si
+                        push    di ! push bp ! push es ! push ax
+                        call    egdispatch
+                        jc      $+5
+                        jmp     eghandled
+                        pop     ax
+                        pop     es ! pop bp ! pop di ! pop si
+                        pop     dx ! pop cx ! pop bx
+                        stc
+                        ret
+eghandled:
+                        add     sp,2
+                        pop     es ! pop bp ! pop di ! pop si
+                        pop     dx ! pop cx ! pop bx
+                        clc
+                        ret
+
+egdispatch:
+                        push    ax
+                        and     al,7Fh
+                        cmp     al,1
+                        jb      egselectorbad
+                        cmp     al,16
+                        ja      egselectorbad
+                        cmp     al,4
+                        je      egselectorbad
+                        cmp     al,5
+                        je      egselectorbad
+                        cmp     al,15
+                        je      egselectorbad
+                        pop     ax
+                        jmp     egselectorok
+egselectorbad:
+                        pop     ax
+                        test    al,80h
+                        jz      $+5
+                        jmp     egreject
+                        stc
+                        ret
+egselectorok:
+                        xor     ah,ah
+                        mov     si,ax                            ; BIOS selector, optionally packet flag
+                        test    al,80h
+                        jz      $+5
+                        jmp     egpacket
+                        cmp     al,16
+                        jne     $+5
+                        jmp     egpacket
+                        cmp     al,6
+                        jae     $+5
+                        jmp     egsimple
+                        cmp     al,8
+                        jne     $+5
+                        jmp     egsimple
+                        cmp     al,14
+                        jne     $+5
+                        jmp     egsimple
+                        cmp     al,13
+                        jbe     $+5
+                        jmp     egfallback
+egpacket:
+                        mov     es,cx
+                        mov     di,dx
+                        mov     dl,es:byte ptr 8[di]
+egsimple:
+                        cmp     dl,numvircons
+                        jb      $+5
+                        jmp     egreject
+                        call    pointvs
+                        cmp     vsscreenmode,50h
+                        jae     egenhancedowner
+; CGA packet services use the same ROM guard, even on a real CGA.
+                        test    si,80h
+                        jz      $+5
+                        jmp     egcgaowner
+                        jmp     egfallback
+egcgaowner:
+                        cmp     vsscreenmode,20h
+                        jb      $+5
+                        jmp     egcgaupper
+                        jmp     egreject
+egcgaupper:
+                        cmp     vsscreenmode,40h
+                        jbe     $+5
+                        jmp     egreject
+                        jmp     egownercheck
+egenhancedowner:
+                        cmp     vsscreenmode,0C0h
+                        jbe     $+5
+                        jmp     egreject
+                        cmp     biosgraphics,0
+                        jne     $+5
+                        jmp     egreject
+egownercheck:
+                        mov     al,vsnumber
+                        cmp     al,topscreen
+                        je      $+5
+                        jmp     egreject
+                        mov     al,vsbit
+                        test    graphicbits,al
+                        jnz     $+5
+                        jmp     egreject
+                        call    getmx
+                        push    cx
+                        call    egowned
+                        pop     cx
+                        mov     vsmx,0
+                        clc
+                        ret
+
+egfallback:
+                        test    si,80h
+                        jz      $+5
+                        jmp     egreject
+                        stc
+                        ret
+egreject:
+                        mov     ax,0FFFFh
+                        clc
+                        ret
+
+; Work only after locking the graphics owner. Dimensions also bound BIOS
+; character rectangles. Mode 13h uses 8x8 cells; VGA 480 uses 8x16;
+; mode 10h uses 8x14. Reject nonzero pages and malformed rectangles.
+egowned:
+                        push    di
+                        mov     al,vsscreenmode
+                        xor     ah,ah
+                        shr     ax,1                             ; native mode / 16 * eight-byte descriptor
+                        mov     di,ax
+                        mov     cx,cs:egmodes-16+4[di]
+                        mov     bp,cs:egmodes-16+6[di]
+                        pop     di
+egdimensions:
+                        cmp     vsscreenmode,0C0h
+                        jne     hgcservicesready
+                        mov     ax,si
+                        and     ax,7Fh
+                        cmp     ax,11
+                        je      $+5
+                        jmp     hgccheckpalette
+                        jmp     egownedbad
+hgccheckpalette:
+                        cmp     ax,16
+                        jne     hgcservicesready
+                        jmp     egownedbad
+hgcservicesready:
+                        test    si,80h
+                        jz      $+5
+                        jmp     egownedpacket
+                        cmp     si,16
+                        jne     $+5
+                        jmp     egownedpacket
+                        cmp     si,6
+                        jae     $+5
+                        jmp     egownedsimple
+                        cmp     si,8
+                        jne     $+5
+                        jmp     egownedsimple
+                        cmp     si,14
+                        jne     $+5
+                        jmp     egownedsimple
+egownedpacket:
+                        and     si,7Fh
+                        cmp     si,16
+                        jne     $+5
+                        jmp     egpalette
+                        cmp     si,12
+                        jne     $+5
+                        jmp     egpixel
+                        cmp     si,13
+                        jne     $+5
+                        jmp     egpixel
+; Derive character bounds from pixel dimensions and ROM font height.
+                        shr     cx,1 ! shr cx,1 ! shr cx,1
+                        mov     ax,43
+                        cmp     bp,348
+                        je      egcellbounds
+                        mov     ax,25
+                        cmp     bp,480
+                        je      $+5
+                        jmp     egcellbounds
+                        mov     ax,30
+egcellbounds:
+                        cmp     si,6
+                        jne     $+5
+                        jmp     egrectangle
+                        cmp     si,7
+                        jne     $+5
+                        jmp     egrectangle
+                        cmp     es:byte ptr 3[di],0
+                        je      $+5
+                        jmp     egownedbad
+                        cmp     si,2
+                        je      $+5
+                        jmp     egpacketcall
+                        cmp     es:byte ptr 6[di],cl
+                        jb      $+5
+                        jmp     egownedbad
+                        cmp     es:byte ptr 7[di],al
+                        jb      $+5
+                        jmp     egownedbad
+                        jmp     egpacketcall
+
+egrectangle:
+                        cmp     es:byte ptr 4[di],cl
+                        jb      $+5
+                        jmp     egownedbad
+                        cmp     es:byte ptr 6[di],cl
+                        jb      $+5
+                        jmp     egownedbad
+                        cmp     es:byte ptr 5[di],al
+                        jb      $+5
+                        jmp     egownedbad
+                        cmp     es:byte ptr 7[di],al
+                        jb      $+5
+                        jmp     egownedbad
+                        mov     ax,es:word ptr 4[di]
+                        cmp     al,es:byte ptr 6[di]
+                        jbe     $+5
+                        jmp     egownedbad
+                        cmp     ah,es:byte ptr 7[di]
+                        jbe     $+5
+                        jmp     egownedbad
+                        jmp     egpacketcall
+
+egpixel:
+                        cmp     es:byte ptr 3[di],0
+                        je      $+5
+                        jmp     egownedbad
+                        cmp     es:word ptr 4[di],cx
+                        jb      $+5
+                        jmp     egownedbad
+                        cmp     es:word ptr 6[di],bp
+                        jb      $+5
+                        jmp     egownedbad
+                        cmp     vsscreenmode,0C0h
+                        jne     $+5
+                        jmp     hgcpixel
+                        cmp     vsscreenmode,0A0h
+                        jne     $+5
+                        jmp     egchain4pixel
+                        jmp     egpacketcall
+
+egpalette:
+                        cmp     vsscreenmode,50h
+                        jae     $+5
+                        jmp     egownedbad
+                        mov     al,es:byte ptr [di]
+                        cmp     al,0
+                        jne     $+5
+                        jmp     egatcwrite
+                        cmp     al,7
+                        jne     $+5
+                        jmp     egatcread
+                        cmp     enhancedvga,0
+                        jne     $+5
+                        jmp     egownedbad
+                        cmp     es:word ptr 2[di],256
+                        jb      $+5
+                        jmp     egownedbad
+                        cmp     al,15h
+                        jne     $+5
+                        jmp     egpacketcall
+                        cmp     al,10h
+                        je      $+5
+                        jmp     egownedbad
+                        cmp     es:byte ptr 5[di],64
+                        jb      $+5
+                        jmp     egownedbad
+                        cmp     es:byte ptr 4[di],64
+                        jb      $+5
+                        jmp     egownedbad
+                        cmp     es:byte ptr 7[di],64
+                        jb      $+5
+                        jmp     egownedbad
+                        jmp     egpacketcall
+egatcwrite:
+                        cmp     vsscreenmode,0A0h
+                        jne     $+5
+                        jmp     egownedbad
+                        cmp     es:byte ptr 3[di],64
+                        jb      $+5
+                        jmp     egownedbad
+egatcread:
+                        cmp     vsscreenmode,0A0h
+                        jne     $+5
+                        jmp     egownedbad
+                        cmp     es:byte ptr [di],7
+                        jne     egatcindex
+                        cmp     enhancedvga,0
+                        jne     $+5
+                        jmp     egownedbad
+egatcindex:
+                        cmp     es:byte ptr 2[di],16
+                        jb      $+5
+                        jmp     egownedbad
+                        jmp     egpacketcall
+
+egownedbad:
+                        mov     ax,0FFFFh
+                        ret
+
+; Preserve the screen pointer across ROM calls. Results are captured by
+; the existing guarded helper before it restores caller registers.
+egpacketcall:
+                        push    bx
+                        mov     ax,si
+                        mov     ah,al
+                        mov     al,es:byte ptr [di]
+                        mov     bx,es:word ptr 2[di]
+                        mov     cx,es:word ptr 4[di]
+                        mov     dx,es:word ptr 6[di]
+                        call    eggraphicsbios
+                        pop     bx
+                        cmp     hgcpresent,0
+                        je      hgcresultkind
+                        cmp     videoresultax,0FFFFh
+                        jne     hgcresultkind
+                        jmp     egreadresult
+hgcresultkind:
+                        cmp     si,3
+                        jne     $+5
+                        jmp     egpacketresults
+                        cmp     si,16
+                        je      $+5
+                        jmp     egpixelresult
+egpacketresults:
+                        mov     ax,videoresultbx
+                        mov     es:word ptr 2[di],ax
+                        mov     ax,videoresultcx
+                        mov     es:word ptr 4[di],ax
+                        mov     ax,videoresultdx
+                        mov     es:word ptr 6[di],ax
+egpixelresult:
+                        cmp     si,8
+                        jne     $+5
+                        jmp     egreadresult
+                        cmp     si,13
+                        jne     $+5
+                        jmp     egreadresult
+                        xor     ax,ax
+                        ret
+egreadresult:
+                        mov     ax,videoresultax
+                        ret
+
+; Historical native simple ABI: CX holds cursor argument or TTY byte;
+; DL is console. Native TTY uses white (15); full packets preserve BL.
+egownedsimple:
+                        push    bp
+                        mov     bp,sp
+                        mov     cx,ss:word ptr 4[bp]             ; saved before the dimension calculation
+                        pop     bp
+                        push    bx
+                        xor     bx,bx
+                        mov     ax,si
+                        mov     ah,al
+                        cmp     si,2
+                        je      $+5
+                        jmp     egsimpletty
+                        mov     dx,cx
+egsimpletty:
+                        cmp     si,14
+                        je      $+5
+                        jmp     egsimplecall
+                        mov     al,cl
+                        mov     bl,15
+egsimplecall:
+                        call    eggraphicsbios
+                        pop     bx
+                        cmp     si,3
+                        je      $+5
+                        jmp     egsimpleread
+                        mov     ax,videoresultdx
+                        ret
+egsimpleread:
+                        jmp     egreadresult
+
+; VGA mode 13h uses a linear chain-4 byte, with no XOR interpretation.
+; Establish ordinary write mode temporarily, restoring GC/SEQ registers and
+; their index selectors afterwards. All eight colour bits are retained.
+egchain4pixel:
+                        push    bx ! push es ! push si
+                        mov     ax,es:word ptr 6[di]
+                        mov     bx,320
+                        mul     bx
+                        add     ax,es:word ptr 4[di]
+                        mov     cl,es:byte ptr [di]
+                        mov     di,ax
+                        mov     ax,0A000h
+                        mov     es,ax
+                        mov     dx,3C4h
+                        in      al,dx
+                        xor     ah,ah
+                        push    ax                               ; original sequencer index
+                        mov     al,2
+                        out     dx,al
+                        inc     dx
+                        in      al,dx
+                        push    ax                               ; original map mask
+                        mov     al,0Fh
+                        out     dx,al
+                        mov     dx,3CEh
+                        in      al,dx
+                        push    ax                               ; original graphics-controller index
+                        mov     si,offset egchain4regs
+                        mov     bh,4
+egchain4save:
+                        lodsb
+                        out     dx,al
+                        inc     dx
+                        in      al,dx
+                        push    ax
+                        mov     al,cs:byte ptr [si]
+                        inc     si
+                        out     dx,al
+                        dec     dx
+                        dec     bh
+                        jnz     egchain4save
+; Saved SI is the original operation selector (12=write, 13=read).
+                        push    bp
+                        mov     bp,sp
+                        cmp     ss:word ptr 16[bp],13
+                        pop     bp
+                        je      egchain4read
+                        mov     es:byte ptr [di],cl
+                        xor     cx,cx
+                        jmp     egchain4restore
+egchain4read:
+                        xor     cx,cx
+                        mov     cl,es:byte ptr [di]
+egchain4restore:
+                        mov     si,offset egchain4regs+6
+                        mov     bh,4
+egchain4restoreloop:
+                        mov     al,cs:byte ptr [si]
+                        out     dx,al
+                        inc     dx
+                        pop     ax
+                        out     dx,al
+                        dec     dx
+                        sub     si,2
+                        dec     bh
+                        jnz     egchain4restoreloop
+                        pop     ax                               ; graphics-controller index
+                        out     dx,al
+                        mov     dx,3C5h
+                        pop     ax                               ; sequencer map mask
+                        out     dx,al
+                        dec     dx
+                        pop     ax                               ; sequencer index
+                        out     dx,al
+                        mov     ax,cx
+                        pop     si ! pop es ! pop bx
+                        ret
+; Graphics enable-set/reset, rotate, write/read mode, bit mask. Chain-4
+; mode remains BIOS configured; GC mode 40h retains its 256-colour shift.
+egchain4regs            db      1,0,3,0,5,40h,8,0FFh
+
+; Native CGA programs hardware directly. Keep the ROM's BIOS data area
+; in agreement so its pixel writer distinguishes mode 6 from modes 4/5.
+; AL=BIOS mode, AH=columns. Also reset the single exposed page offset.
+eglegacybda:
+                        push    ax ! push bx ! push es
+                        mov     bx,40h
+                        mov     es,bx
+                        mov     es:byte ptr .49h,al
+                        mov     es:byte ptr .4Ah,ah
+                        mov     es:byte ptr .4Bh,0
+                        mov     es:word ptr .4Eh,0
+                        mov     es:byte ptr .62h,0
+                        mov     bx,800h
+                        cmp     al,2
+                        jb      egbdapagesize
+                        mov     bx,1000h
+                        cmp     al,4
+                        jb      egbdapagesize
+                        mov     bx,4000h
+egbdapagesize:
+                        mov     es:word ptr .4Ch,bx
+                        pop     es ! pop bx ! pop ax
+                        ret
+
+; One capability-gated entry for enhanced native modes 50h..B0h.
+; CH retains the requested native mode through foreground ownership.
+egsetgraphics:
+                        mov     al,ch
+                        xor     ah,ah
+                        shr     ax,1
+                        mov     si,ax
+                        push    bx                               ; capability query returns BX; preserve console
+                        call    xiosv1graphcaps
+                        test    bl,cs:byte ptr egmodes-16+1[si]
+                        pop     bx
+                        jnz     $+5
+                        jmp     screennotsup
+                        mov     al,cs:byte ptr egmodes-16[si]
+                        push    ax
+                        call    generalgraph
+                        pop     ax
+                        jmp     enhancedgraphinit
+
+; Eight-byte descriptors, indexed directly by native mode >> 1.
+; BIOS mode, required capability bit, columns, reserved, pixel width/height.
+; CGA keeps its hardware-specific mode setter; its dimensions live here too.
+egmodes:
+                        db      04h,0,40,0 ! dw 320,200          ; 20h
+                        db      05h,0,40,0 ! dw 320,200          ; 30h
+                        db      06h,0,80,0 ! dw 640,200          ; 40h
+                        db      10h,1,80,0 ! dw 640,350          ; 50h
+                        db      0Dh,2,40,0 ! dw 320,200          ; 60h
+                        db      0Eh,2,80,0 ! dw 640,200          ; 70h
+                        db      11h,4,80,0 ! dw 640,480          ; 80h
+                        db      12h,4,80,0 ! dw 640,480          ; 90h
+                        db      13h,4,40,0 ! dw 320,200          ; A0h
+                        db      0Fh,8,80,0 ! dw 640,350          ; B0h
+                        db      7Fh,10h,90,0 ! dw 720,348        ; C0h: project Hercules extension
+
+enhancedvga             db      0
+videoresultax           dw      0
+videoresultbx           dw      0
+videoresultcx           dw      0
+videoresultdx           dw      0
+
+; Function 30 CH=4: truthful mode/column query for DOS and new callers.
+; CH=1 retains the historical CDOS graphics-as-text compatibility result.
+egscreenquery:
+                        mov     al,vsscreenmode
+                        mov     ah,80
+                        cmp     al,20h
+                        jb      egquerytext
+                        cmp     al,0C0h
+                        ja      egquerydone
+                        push    si ! push ax
+                        xor     ah,ah
+                        shr     ax,1
+                        mov     si,ax
+                        pop     ax
+                        mov     ah,cs:byte ptr egmodes-16+2[si]
+                        pop     si
+                        ret
+egquerytext:
+                        cmp     al,2
+                        je      egquery40
+                        cmp     al,3
+                        jne     egquerydone
+egquery40:
+                        mov     ah,40
+egquerydone:
+                        ret
+
+; Physical text stride; the user's wrap width is a separate setting.
+; AX only is clobbered. Window backing screens always retain 80 columns.
+egtextcolumns:
+                        mov     ax,80
+                        cmp     cs:vsscreenmode,2
+                        je      egtext40
+                        cmp     cs:vsscreenmode,3
+                        jne     egtextwidthdone
+egtext40:
+                        mov     al,40
+egtextwidthdone:
+                        ret
+
+; IBM VGA firmware selects its monochrome path from the equipment bits.
+; Keep those consistent with mode 0Fh, then restore the startup selection
+; for colour graphics/text. Other equipment bits remain untouched.
+enhancedsetmode:
+                        cmp     enhancedvga,0
+                        je      enhancedsetcall
+                        push    ax ! push es ! push di
+                        mov     di,40h
+                        mov     es,di
+                        mov     di,10h
+                        mov     ah,enhancedequipment
+                        cmp     al,0Fh
+                        jne     enhancedsetequipment
+                        mov     ah,30h
+enhancedsetequipment:
+                        and     es:byte ptr [di],0CFh
+                        or      es:byte ptr [di],ah
+                        pop     di ! pop es ! pop ax
+enhancedsetcall:
+                        jmp     videobios
+
+enhancedmono            db      0
+enhancedequipment       db      0
+
+; Hercules page-zero backend. Native C0h maps to project DOS mode 7Fh.
+; Register values and interleaving follow the GB101 owner's manual.
+hgcdetect:
+                        push    ax ! push bx ! push cx ! push dx ! push es
+                        mov     ax,40h
+                        mov     es,ax
+                        cmp     es:word ptr .63h,monoport
+                        jne     hgcdetectdone
+                        mov     ah,12h
+                        mov     bx,0FF10h
+                        int     10h
+                        cmp     bh,1
+                        jbe     hgcdetectdone                    ; EGA/VGA monochrome is not Hercules
+                        mov     dx,3BAh
+                        in      al,dx
+                        and     al,80h
+                        mov     ah,al
+                        mov     cx,0FFFFh
+hgcprobe:
+                        in      al,dx
+                        and     al,80h
+                        cmp     al,ah
+                        jne     hgcfound
+                        loop    hgcprobe
+                        jmps    hgcdetectdone
+hgcfound:
+                        mov     hgcpresent,1
+                        mov     enhancedtext,7
+hgcdetectdone:
+                        pop     es ! pop dx ! pop cx ! pop bx ! pop ax
+                        ret
+
+hgcgraphics:
+                        cmp     hgcpresent,0
+                        jne     $+5
+                        jmp     screennotsup
+                        call    generalgraph
+                        mov     biosgraphics,1
+                        mov     hgccursor,0
+                        mov     hgcshape,0607h
+                        push    bx ! push es
+                        mov     dx,3BFh
+                        mov     al,1                             ; page zero only: leave B800h available
+                        out     dx,al
+                        mov     si,offset hgcgraphregs
+                        mov     ax,0002h
+                        mov     cx,4000h
+                        call    hgcset
+                        mov     ax,5A7Fh
+                        mov     cx,8000h
+                        call    hgcbda
+                        pop     es ! pop bx
+                        xor     ax,ax
+                        ret
+
+hgctext:
+                        push    ax ! push bx ! push cx ! push dx ! push si ! push di ! push es
+                        mov     si,offset hgctextregs
+                        mov     ax,0720h
+                        mov     cx,2000
+                        call    hgcset
+                        mov     dx,3BFh
+                        xor     al,al
+                        out     dx,al
+                        mov     ax,5007h
+                        mov     cx,1000h
+                        call    hgcbda
+                        pop     es ! pop di ! pop si ! pop dx ! pop cx ! pop bx ! pop ax
+                        ret
+
+; AL=mode control without display enable, AH=clear attribute, CX=words.
+hgcset:
+                        push    ax ! push cx
+                        mov     dx,3B8h
+                        out     dx,al
+                        mov     dx,3B4h
+                        xor     ah,ah
+                        mov     cx,16
+hgcregister:
+                        mov     al,ah
+                        out     dx,al
+                        inc     dx
+                        lodsb
+                        out     dx,al
+                        dec     dx
+                        inc     ah
+                        loop    hgcregister
+                        mov     ax,0B000h
+                        mov     es,ax
+                        xor     di,di
+                        pop     cx ! pop ax
+                        push    ax
+                        mov     al,32
+                        test    ah,ah
+                        jnz     $+4
+                        xor     al,al
+                        cld
+                        rep     stosw
+                        pop     ax
+                        or      al,8
+                        mov     dx,3B8h
+                        out     dx,al
+                        ret
+
+; Bounds/page/ownership have already been checked by eg_pixel.
+hgcpixel:
+                        push    bx
+                        mov     bp,si
+                        mov     ax,es:word ptr 6[di]
+                        mov     dx,ax
+                        and     dx,3
+                        mov     cl,13
+                        shl     dx,cl
+                        push    dx
+                        shr     ax,1 ! shr ax,1
+                        mov     bx,90
+                        mul     bx
+                        pop     dx
+                        add     ax,dx
+                        mov     cx,es:word ptr 4[di]
+                        mov     bl,es:byte ptr [di]
+                        mov     di,cx
+                        shr     di,1 ! shr di,1 ! shr di,1
+                        add     di,ax
+                        mov     ax,0B000h
+                        mov     es,ax
+                        and     cl,7
+                        mov     ah,80h
+                        shr     ah,cl
+                        mov     al,es:byte ptr [di]
+                        cmp     bp,13
+                        je      hgcread
+                        test    bl,80h
+                        jnz     hgcxor
+                        test    bl,1
+                        jnz     hgcsetbit
+                        not     ah
+                        and     al,ah
+                        jmps    hgcstore
+hgcsetbit:
+                        or      al,ah
+                        jmps    hgcstore
+hgcxor:
+                        test    bl,1
+                        jz      hgcstore
+                        xor     al,ah
+hgcstore:
+                        mov     es:byte ptr [di],al
+                        xor     ax,ax
+                        pop     bx
+                        ret
+hgcread:
+                        and     al,ah
+                        mov     ax,0
+                        jz      $+3
+                        inc     ax
+                        pop     bx
+                        ret
+
+hgcpresent              db      0
+hgcgraphregs            db      35h,2Dh,2Eh,07h,5Bh,02h,57h,57h,02h,03h,0,0,0,0,0,0
+hgctextregs             db      61h,50h,52h,0Fh,19h,06h,19h,19h,02h,0Dh,0Bh,0Ch,0,0,0,0
+
+; Native graphics text: 90 x 43 cells of eight scan lines. The final four
+; raster lines are outside the text grid. Use the PC ROM 8x8 font and the
+; optional INT 1Fh extension for characters 128..255; no shadow text image.
+eggraphicsbios:
+                        cmp     hgcpresent,0
+                        jne     hgcbios
+                        jmp     videobios
+hgcbios:
+                        push    ax ! push bx ! push cx ! push dx ! push si ! push di ! push bp ! push ds ! push es
+                        mov     hgcargs,ax
+                        mov     hgcargs+2,bx
+                        mov     videoresultbx,bx
+                        mov     hgcargs+4,cx
+                        mov     hgcargs+6,dx
+                        mov     al,ah
+                        xor     ah,ah
+                        shl     ax,1
+                        mov     bx,ax
+                        call    hgcfunctions[bx]
+                        mov     cs:videoresultax,ax
+                        pop     es ! pop ds ! pop bp ! pop di ! pop si ! pop dx ! pop cx ! pop bx ! pop ax
+                        ret
+hgcfunctions            dw      hgcerror,hgccursorshape,hgccursorset,hgccursorget
+                        dw      hgcerror,hgcerror,hgcscroll,hgcscroll,hgccharread
+                        dw      hgcwrite,hgcwrite,hgcerror,hgcerror,hgcerror,hgctty,hgcerror,hgcerror
+hgcerror:
+                        mov     ax,0FFFFh
+                        ret
+hgccursorshape:
+                        mov     ax,hgcargs+4
+                        mov     hgcshape,ax
+                        xor     ax,ax
+                        ret
+hgccursorset:
+                        mov     ax,hgcargs+6
+                        cmp     al,90
+                        jae     hgcerror
+                        cmp     ah,43
+                        jae     hgcerror
+                        mov     hgccursor,ax
+                        xor     ax,ax
+                        ret
+hgccursorget:
+                        mov     ax,hgcshape
+                        mov     videoresultcx,ax
+                        mov     ax,hgccursor
+                        mov     videoresultdx,ax
+                        xor     ax,ax
+                        ret
+
+; AL=character -> DS:SI font. CF set if the extension font is absent.
+hgcfont:
+                        xor     ah,ah
+                        mov     si,ax
+                        mov     ax,0F000h
+                        mov     ds,ax
+                        cmp     si,128
+                        jb      hgcromfont
+                        sub     si,128
+                        xor     ax,ax
+                        mov     ds,ax
+                        mov     ax,word ptr .7Ch
+                        mov     dx,word ptr .7Eh
+                        or      ax,dx
+                        jz      hgcfontmissing
+                        mov     ax,word ptr .7Ch
+                        mov     ds,dx
+                        jmps    hgcfontoffset
+hgcromfont:
+                        mov     ax,0FA6Eh
+hgcfontoffset:
+                        shl     si,1 ! shl si,1 ! shl si,1
+                        add     si,ax
+                        clc
+                        ret
+hgcfontmissing:
+                        stc
+                        ret
+
+; DX=row,column -> ES:DI first scan byte. Preserve DX.
+hgccell:
+                        push    dx
+                        mov     al,dh
+                        xor     ah,ah
+                        mov     di,180
+                        mul     di
+                        pop     dx
+                        mov     di,ax
+                        mov     al,dl
+                        xor     ah,ah
+                        add     di,ax
+                        mov     ax,0B000h
+                        mov     es,ax
+                        ret
+hgcnextscan:
+                        add     di,2000h
+                        test    di,8000h
+                        jz      hgcscandone
+                        sub     di,8000h
+                        add     di,90
+hgcscandone:
+                        ret
+
+; AL=character, BL=colour/XOR, DX=cell; preserve caller registers, return CF.
+hgcdraw:
+                        push    ax ! push bx ! push cx ! push dx ! push si ! push di ! push ds ! push es
+                        push    ax
+                        call    hgccell
+                        pop     ax
+                        call    hgcfont
+                        jc      hgcdrawdone
+                        mov     cx,8
+hgcdrawrow:
+                        lodsb
+                        test    bl,1
+                        jnz     hgcdrawcolour
+                        xor     al,al
+hgcdrawcolour:
+                        test    bl,80h
+                        jz      hgcdrawreplace
+                        xor     al,es:byte ptr [di]
+hgcdrawreplace:
+                        mov     es:byte ptr [di],al
+                        call    hgcnextscan
+                        loop    hgcdrawrow
+                        clc
+hgcdrawdone:
+                        pop     es ! pop ds ! pop di ! pop si ! pop dx ! pop cx ! pop bx ! pop ax
+                        ret
+
+hgcwrite:
+                        mov     dx,hgccursor
+                        mov     cx,hgcargs+4
+                        jcxz    hgcwritedone
+                        mov     bx,hgcargs+2
+hgcwriteloop:
+                        mov     al,byte ptr hgcargs
+                        call    hgcdraw
+                        jnc     $+5
+                        jmp     hgcerror
+                        inc     dl
+                        cmp     dl,90
+                        jb      hgcwritenext
+                        xor     dl,dl
+                        inc     dh
+                        cmp     dh,43
+                        jae     hgcwritedone
+hgcwritenext:
+                        loop    hgcwriteloop
+hgcwritedone:
+                        xor     ax,ax
+                        ret
+
+; Match glyph bytes against the framebuffer, so direct pixel writes are seen.
+hgccharread:
+                        xor     bx,bx
+hgcmatchchar:
+                        push    ds
+                        mov     dx,hgccursor
+                        call    hgccell
+                        mov     al,bl
+                        call    hgcfont
+                        jc      hgcmatchabsent
+                        mov     cx,8
+hgcmatchrow:
+                        lodsb
+                        cmp     al,es:byte ptr [di]
+                        jne     hgcmatchnext
+                        call    hgcnextscan
+                        loop    hgcmatchrow
+                        pop     ds
+                        mov     al,bl
+                        xor     ah,ah
+                        ret
+hgcmatchnext:
+                        pop     ds
+                        inc     bl
+                        jnz     hgcmatchchar
+                        xor     ax,ax
+                        ret
+hgcmatchabsent:
+                        pop     ds
+                        xor     ax,ax
+                        ret
+
+hgctty:
+                        mov     dx,hgccursor
+                        mov     al,byte ptr hgcargs
+                        cmp     al,7
+                        je      hgcwritedone
+                        cmp     al,8
+                        je      hgcbackspace
+                        cmp     al,13
+                        je      hgccarriage
+                        cmp     al,10
+                        je      hgclinefeed
+                        mov     bx,hgcargs+2
+                        call    hgcdraw
+                        jnc     $+5
+                        jmp     hgcerror
+                        inc     dl
+                        cmp     dl,90
+                        jb      hgcttysave
+hgccarriage:
+                        xor     dl,dl
+                        cmp     byte ptr hgcargs,13
+                        je      hgcttysave
+hgclinefeed:
+                        inc     dh
+                        cmp     dh,43
+                        jb      hgcttysave
+                        mov     dh,42
+                        push    dx
+                        push    hgcargs ! push hgcargs+2 ! push hgcargs+4 ! push hgcargs+6
+                        mov     hgcargs,0601h
+                        mov     hgcargs+2,0
+                        mov     hgcargs+4,0
+                        mov     hgcargs+6,2A59h
+                        call    hgcscroll
+                        pop     hgcargs+6 ! pop hgcargs+4 ! pop hgcargs+2 ! pop hgcargs
+                        pop     dx
+                        jmps    hgcttysave
+hgcbackspace:
+                        test    dl,dl
+                        jz      hgcttysave
+                        dec     dl
+hgcttysave:
+                        mov     hgccursor,dx
+                        xor     ax,ax
+                        ret
+
+; AX=scan line, DL=byte-column -> DI=Hercules address. Preserve DX.
+hgcscanaddress:
+                        push    dx
+                        mov     di,ax
+                        and     di,3
+                        mov     cl,13
+                        shl     di,cl
+                        shr     ax,1 ! shr ax,1
+                        mov     cx,90
+                        mul     cx
+                        add     di,ax
+                        pop     dx
+                        mov     al,dl
+                        xor     ah,ah
+                        add     di,ax
+                        ret
+
+; Rectangle bounds are checked by eg_rectangle. Copy raster rows in the
+; appropriate direction; line counts at least the rectangle height clear it.
+hgcscroll:
+                        mov     ax,hgcargs+4
+                        mov     al,ah
+                        xor     ah,ah
+                        shl     ax,1 ! shl ax,1 ! shl ax,1
+                        mov     hgctop,ax
+                        mov     ax,hgcargs+6
+                        mov     al,ah
+                        xor     ah,ah
+                        inc     ax
+                        shl     ax,1 ! shl ax,1 ! shl ax,1
+                        dec     ax
+                        mov     hgcbottom,ax
+                        mov     al,byte ptr hgcargs
+                        xor     ah,ah
+                        shl     ax,1 ! shl ax,1 ! shl ax,1
+                        mov     hgcshift,ax
+                        mov     bp,hgctop
+                        cmp     byte ptr hgcargs+1,6
+                        je      hgcscrollrow
+                        mov     bp,hgcbottom
+hgcscrollrow:
+                        mov     dx,hgcargs+4
+                        mov     ax,bp
+                        call    hgcscanaddress
+                        push    di
+                        mov     ax,bp
+                        cmp     byte ptr hgcargs+1,6
+                        jne     hgcscrolldown
+                        add     ax,hgcshift
+                        jmps    hgcscrollsource
+hgcscrolldown:
+                        sub     ax,hgcshift
+hgcscrollsource:
+                        cmp     hgcshift,0
+                        je      hgcscrollfill
+                        cmp     ax,hgctop
+                        jb      hgcscrollfill
+                        cmp     ax,hgcbottom
+                        ja      hgcscrollfill
+                        call    hgcscanaddress
+                        mov     si,di
+                        pop     di
+                        mov     cl,byte ptr hgcargs+6
+                        sub     cl,byte ptr hgcargs+4
+                        inc     cl
+                        xor     ch,ch
+                        push    ds
+                        mov     ax,0B000h
+                        mov     ds,ax
+                        mov     es,ax
+                        cld
+                        rep     movsb
+                        pop     ds
+                        jmps    hgcscrolladvance
+hgcscrollfill:
+                        pop     di
+                        mov     cl,byte ptr hgcargs+6
+                        sub     cl,byte ptr hgcargs+4
+                        inc     cl
+                        xor     ch,ch
+                        mov     ax,0B000h
+                        mov     es,ax
+                        xor     al,al
+                        test    byte ptr hgcargs+3,1
+                        jz      hgcscrollclear
+                        dec     al
+hgcscrollclear:
+                        cld
+                        rep     stosb
+hgcscrolladvance:
+                        cmp     byte ptr hgcargs+1,6
+                        jne     hgcscrollreverse
+                        inc     bp
+                        cmp     bp,hgcbottom
+                        ja      $+5
+                        jmp     hgcscrollrow
+                        xor     ax,ax
+                        ret
+hgcscrollreverse:
+                        cmp     bp,hgctop
+                        je      $+6
+                        dec     bp
+                        jmp     hgcscrollrow
+                        xor     ax,ax
+                        ret
+
+hgccursor               dw      0
+hgcshape                dw      0607h
+hgcargs                 dw      0,0,0,0
+hgctop                  dw      0
+hgcbottom               dw      0
+hgcshift                dw      0
+
+; Keep DOS mode queries and the BIOS data area consistent. The firmware
+; itself does not implement 7Fh; all its graphics services are mediated.
+hgcbda:
+                        push    es
+                        mov     dx,40h
+                        mov     es,dx
+                        mov     es:byte ptr .49h,al
+                        mov     es:byte ptr .4Ah,ah
+                        mov     es:byte ptr .4Bh,0
+                        mov     es:word ptr .4Ch,cx
+                        mov     es:word ptr .4Eh,0
+                        mov     es:byte ptr .62h,0
+                        pop     es
+                        ret

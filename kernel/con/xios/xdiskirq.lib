@@ -1,0 +1,39 @@
+; xbegin: devices section
+xdata                   dseg    para public 'CODE'
+;********************************************************
+;*							*
+;*		DISK INTERRUPT HANDLER			*
+;*							*
+;*******************************************************
+xcode                   cseg    byte public 'CODE'
+;	FDC.  The current state is saved and dev_flagset is called.
+
+;------
+idisk:
+;------
+                        mov     cs:userax,ax                     ;save ax
+                        mov     cs:userss,ss                     ;save the stack segment
+                        mov     cs:usersp,sp                     ;and stack segment
+                        mov     ax,cs                            ;get code segment
+                        mov     ss,ax                            ;into stack segment
+                        mov     sp,offset usersavearea           ;point at the save area
+                        push    bx! push cx
+                        push    dx! push bp
+                        push    si! push di
+                        push    ds! push es
+
+                        mov     al,picocwseoi + diskchannel
+                        out     picocwport,al
+
+                        mov     ds,cs:sysdat
+                        mov     dx,fdcflag
+                        call    flagset
+
+                        pop     es! pop ds
+                        pop     di! pop si
+                        pop     bp! pop dx
+                        pop     cx! pop bx
+                        mov     ss,cs:userss
+                        mov     sp,cs:usersp
+                        mov     ax,cs:userax
+                        jmpf    cs:dword ptr dispatcher

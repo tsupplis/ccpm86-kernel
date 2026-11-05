@@ -126,3 +126,11 @@ check-text40: all
 	python3 tools/graphics_check.py cga text40native
 	python3 tools/graphics_check.py ega text40native
 	python3 tools/graphics_check.py vga text40native
+
+.PHONY: check-hercules
+check-hercules: all
+	python3 tools/graphics_unit_check.py
+	python3 tools/graphics_check.py hgc hercules
+	python3 tools/graphics_check.py mda hercules
+	python3 tools/graphics_check.py hgc
+	python3 tools/graphics_check.py mda

@@ -119,6 +119,7 @@ console escape stream, without executing a DOS program.
 | 12 | 640×480, 16 colours | VGA | 90h | 12h | Implemented |
 | 13 | 320×200, 256 colours | VGA | A0h | 13h | Implemented |
 | 0F | 640×350 monochrome, video/intensity planes | EGA with monochrome monitor, or VGA | B0h | 0Fh | Implemented |
+| 7F | 720×348 monochrome, 90×43 graphics text | Hercules only; project extension | C0h | 7Fh | Implemented |
 | Other graphics modes | VESA and nonstandard modes | — | Not assigned | Not supported | No compatibility claim |
 
 Text modes use the existing native console/window implementation. DOS mode
@@ -158,7 +159,7 @@ Mode 0Fh requires an EGA monochrome console or detected VGA. Its video and
 intensity use pixel bits 0 and 2 (values 0, 1, 4, 5); planar XOR is supported.
 EGA monochrome retains its mode-7 text console and rejects colour-mode
 requests. Colour EGA, CGA and Hercules reject mode 0Fh without changing mode.
-Hercules remains supported as a monochrome text console, without graphics.
+Hercules additionally supports native mode C0h, described below.
 
 Planar graphics uses the captured adapter ROM through the XIOS IRQ/PIC
 and private-stack guard, without calling the intercepted INT 10h. Page zero
@@ -182,8 +183,8 @@ for cursor and palette reads. Native requests rejected before hardware access
 return FFFFh; DOS rejected reads retain the original result registers.
 Legacy native simple selectors retain their ABI.
 
-Sources: [xconout.lib](kernel/con/xconout.lib), [xpcmode.lib](kernel/con/xpcmode.lib),
-[xbegin.lib](kernel/con/xbegin.lib), [xinit.lib](kernel/con/xinit.lib).
+Sources: [console sources](kernel/con/xios/README.md),
+[core sources](kernel/con/xios/core.a86).
 
 ## DOS and BIOS interrupts
 
@@ -484,7 +485,7 @@ Old kernels must not be called at unknown entry numbers; query 14 first.
 | Table | Source |
 | --- | --- |
 | Current DOS/BIOS dispatch | [pctmp.a86](kernel/rsp3/pctmp.a86), [pcguard.lib](kernel/rsp3/pcguard.lib) |
-| Current device behaviour | [xpcmode.lib](kernel/con/xpcmode.lib), [xbegin.lib](kernel/con/xbegin.lib), [xchar.lib](kernel/con/xchar.lib) |
+| Current device behaviour | [console sources](kernel/con/xios/README.md), [core sources](kernel/con/xios/core.a86) |
 | Native function assignments | [sysdat.dat](kernel/con/sysdat.dat), [supif.sup](kernel/con/supif.sup), [sysfunc.sup](kernel/con/sysfunc.sup), [command.sup](kernel/con/command.sup) |
 | Disabled raw disk / FAT | [bdos.a86](kernel/con/bdos.a86), [file4.bdo](kernel/con/file4.bdo) |
 | IBM DOS 1.10 assignments | [IBM DOS 1.10 Reference, Appendix D](https://www.minuszerodegrees.net/manuals/IBM/IBM%20DOS%20Version%201.10%20-%20Reference%20-%20Second%20Edition%20MAY82.pdf) |
@@ -492,3 +493,51 @@ Old kernels must not be called at unknown entry numbers; query 14 first.
 | CP/M 3 function 108 definition | [Digital Research CP/M Plus Programmer’s Guide, §3, function 108](https://www.bitsavers.org/pdf/digitalResearch/cpm_plus/CPM_Plus_Programmers_Guide_Jan83.pdf) |
 
 | Local IBM/MS DOS comparison | `~/Projects/DOS/pcdos11-hacking/dos.asm`: DISPATCH → GETFATPT (1Bh), GETFATPTDL (1Ch), GETDSKPT (1Fh), active in both variants; IBM 1.10 manual wording does not establish binary absence |
+
+## Native Hercules graphics
+
+CCP/M XIOS function 30, CH=0, CL=C0h, DL=console selects Hercules
+720×348 graphics, page zero. CH=4 returns AL=C0h and AH=90. Capability
+query INT E6h AL=30 adds BX bit 4 for a detected active Hercules adapter.
+Select native text mode 09h (or general text 01h) to restore the saved
+monochrome console. Detection probes vertical-sync transitions only on a
+legacy active monochrome adapter; EGA/VGA and plain MDA are excluded.
+
+XIOS function 31 pixel selectors 0Ch/0Dh use the existing nine-byte packet:
+AX, BX, CX=x, DX=y, console. Page BH must be zero; coordinates are bounded
+to x=0..719, y=0..347. Write colour bit 0 is the pixel value, with bit 7
+requesting XOR; read returns AX=0 or 1. Rejected calls return FFFFh.
+Native graphics text uses a 90×43 grid of 8×8 cells; the bottom four raster
+lines are untouched by text operations. Packet selectors 01h/02h/03h store
+cursor shape, set position and query position; the cursor is logical only,
+with no visible overlay. Selectors 08h/09h/0Ah read, repeat-write and
+character-write at the cursor. Reads match framebuffer glyphs, returning
+AL=character and AH=0 (or AX=0 if no glyph matches). Writes clip at the last
+cell, retain cursor position, use BL bit 0 as colour and bit 7 for XOR.
+
+Selector 0Eh handles teletype output, backspace, CR, LF, wrapping and
+bottom-row scrolling; BEL is a no-op. Selectors 06h/07h scroll up/down
+within a checked character rectangle: CX=top-left, DX=bottom-right,
+AL=rows (zero clears), BH bit 0=fill colour. Scroll operations preserve
+the cursor. Page-bearing services require BH=0. The historical simple
+ABI for cursor/teletype calls remains supported.
+
+Characters 0..127 use the PC ROM font; 128..255 use an installed INT 1Fh
+extension. Writing an extended character without that font returns FFFFh.
+Palette services remain unsupported.
+
+DOS INT 10h/AH=00h, AL=7Fh selects the same Hercules mode through PC-MODE.
+Mode 7Fh is a project extension, not an IBM BIOS or original Hercules BIOS
+assignment. ESC a parameter 7Fh also selects it. AH=0Fh reports AL=7Fh,
+AH=90, BH=0; the BIOS data area records mode 7Fh, 90 columns and a 32 KB
+page while graphics is active. The firmware itself does not implement this
+mode: pixel, character, cursor, teletype and scroll calls are mediated by XIOS.
+These calls have the same behaviour and limits as the native services above.
+
+Mode 7Fh is rejected without changing modes on MDA, CGA, EGA and VGA.
+Selecting mode 07h or terminating the DOS program restores monochrome text,
+including its saved contents and BIOS mode/column values. Page one remains
+unsupported. `make check-hercules` covers native and DOS boot images.
+Programs requiring third-party Hercules BIOS extensions are not implicitly
+compatible with this project-specific interface.
+Register programming follows the [Hercules GB101 owner's manual](https://www.dosdays.co.uk/media/hercules/hgc/GB101_Owners-Manual_text.pdf).

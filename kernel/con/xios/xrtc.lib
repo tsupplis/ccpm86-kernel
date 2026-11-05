@@ -1,0 +1,296 @@
+; xrtc: core section
+xdata                   dseg    para public 'CODE'
+;
+; BIOS RTC support, independently implemented from the INT 1Ah interface.
+; CP/M day 1 is 1978-01-01.  Keep the software clock if no RTC is available.
+; All BIOS calls are made from initialization or process context, never IRQ0.
+;
+xcode                   cseg    byte public 'CODE'
+rtcunbcd:
+                        mov     ah,al
+                        and     al,0Fh
+                        cmp     al,9
+                        ja      rtcbadbcd
+                        mov     cl,4
+                        shr     ah,cl
+                        cmp     ah,9
+                        ja      rtcbadbcd
+                        mov     cl,al
+                        mov     al,ah
+                        mov     ah,10
+                        mul     ah
+                        add     al,cl
+                        clc
+                        ret
+rtcbadbcd:
+                        stc
+                        ret
+
+; AX (0..99) -> AL packed BCD.
+rtcbcd:
+                        mov     cl,10
+                        div     cl
+                        mov     cl,4
+                        shl     al,cl
+                        or      al,ah
+                        ret
+
+; SI Gregorian year -> AX days in year (full century rule).
+rtcyeardays:
+                        mov     ax,365
+                        test    si,3
+                        jnz     rtcyeardone
+                        push    bx
+                        push    dx
+                        mov     ax,si
+                        xor     dx,dx
+                        mov     bx,100
+                        div     bx
+                        or      dx,dx
+                        jnz     rtcleap
+                        test    ax,3
+                        jnz     rtccommon
+rtcleap:
+                        mov     ax,366
+                        jmps    rtcyearpop
+rtccommon:
+                        mov     ax,365
+rtcyearpop:
+                        pop     dx
+                        pop     bx
+rtcyeardone:
+                        ret
+
+; SI year, DI month (1..12) -> AX month length.
+rtcmonthdays:
+                        mov     bx,offset rtcmonths-1
+                        add     bx,di
+                        xor     ax,ax
+                        mov     al,cs:[bx]
+                        cmp     di,2
+                        jne     rtcmonthdone
+                        call    rtcyeardays
+                        sub     ax,337
+rtcmonthdone:
+                        ret
+rtcmonths               db      31,28,31,30,31,30,31,31,30,31,30,31
+
+; Read a coherent date/time/date snapshot, with bounded retries.
+rtcstart:
+                        pushf
+                        push    ax ! push bx ! push cx ! push dx
+                        push    si ! push di ! push bp ! push es
+                        xor     ax,ax
+                        mov     es,ax
+                        mov     ax,es:.068h
+                        or      ax,es:.06Ah
+                        jnz     rtcvectorok
+                        jmp     rtcstartdone
+rtcvectorok:
+                        mov     bp,3
+rtcreadagain:
+                        mov     cx,0FFFFh
+                        mov     dx,cx
+                        mov     ah,4
+                        stc
+                        int     1Ah
+                        jnc     rtcdateread
+                        jmp     rtcstartdone
+rtcdateread:
+                        mov     rtcdatec,cx
+                        mov     rtcdated,dx
+                        mov     cx,0FFFFh
+                        mov     dx,cx
+                        mov     ah,2
+                        stc
+                        int     1Ah
+                        jc      rtcstartdone
+                        mov     rtctimec,cx
+                        mov     rtctimed,dx
+                        mov     ah,4
+                        stc
+                        int     1Ah
+                        jc      rtcstartdone
+                        cmp     cx,rtcdatec
+                        jne     rtcretry
+                        cmp     dx,rtcdated
+                        je      rtcdecode
+rtcretry:
+                        dec     bp
+                        jnz     rtcreadagain
+                        jmps    rtcstartdone
+rtcdecode:
+                        call    rtcdecodedate
+                        jc      rtcstartdone
+                        mov     rtcdays,ax
+                        mov     al,byte ptr rtctimec+1
+                        call    rtcunbcd
+                        jc      rtcstartdone
+                        cmp     ax,23
+                        ja      rtcstartdone
+                        mov     al,byte ptr rtctimec
+                        call    rtcunbcd
+                        jc      rtcstartdone
+                        cmp     ax,59
+                        ja      rtcstartdone
+                        mov     al,byte ptr rtctimed+1
+                        call    rtcunbcd
+                        jc      rtcstartdone
+                        cmp     ax,59
+                        ja      rtcstartdone
+                        cli
+                        mov     ax,rtcdays
+                        mov     todday,ax
+                        mov     ax,rtctimec
+                        mov     todhour,ah
+                        mov     todmin,al
+                        mov     ax,rtctimed
+                        mov     todsec,ah
+                        mov     rtcpresent,1
+                        mov     rtcdst,al
+rtcstartdone:
+                        pop     es ! pop bp ! pop di ! pop si
+                        pop     dx ! pop cx ! pop bx ! pop ax
+                        popf
+                        ret
+
+; Stored BIOS date -> AX CP/M day, carry on invalid/out of range.
+rtcdecodedate:
+                        mov     al,byte ptr rtcdatec+1
+                        call    rtcunbcd
+                        jc      rtcdatebad
+                        mov     bx,100
+                        mul     bx
+                        mov     si,ax
+                        mov     al,byte ptr rtcdatec
+                        call    rtcunbcd
+                        jc      rtcdatebad
+                        add     si,ax
+                        cmp     si,1978
+                        jb      rtcdatebad
+                        cmp     si,2157
+                        ja      rtcdatebad
+                        mov     al,byte ptr rtcdated+1
+                        call    rtcunbcd
+                        jc      rtcdatebad
+                        cmp     ax,1
+                        jb      rtcdatebad
+                        cmp     ax,12
+                        ja      rtcdatebad
+                        mov     di,ax
+                        mov     al,byte ptr rtcdated
+                        call    rtcunbcd
+                        jc      rtcdatebad
+                        cmp     ax,1
+                        jb      rtcdatebad
+                        mov     bp,ax
+                        call    rtcmonthdays
+                        cmp     bp,ax
+                        ja      rtcdatebad
+                        mov     dx,bp
+                        mov     bp,di
+                        mov     di,1
+rtcsummonth:
+                        cmp     di,bp
+                        je      rtcsumyearinit
+                        call    rtcmonthdays
+                        add     dx,ax
+                        inc     di
+                        jmps    rtcsummonth
+rtcsumyearinit:
+                        mov     bp,si
+                        mov     si,1978
+rtcsumyear:
+                        cmp     si,bp
+                        je      rtcdateok
+                        call    rtcyeardays
+                        add     dx,ax
+                        jc      rtcdatebad
+                        inc     si
+                        jmps    rtcsumyear
+rtcdateok:
+                        mov     ax,dx
+                        clc
+                        ret
+rtcdatebad:
+                        stc
+                        ret
+
+; XIOS function 25: persist the current system time after BDOS 104.
+; Preserve registers/flags; the existing software clock remains authoritative.
+iortcset:
+                        pushf
+                        cli
+                        push    ax ! push bx ! push cx ! push dx
+                        push    si ! push di ! push bp
+                        cmp     rtcpresent,0
+                        je      rtcsetdone
+                        mov     bp,todday
+                        or      bp,bp
+                        jz      rtcsetdone
+                        dec     bp
+                        mov     si,1978
+rtcfindyear:
+                        call    rtcyeardays
+                        cmp     bp,ax
+                        jb      rtcfindmonthinit
+                        sub     bp,ax
+                        inc     si
+                        jmps    rtcfindyear
+rtcfindmonthinit:
+                        mov     di,1
+rtcfindmonth:
+                        call    rtcmonthdays
+                        cmp     bp,ax
+                        jb      rtcencodedate
+                        sub     bp,ax
+                        inc     di
+                        jmps    rtcfindmonth
+rtcencodedate:
+                        mov     ax,si
+                        xor     dx,dx
+                        mov     bx,100
+                        div     bx
+                        push    dx
+                        call    rtcbcd
+                        mov     ch,al
+                        pop     ax
+                        push    cx
+                        call    rtcbcd
+                        pop     cx
+                        mov     cl,al
+                        push    cx
+                        mov     ax,di
+                        call    rtcbcd
+                        mov     dh,al
+                        mov     ax,bp
+                        inc     ax
+                        push    dx
+                        call    rtcbcd
+                        pop     dx
+                        mov     dl,al
+                        pop     cx
+                        mov     ah,5
+                        stc
+                        int     1Ah
+                        jc      rtcsetdone
+                        mov     ch,todhour
+                        mov     cl,todmin
+                        mov     dh,todsec
+                        mov     dl,rtcdst
+                        mov     ah,3
+                        stc
+                        int     1Ah
+rtcsetdone:
+                        pop     bp ! pop di ! pop si
+                        pop     dx ! pop cx ! pop bx ! pop ax
+                        popf
+                        ret
+xdata                   dseg    para public 'CODE'
+rtcpresent              db      0
+rtcdst                  db      0
+rtcdatec                rw      1
+rtcdated                rw      1
+rtctimec                rw      1
+rtctimed                rw      1
+rtcdays                 rw      1

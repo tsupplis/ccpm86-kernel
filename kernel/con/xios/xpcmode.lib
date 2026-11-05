@@ -1,0 +1,996 @@
+if      PCMODEXIOS
+; xpcmode: console section
+xdata                   dseg    para public 'CODE'
+; Calling convention: entered through the legacy XIOS table with DS selecting
+; SYSDAT/XIOS, AL=function, CX/DX=arguments, ES=caller UDA. The dispatcher
+; returns AX in BX as well. These handlers do not change DS or the caller stack.
+; Included by xios.a86 only when PCMODE_XIOS is enabled in pcmode.lib.
+; Source reference: a.sys XIOS entries 291Dh, 29BAh, 16D5h and 3B7Ch.
+;
+; Preserve the combined code/data origin after xrtc.lib's trailing data.
+xcode                   cseg    byte public 'CODE'
+; Original a.sys uses functions 31..34, absent from our legacy table.
+; DOS entry uses 25 rows; native return restores 24 rows and the status line.
+; It supports DOS console calls and selected BIOS text services below.
+; Cursor shape and CGA palette/pixel writes are supported; other graphics
+; operations still require explicit implementation and tests.
+;
+; Function 32 is called with CX=1 on DOS entry and CX=0 on return.
+; Restore mode/cursor state and native text height on return.
+pctextstate:
+                        jmp     pcsession
+;
+; Do not claim that unimplemented BIOS video/status requests succeeded.
+pcnotsupported:
+                        mov     ax,0ffffh
+                        ret
+;
+; INT 11h follows original XIOS 16D5h: cached firmware equipment with
+; display bits derived from the running console's saved DOS-entry mode.
+pcequipment:
+                        mov     bx,rlr
+                        mov     dl,byte ptr 20h[bx]
+                        cmp     dl,numvircons
+                        jae     pcequipmentphysical
+                        call    pointvs
+                        xor     ax,ax
+                        mov     al,vsnumber
+                        mov     si,ax
+                        shl     si,1
+                        add     si,ax
+                        shl     si,1
+                        mov     dl,byte ptr pcsessions+5[si]
+                        mov     ax,pcequipmentword
+                        cmp     dl,1
+                        je      pcequipmentdone
+                        and     ax,0ffcfh
+                        cmp     dl,9
+                        je      pcequipmentmono
+                        cmp     dl,2
+                        je      pcequipment40
+                        cmp     dl,3
+                        je      pcequipment40
+                        or      ax,20h
+                        ret
+pcequipment40:
+                        or      ax,10h
+                        ret
+pcequipmentmono:
+                        or      ax,30h
+                        ret
+pcequipmentphysical:
+                        mov     ax,pcequipmentword
+pcequipmentdone:
+                        ret
+
+; ---------------------------------------------------------------------------
+; Legacy XIOS 31: PCTMP puts the BIOS subfunction in BL. The XIOS dispatcher
+; exchanges AX/BX, so AL here is the subfunction, not 31. Simple calls carry
+; DL=console and CX=argument; packet calls use CX:DX as documented below.
+; Implement cursor, cell read/write and teletype using the virtual console.
+; Never call INT 10h here: PCTMP has hooked it and that would recurse.
+; ---------------------------------------------------------------------------
+pcvideo:
+                        test    al,80h
+                        jnz     egvideoentry
+                        cmp     al,16
+                        je      egvideoentry
+                        cmp     al,12
+                        je      egvideoentry
+                        cmp     al,13
+                        jne     egvideolegacy
+egvideoentry:
+                        call    egtryvideo
+                        jc      egvideolegacy
+                        ret
+egvideolegacy:
+                        cmp     al,13
+                        je      pcvideographics
+                        cmp     al,11
+                        je      pcvideographics
+                        cmp     al,12
+                        jne     pcvideocursor
+pcvideographics:
+                        jmp     pcgraphicspacket
+pcvideocursor:
+                        cmp     al,1
+                        jne     pcvideoscroll
+                        jmp     pccursorshape
+pcvideoscroll:
+                        cmp     al,6
+                        je      pcscrolldispatch
+                        cmp     al,7
+                        jne     pcvideosimple
+pcscrolldispatch:
+                        jmp     pcscroll
+pcvideosimple:
+                        cmp     al,2
+                        je      pccursorset
+                        cmp     al,3
+                        je      pccursorget
+                        cmp     al,14
+                        je      pcteletype
+                        cmp     al,8
+                        jne     pcvideotrywrite
+                        jmp     pcreadcell
+pcvideotrywrite:
+                        cmp     al,9
+                        jne     pcvideotrychar
+                        mov     si,1
+                        jmp     pcwritecells
+pcvideotrychar:
+                        cmp     al,10
+                        jne     pcvideoreject
+                        xor     si,si
+                        jmp     pcwritecells
+pcvideoreject:
+                        jmp     pcnotsupported
+
+; INT 10h/AH=02: CX=row,column, DL=console. Clamp to its logical text extent.
+pccursorset:
+                        cmp     dl,numvircons
+                        jae     pcvideobad
+                        push    cx
+                        call    pointvs
+                        call    getmx
+                        pop     dx
+                        cmp     dh,vstextlast
+                        jbe     pccursorrow
+                        mov     dh,vstextlast
+pccursorrow:
+                        call    egtextcolumns
+                        dec     al
+                        cmp     dl,al
+                        jbe     pccursorcolumn
+                        mov     dl,al
+pccursorcolumn:
+                        call    putcursor
+                        mov     vsmx,0
+                        xor     ax,ax
+                        ret
+
+; INT 10h/AH=03: AX=row,column, which PCTMP places into caller DX.
+; Cursor shape is separately returned as zero by the original PCTMP handler.
+pccursorget:
+                        cmp     dl,numvircons
+                        jae     pcvideobad
+                        call    pointvs
+                        call    getmx
+                        mov     ax,vscursor
+                        mov     vsmx,0
+                        ret
+
+; INT 10h/AH=0E: CL=character, DL=console. Reuse virtual-console output,
+; including scrolling and ownership. It acquires/releases its own semaphore.
+pcteletype:
+                        cmp     dl,numvircons
+                        jae     pcvideobad
+                        call    ioconout
+                        xor     ax,ax
+                        ret
+pcvideobad:
+                        jmp     pcnotsupported
+
+; INT 10h/AH=08: return AX=attribute/character under the virtual cursor.
+; A full-screen console can use physical memory as its authoritative image.
+; Select the authoritative segment without calling copy_full_top: that helper
+; changes match_bit and requires a corresponding window ownership transition.
+; Direct mode is enabled by native release_match only when sync_bit is clear.
+pcreadcell:
+                        cmp     dl,numvircons
+                        jb      pcreadvalid
+                        jmp     pcnotsupported
+pcreadvalid:
+                        call    pointvs
+                        call    getmx
+                        mov     dx,vscursor
+                        call    pointcursor
+                        push    es
+                        call    pccellsegment
+                        mov     ax,es:[di]
+                        pop     es
+                        mov     vsmx,0
+                        ret
+
+; INT 10h/AH=09/0A packet at CX:DX:
+;   +0 AX (AL=character), +2 BX (BL=attribute), +4 CX (repeat count),
+;   +6 DX (unused for these operations), +8 virtual console number.
+; SI=1 uses the caller attribute; SI=0 uses the console default attribute,
+; matching original XIOS:3CA5h for BIOS AH=0Ah.
+; Neither operation advances the cursor. Clamp the repeat count to the end
+; of the virtual text area, protecting adjacent consoles.
+pcwritecells:
+                        push    es
+                        mov     es,cx
+                        mov     di,dx
+                        xor     dx,dx
+                        mov     dl,es:byte ptr 8[di]
+                        cmp     dl,numvircons
+                        jb      pcwritevalid
+                        pop     es
+                        jmp     pcnotsupported
+pcwritevalid:
+                        mov     ax,es:[di]
+                        mov     ah,es:byte ptr 2[di]
+                        mov     cx,es:word ptr 4[di]
+                        pop     es
+                        push    ax
+                        push    cx
+                        push    si
+                        call    pointvs
+                        call    getmx
+                        pop     si
+                        pop     cx
+                        pop     ax
+                        push    ax
+                        mov     dx,vscursor
+                        call    pointcursor
+                        push    ax
+                        call    pctextcells
+                        mov     dx,ax
+                        pop     ax
+                        sub     dx,ax
+                        cmp     cx,dx
+                        jbe     pcwritecount
+                        mov     cx,dx
+pcwritecount:
+                        pop     ax
+                        push    es
+                        call    pccellsegment
+                        jcxz    pcwritedone
+pcwriteloop:
+                        or      si,si
+                        jnz     pcwritestore
+                        mov     ah,vsattrib
+pcwritestore:
+                        stosw
+                        loop    pcwriteloop
+pcwritedone:
+                        pop     es
+                        call    updatewindow
+                        mov     vsmx,0
+                        xor     ax,ax
+                        ret
+
+; ES receives the authoritative text image. Native match_bit means updates
+; are mediated through a virtual backing screen; clear means a full-screen
+; unsynchronized console uses physical display memory directly. Keep this
+; distinction intact, otherwise later native output disappears into a buffer.
+pccellsegment:
+                        test    vsmode,matchbit
+                        jz      pccellphysical
+                        mov     es,vsvcseg
+                        ret
+pccellphysical:
+                        mov     es,vscrtseg
+                        ret
+
+; INT 10h/AH=06/07: scroll a rectangular text window up/down.
+; Packet CX:DX: AX=count, BX=BH fill attribute, CX=top/left,
+; DX=bottom/right, byte +8=console. Original handlers: 3BE2h/3BF5h.
+; Clip the bottom/right edges, reject inverted/outside rectangles, and treat
+; zero or excessive counts as clear. The cursor and status row are untouched.
+; Use the authoritative screen without changing native window ownership.
+; Local state is on the caller stack, not shared between virtual consoles:
+pcscroll:
+                        push    bp
+                        sub     sp,22
+                        mov     bp,sp
+                        push    es
+                        xor     ah,ah
+                        mov     pcscdirection,ax
+                        mov     es,cx
+                        mov     di,dx
+                        mov     al,es:byte ptr [di]
+                        xor     ah,ah
+                        mov     pcsccount,ax
+                        mov     ah,es:byte ptr 3[di]
+                        mov     al,20h
+                        mov     pcscfill,ax
+                        mov     ax,es:word ptr 4[di]
+                        mov     pcsctop,ax
+                        mov     ax,es:word ptr 6[di]
+                        mov     pcscbottom,ax
+                        mov     dl,es:byte ptr 8[di]
+                        cmp     dl,numvircons
+                        jb      pcscrollconsole
+                        jmp     pcscrollinvalid
+pcscrollconsole:
+                        call    pointvs
+                        mov     cx,pcsctop
+                        mov     ax,pcscbottom
+                        cmp     ch,vstextlast
+                        ja      pcscrollempty
+                        push    ax
+                        call    egtextcolumns
+                        mov     dl,al
+                        pop     ax
+                        cmp     cl,dl
+                        jae     pcscrollempty
+                        cmp     ah,vstextlast
+                        jbe     pcscrollbottom
+                        mov     ah,vstextlast
+pcscrollbottom:
+                        dec     dl
+                        cmp     al,dl
+                        jbe     pcscrollright
+                        mov     al,dl
+pcscrollright:
+                        cmp     ch,ah
+                        ja      pcscrollempty
+                        cmp     cl,al
+                        ja      pcscrollempty
+                        jmp     pcscrollbounds
+pcscrollempty:
+                        jmp     pcscrollinvalid
+pcscrollbounds:
+                        mov     pcscbottom,ax
+                        sub     al,cl
+                        inc     al
+                        xor     ah,ah
+                        mov     pcscwidth,ax
+                        mov     ax,pcscbottom
+                        sub     ah,ch
+                        inc     ah
+                        mov     al,ah
+                        xor     ah,ah
+                        mov     pcscrows,ax
+                        cmp     pcsccount,0
+                        je      pcscrollclear
+                        cmp     pcsccount,ax
+                        jb      pcscrollcount
+pcscrollclear:
+                        mov     pcsccount,ax
+pcscrollcount:
+                        call    getmx
+                        mov     dx,pcsctop
+                        call    pointcursor
+                        mov     pcscfirst,di
+                        mov     dx,pcscbottom
+                        mov     dl,byte ptr pcsctop
+                        call    pointcursor
+                        mov     pcsclast,di
+                        call    egtextcolumns
+                        shl     ax,1
+                        mov     cx,ax
+                        mov     ax,pcsccount
+                        mul     cx
+                        mov     pcscstep,cx
+                        cmp     pcscdirection,6
+                        jne     pcscrolldown
+                        mov     di,pcscfirst
+                        jmp     pcscrollready
+pcscrolldown:
+                        neg     ax
+                        neg     pcscstep
+pcscrollready:
+                        mov     pcscsource,ax
+                        call    pccellsegment
+pcscrollrow:
+                        mov     si,di
+                        add     si,pcscsource
+                        mov     cx,pcscwidth
+                        push    di
+                        cmp     si,pcscfirst
+                        jb      pcscrollfill
+                        cmp     si,pcsclast
+                        ja      pcscrollfill
+; Vertical copy order avoids overlap: upward from the top, downward from
+; the bottom. Both segments remain unchanged; read and write through ES.
+pcscrollcopy:
+                        mov     ax,es:[si]
+                        stosw
+                        add     si,2
+                        loop    pcscrollcopy
+                        jmp     pcscrollnext
+pcscrollfill:
+                        mov     ax,pcscfill
+                        rep     stosw
+pcscrollnext:
+                        pop     di
+                        add     di,pcscstep
+                        dec     pcscrows
+                        jnz     pcscrollrow
+                        call    updatewindow
+                        mov     vsmx,0
+                        xor     ax,ax
+                        jmp     pcscrollexit
+pcscrollinvalid:
+                        mov     ax,0ffffh
+pcscrollexit:
+                        pop     es
+                        mov     sp,bp
+                        add     sp,22
+                        pop     bp
+                        ret
+
+; XIOS 33 / INT 16h AH=02: IBM BIOS shift byte in AL, AH=0.
+; The native action table assigns bit 1 to RIGHT Shift, bit 2 to LEFT Shift,
+; despite the opposite names on its equates. Translate actual table order.
+; Num/Caps remain global, matching native translation and status display.
+; Scroll/Insert latches are per foreground console, maintained by the ISR hook.
+; Background callers see their own latches but physical live modifiers.
+pcshiftstatus:
+                        cmp     dl,numvircons
+                        jb      pcshiftvalid
+                        jmp     pcnotsupported
+pcshiftvalid:
+                        pushf
+                        cli
+                        xor     bx,bx
+                        mov     bl,dl
+                        mov     al,pckeylatches[bx]
+                        mov     ah,downbits
+                        test    ah,2
+                        jz      pcshiftleft
+                        or      al,1
+pcshiftleft:
+                        test    ah,4
+                        jz      pcshiftctrl
+                        or      al,2
+pcshiftctrl:
+                        test    ah,1
+                        jz      pcshiftalt
+                        or      al,4
+pcshiftalt:
+                        and     ah,8
+                        or      al,ah
+                        mov     ah,togglebits
+                        and     ah,30h
+                        shl     ah,1
+                        or      al,ah
+                        xor     ah,ah
+                        popf
+                        ret
+
+; Called immediately after scan_code is saved/restored in the copied XIOS ISR.
+; Preserve every register/flag touched. Track make/break edges so typematic
+; repeats cannot retoggle a latch. Native translation/flow control still runs.
+; Insert follows unmodified keypad semantics: no Ctrl/Alt, and Shift reverses
+; Num Lock for the keypad. Dedicated E0 Insert bypasses Num/Shift selection.
+pckeyevent:
+                        pushf
+                        push    ax
+                        push    bx
+                        mov     ah,al
+                        and     al,7fh
+                        cmp     al,46h
+                        je      pckeyscroll
+                        cmp     al,52h
+                        jne     pckeydone
+                        mov     al,80h
+                        if      PCMODEENHANCEDKEYS
+                        cmp     pckeyextended,0
+                        je      pckeyedge
+                        mov     al,40h                           ; separate physical edge for E0 Insert
+                        endif
+                        jmp     pckeyedge
+pckeyscroll:
+                        mov     al,10h
+pckeyedge:
+                        test    ah,80h
+                        jz      pckeymake
+                        not     al
+                        and     pckeydown,al
+                        jmp     pckeydone
+pckeymake:
+                        test    pckeydown,al
+                        jnz     pckeydone
+                        or      pckeydown,al
+                        if      PCMODEENHANCEDKEYS
+                        cmp     al,40h
+                        je      pckeydedicatedinsert
+                        endif
+                        cmp     al,80h
+                        jne     pckeytoggle
+                        test    downbits,ctrlbit or altbit
+                        jnz     pckeydone
+                        test    togglebits,numlockbit
+                        jz      pckeynonum
+                        test    downbits,6
+                        jz      pckeydone
+                        jmp     pckeytoggle
+pckeynonum:
+                        test    downbits,6
+                        jnz     pckeydone
+                        if      PCMODEENHANCEDKEYS
+                        jmp     pckeytoggle
+pckeydedicatedinsert:
+                        test    downbits,ctrlbit or altbit
+                        jnz     pckeydone
+                        mov     al,80h                           ; same per-console BIOS Insert latch
+                        endif
+pckeytoggle:
+                        xor     bx,bx
+                        mov     bl,topscreen
+                        cmp     bl,numvircons
+                        jae     pckeydone
+                        xor     pckeylatches[bx],al
+pckeydone:
+                        pop     bx
+                        pop     ax
+                        popf
+                        ret
+
+                        if      PCMODEENHANCEDKEYS
+; Experimental set-1 scan prefilter, called after the hardware ACK and before
+; native reset/action/translation handling. DS=ES=XIOS, IRQ1 is disabled.
+; All registers preserved. CF=1 consumes the byte; CF=0 lets native ISR run.
+; Other flags are scratch, as the next original instruction is CMP AL,83.
+; Prefix/physical modifier state is global for the one physical keyboard.
+; Per-console Scroll/Insert state remains owned by pc_key_event.
+pcscanevent:
+                        push    ax
+                        push    bx
+                        mov     pckeyextended,0
+                        xor     bx,bx
+                        mov     bl,pcpausestep
+                        or      bl,bl
+                        jz      pcscanprefix
+; Match the five bytes following E1 in the Pause make sequence.
+; None reach native Ctrl/Num handling. On mismatch discard only the
+; already matched prefix and reconsider the current byte normally.
+                        dec     bx
+                        cmp     al,pcpausebytes[bx]
+                        jne     pcscanpauseinvalid
+                        inc     pcpausestep
+                        cmp     pcpausestep,6
+                        jae     pcscanpausecomplete
+                        jmp     pcscanconsumed
+pcscanpausecomplete:
+                        mov     pcpausestep,0
+                        jmp     pcscanconsumed
+pcscanpauseinvalid:
+                        mov     pcpausestep,0
+pcscanprefix:
+                        cmp     al,0e1h
+                        jne     pcscannotpause
+                        mov     pcpausestep,1
+                        mov     pce0pending,0
+                        jmp     pcscanconsumed
+pcscannotpause:
+                        cmp     al,0e0h
+                        jne     pcscanpayload
+                        mov     pce0pending,1
+                        jmp     pcscanconsumed
+pcscanpayload:
+                        mov     bl,pce0pending
+                        mov     pckeyextended,bl
+                        mov     pce0pending,0
+                        mov     ah,al
+                        and     ah,7fh
+                        cmp     ah,1dh
+                        je      pcscanctrl
+                        cmp     ah,38h
+                        je      pcscanalt
+                        or      bl,bl
+                        jz      pcscannative
+; E0 fake Shift/Print/Ctrl-Break and unsupported enhanced keys are
+; consumed. Accept only Enter, slash and dedicated navigation here.
+                        cmp     ah,1ch
+                        je      pcscannative
+                        cmp     ah,35h
+                        je      pcscannative
+                        cmp     ah,47h
+                        jb      pcscanconsumed
+                        cmp     ah,53h
+                        ja      pcscanconsumed
+                        cmp     ah,4ah
+                        je      pcscanconsumed
+                        cmp     ah,4eh
+                        je      pcscanconsumed
+                        jmp     pcscannative
+pcscanctrl:
+                        mov     ah,1                             ; left Ctrl bit in private physical mask
+                        or      bl,bl
+                        jz      pcscanmodifier
+                        mov     ah,2                             ; right Ctrl (E0 1D)
+                        jmp     pcscanmodifier
+pcscanalt:
+                        mov     ah,4                             ; left Alt
+                        or      bl,bl
+                        jz      pcscanmodifier
+                        mov     ah,8                             ; right Alt (E0 38)
+pcscanmodifier:
+                        test    al,80h
+                        jz      pcscanmodifiermake
+                        not     ah
+                        and     pcmodifierdown,ah
+                        jmp     pcscanmodifiersmerge
+pcscanmodifiermake:
+                        or      pcmodifierdown,ah
+pcscanmodifiersmerge:
+; Native code sees the union: one side's release cannot clear the
+; other. Consume these events so native action_key cannot undo it.
+                        and     downbits,0ffh-ctrlbit-altbit
+                        test    pcmodifierdown,3
+                        jz      pcscanmergealt
+                        or      downbits,ctrlbit
+pcscanmergealt:
+                        test    pcmodifierdown,12
+                        jz      pcscanconsumed
+                        or      downbits,altbit
+pcscanconsumed:
+                        pop     bx
+                        pop     ax
+                        stc
+                        ret
+pcscannative:
+                        pop     bx
+                        pop     ax
+                        clc
+                        ret
+
+pce0pending             db      0
+pcpausestep             db      0
+pckeyextended           db      0
+pcmodifierdown          db      0
+pcpausebytes            db      1dh,45h,0e1h,9dh,0c5h
+
+                        endif
+
+; Private experimental state; no virtual-screen layout or production ABI change.
+pckeydown               db      0
+pckeylatches            db      0,0,0,0
+
+; Capture the firmware INT 10h vector during XIOS INIT, before PCTMP installs
+; its BIOS emulation. Native enhanced-video helpers must call this vector,
+; not INT 10h (which would recurse into PCTMP after its RSP starts).
+pccapturevideo:
+                        push    ax
+                        push    es
+                        xor     ax,ax
+                        mov     es,ax
+                        mov     ax,es:word ptr .40h
+                        mov     pcvideorom,ax
+                        mov     ax,es:word ptr .42h
+                        mov     pcvideorom+2,ax
+                        mov     ax,40h
+                        mov     es,ax
+                        mov     ax,es:word ptr .10h
+                        mov     pcequipmentword,ax
+                        pop     es
+                        pop     ax
+                        ret
+
+; XIOS 32: idempotent per-console DOS entry/exit, 25 rows on entry and 24
+; on return. Save native video mode, cursor shape and visibility, then
+; restore them on DOS exit. Keep the DOS cursor position (clamped), as the
+; original XIOS does; restoring its entry position would overwrite DOS output.
+; Record: active, restore mode, shape word, visibility, original entry mode.
+pcsession:
+                        cmp     dl,numvircons
+                        jb      pcsessionvalid
+                        jmp     pcnotsupported
+pcsessionvalid:
+                        push    cx
+                        push    dx
+                        call    getallmxs
+                        pop     dx
+                        pop     cx
+                        call    pointvs
+                        xor     ax,ax
+                        mov     al,dl
+                        mov     si,ax
+                        shl     si,1
+                        add     si,ax
+                        shl     si,1
+                        test    cl,1
+                        jz      pcsessionleave
+                        cmp     byte ptr pcsessions[si],0
+                        je      pcsessionsave
+                        jmp     pcsessiondone
+pcsessionsave:
+                        mov     al,vsscreenmode
+                        mov     byte ptr pcsessions+5[si],al     ; original entry mode for INT 11h
+                        cmp     al,1
+                        jne     pcsessionexplicit
+; Native mode 1 means generic text, not BIOS mode -1. PCTMP subtracts two
+; from the XIOS mode query. Normalize it before exposing the DOS interface.
+                        mov     al,5                             ; native explicit color text = BIOS mode 3
+                        cmp     vscrtseg,monoseg
+                        jne     pcsessionexplicit
+                        mov     al,9                             ; native monochrome text = BIOS mode 7
+pcsessionexplicit:
+                        mov     vsscreenmode,al
+                        mov     byte ptr pcsessions+1[si],al
+                        mov     ax,vscurtype
+                        mov     word ptr pcsessions+2[si],ax
+                        mov     al,vsmode
+                        and     al,cursorbit
+                        mov     byte ptr pcsessions+4[si],al
+                        mov     byte ptr pcsessions[si],1
+                        mov     al,24
+                        call    pcresizetext
+                        jmp     pcsessiondone
+pcsessionleave:
+                        cmp     byte ptr pcsessions[si],0
+                        je      pcsessiondone
+                        mov     cl,byte ptr pcsessions+1[si]
+                        cmp     cl,vsscreenmode
+                        je      pcsessioncursor
+                        xor     ch,ch
+                        push    si
+                        push    dx
+                        push    cx
+                        test    vsscreenmode,0f0h
+                        jnz     pcsessionmode
+                        call    copyfulltop                      ; save text before firmware mode reset clears it
+pcsessionmode:
+                        pop     cx
+                        pop     dx
+                        push    dx
+                        call    getsetscreen
+                        pop     dx
+                        pop     si
+                        call    pointvs
+pcsessioncursor:
+                        mov     ax,word ptr pcsessions+2[si]
+                        mov     vscurtype,ax
+                        and     vsmode,0ffh-cursorbit
+                        mov     al,byte ptr pcsessions+4[si]
+                        or      vsmode,al
+                        mov     byte ptr pcsessions[si],0
+                        mov     al,23
+                        call    pcresizetext
+                        mov     dx,vscursor
+                        cmp     dh,vstextlast
+                        jbe     pcsessioncolumn
+                        mov     dh,vstextlast
+pcsessioncolumn:
+                        cmp     dl,crtcols-1
+                        jbe     pcsessionposition
+                        mov     dl,crtcols-1
+pcsessionposition:
+                        call    putcursor
+                        mov     al,vsnumber
+                        cmp     al,topscreen
+                        jne     pcsessiondone
+                        call    newcursoron
+pcsessiondone:
+                        call    freeallmxs
+                        xor     ax,ax
+                        ret
+
+; BIOS AH=01 uses CX=start/end scan lines. The native visibility flag remains
+; separate; bit 5 in CH is the BIOS hide convention and belongs in the shape.
+; Hardware cursor updates use native ownership checks, never a hooked INT 10h.
+pccursorshape:
+                        cmp     dl,numvircons
+                        jb      pcshapevalid
+                        jmp     pcnotsupported
+pcshapevalid:
+                        push    cx
+                        call    pointvs
+                        call    getmx
+                        pop     cx
+                        mov     vscurtype,cx
+                        call    showcursor
+                        mov     vsmx,0
+                        xor     ax,ax
+                        ret
+
+pcvideorom              dw      0,0
+pcsessions              db      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+; BIOS AH=0B palette, AH=0C write and AH=0D read; packet at CX:DX as for scroll.
+; Use the captured firmware through the existing private-stack/PIC guard.
+; Only the foreground graphics owner may touch hardware. CGA modes 4/5/6,
+; page zero and in-range coordinates are supported; reject all other requests.
+; AL bit 7 retains the BIOS XOR-pixel convention. AH=0Dh returns a bounded read.
+pcgraphicspacket:
+                        push    es
+                        xor     ah,ah
+                        mov     si,ax
+                        mov     es,cx
+                        mov     di,dx
+                        mov     dl,es:byte ptr 8[di]
+                        cmp     dl,numvircons
+                        jb      pcgraphconsole
+                        jmp     pcgraphbad
+pcgraphconsole:
+                        call    pointvs
+                        mov     al,vsnumber
+                        cmp     al,topscreen
+                        jne     pcgraphbad
+                        mov     al,vsbit
+                        test    graphicbits,al
+                        jz      pcgraphbad
+                        mov     al,vsscreenmode
+                        cmp     al,20h
+                        je      pcgraphmode
+                        cmp     al,30h
+                        je      pcgraphmode
+                        cmp     al,40h
+                        jne     pcgraphbad
+pcgraphmode:
+                        cmp     si,11
+                        je      pcgraphpalette
+                        cmp     es:byte ptr 3[di],0
+                        jne     pcgraphbad
+                        mov     cx,320
+                        cmp     al,40h
+                        jne     pcgraphwidth
+                        mov     cx,640
+pcgraphwidth:
+                        cmp     es:word ptr 4[di],cx
+                        jae     pcgraphbad
+                        cmp     es:word ptr 6[di],200
+                        jae     pcgraphbad
+                        cmp     si,13
+                        jne     pcgraphcall
+                        jmp     pcgraphread
+pcgraphpalette:
+                        cmp     es:byte ptr 3[di],1
+                        ja      pcgraphbad
+pcgraphcall:
+                        call    getmx
+                        push    bx
+                        mov     ax,si
+                        mov     ah,al
+                        mov     al,es:byte ptr [di]
+                        mov     bx,es:word ptr 2[di]
+                        mov     cx,es:word ptr 4[di]
+                        mov     dx,es:word ptr 6[di]
+                        call    videobios
+                        pop     bx
+                        mov     vsmx,0
+                        pop     es
+                        xor     ax,ax
+                        ret
+pcgraphbad:
+                        pop     es
+                        jmp     pcnotsupported
+
+; CGA pixel read uses the same foreground/mode/page/coordinate checks as
+; pixel write above. Read direct CGA RAM instead of video_bios, whose ABI
+; preserves caller AX and therefore cannot supply BIOS AH=0Dh's returned AL.
+; BX initially selects the locked native screen; preserve it while computing
+; the CGA bank/byte. Return AX=color (0..3 or 0..1), with no mutable sidecar.
+pcgraphread:
+                        call    getmx
+                        push    bx
+                        push    bp
+                        mov     bp,2                             ; four two-bit pixels per byte, modes 4/5
+                        cmp     vsscreenmode,40h
+                        jne     pcreadformatready
+                        inc     bp                               ; eight one-bit pixels per byte, mode 6
+pcreadformatready:
+                        mov     ax,es:word ptr 6[di]             ; y: even/odd bank, 80 bytes per paired row
+                        mov     cx,ax
+                        and     cx,1
+                        shr     ax,1
+                        mov     dx,80
+                        mul     dx
+                        jcxz    pcreadbankready
+                        add     ax,2000h
+pcreadbankready:
+                        mov     dx,es:word ptr 4[di]             ; x: byte index and pixel field within byte
+                        mov     bx,dx
+                        mov     cx,bp
+                        shr     bx,cl
+                        add     bx,ax
+                        mov     ax,0b800h
+                        mov     es,ax
+                        mov     al,es:byte ptr [bx]
+                        cmp     bp,3
+                        jne     pcreadtwobits
+                        and     dx,7
+                        mov     cx,7
+                        sub     cx,dx
+                        shr     al,cl
+                        and     ax,1
+                        jmps    pcreaddone
+pcreadtwobits:
+                        and     dx,3
+                        mov     cx,3
+                        sub     cx,dx
+                        shl     cl,1
+                        shr     al,cl
+                        and     ax,3
+pcreaddone:
+                        pop     bp
+                        pop     bx
+                        mov     vsmx,0
+                        pop     es
+                        ret
+
+                        endif
+
+                        if      PCMODEXIOS
+; xpcmode: console section
+xcode                   cseg    byte public 'CODE'
+; Logical text extent is per console; allocation always reserves 25 rows.
+; BX=screen, AX=result in cells. Preserve DX used by cursor/erase callers.
+pctextcells:
+                        push    dx
+                        call    egtextcolumns
+                        mov     dl,al
+                        mov     al,vstextlast
+                        inc     al
+                        mul     dl
+                        pop     dx
+                        ret
+
+; Called with every screen semaphore held by pc_session.
+; AL=new inclusive bottom. Preserve smaller user windows, as original XIOS.
+pcresizetext:
+                        push    si
+                        push    bx
+                        push    ax
+                        call    copyfulltop
+                        pop     ax
+                        mov     vstextlast,al
+                        cmp     vsrows,24
+                        jb      pcresizemap
+                        cmp     vscols,crtcols
+                        jne     pcresizemap
+                        mov     vstopleft,0
+                        mov     vsbottom,al
+                        mov     vsright,crtcols-1
+                        call    newcount
+pcresizemap:
+                        mov     al,vstextlast
+                        cmp     vscurrow,al
+                        jbe     pcresizecursorok
+                        mov     vscurrow,al
+pcresizecursorok:
+                        call    dotrueview
+                        call    newvcmap
+                        call    updateall
+                        pop     bx
+                        pop     si
+                        ret
+
+; Suppress status writes when the front console on a monitor uses row 25.
+; Recompute after ownership changes, before repainting. Invalidate the cached
+; status text so native status returns even when its contents have not changed.
+pcstatusrefresh:
+                        push    ax
+                        push    bx
+                        push    cx
+                        push    dx
+                        push    si
+                        push    di
+                        push    es
+                        mov     pcstatushide,0
+                        mov     si,offset vcpriority+numvircons-1
+                        mov     cx,numvircons
+                        xor     dx,dx                            ; DH tracks monitors already visited
+pcstatusconsole:
+                        mov     dl,[si]
+                        call    pointvs
+                        mov     dl,1
+                        cmp     vscrtseg,monoseg
+                        je      pcstatusmonitor
+                        mov     dl,2
+pcstatusmonitor:
+                        test    dh,dl
+                        jnz     pcstatusnext
+                        or      dh,dl
+                        cmp     vstextlast,24
+                        jne     pcstatusnext
+                        cmp     vsbottom,24
+                        jne     pcstatusnext
+                        or      pcstatushide,dl
+pcstatusnext:
+                        dec     si
+                        loop    pcstatusconsole
+                        push    ds
+                        pop     es
+                        mov     di,offset statuscopy
+                        mov     cx,crtcols
+                        mov     ax,0ffffh
+                        cld
+                        rep     stosw
+                        pop     es
+                        pop     di
+                        pop     si
+                        pop     dx
+                        pop     cx
+                        pop     bx
+                        pop     ax
+                        ret
+pcstatushide            db      0
+pcequipmentword         dw      0
+                        endif

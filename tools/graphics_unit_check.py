@@ -34,9 +34,11 @@ def run_case(mode,selector,x=0,y=0,page=0,owner=True,top=True,palette=0,valid=Tr
 '''
         target=len(code);code+=asm(stub,f,'stub')
         at=S('video_bios');code[at:at+3]=b'\xe9'+((target-at-3)&65535).to_bytes(2,'little')
+        at=S('eg_graphics_bios');code[at:at+3]=b'\xe9'+((target-at-3)&65535).to_bytes(2,'little')
         chain=asm(f"mov ax,si\nmov ah,al\nmov [0f100h],ax\ninc byte [0f108h]\nxor ax,ax\ncmp si,13\njne done\nmov ax,42\ndone:ret\n",f,'chain')
         dest=len(code);code+=chain
         at=S('eg_chain4_pixel');code[at:at+3]=b'\xe9'+((dest-at-3)&65535).to_bytes(2,'little')
+        at=S('hgc_pixel');code[at:at+3]=b'\xe9'+((dest-at-3)&65535).to_bytes(2,'little')
         # Near return trampoline occupies the unused SYSDAT prefix.
         code[:4]=b'\xe8'+((S('eg_try_video')-3)&65535).to_bytes(2,'little')+b'\xcb'
         (f/'payload.bin').write_bytes(code)
@@ -101,12 +103,12 @@ org 100h
         assert result.returncode==0,(hex(mode),selector,x,y,page,owner,top,palette,valid,result.stdout,result.stderr)
 
 count=0
-for mode,w,h in [(0x50,640,350),(0x60,320,200),(0x70,640,200),(0x80,640,480),(0x90,640,480),(0xa0,320,200),(0xb0,640,350),(0x20,320,200),(0x30,320,200),(0x40,640,200)]:
+for mode,w,h in [(0x50,640,350),(0x60,320,200),(0x70,640,200),(0x80,640,480),(0x90,640,480),(0xa0,320,200),(0xb0,640,350),(0xc0,720,348),(0x20,320,200),(0x30,320,200),(0x40,640,200)]:
     for selector in (12,13):
         for x,y,page,owner,top,valid in [(0,0,0,True,True,True),(w-1,h-1,0,True,True,True),(w,0,0,True,True,False),(0,h,0,True,True,False),(0,0,1,True,True,False),(0,0,0,False,True,False),(0,0,0,True,False,False)]:
             run_case(mode,selector,x,y,page,owner,top,valid=valid);count+=1
     for selector in (1,2,3,8,9,10,14):run_case(mode,selector);count+=1
-    for sub in (0,7,0x10,0x15):run_case(mode,16,palette=sub,valid=mode>=0x50 and (mode!=0xa0 or sub not in (0,7)));count+=1
+    for sub in (0,7,0x10,0x15):run_case(mode,16,palette=sub,valid=mode>=0x50 and mode!=0xc0 and (mode!=0xa0 or sub not in (0,7)));count+=1
 for selector in (1,2,3,8,12,13,16,127):
     run_case(5,selector,valid=False);count+=1
 print(f'PASS: {count} assembled-XIOS enhanced graphics guards, dimensions, pages, ownership, packet results, palettes and preserved registers')
@@ -208,7 +210,7 @@ payload:incbin "payload.bin"
 bda_checks()
 
 def query_checks():
-    cases=[(2,40),(3,40),(4,80),(5,80),(9,80),(0x20,40),(0x30,40),(0x40,80),(0x50,80),(0x60,40),(0x70,80),(0x80,80),(0x90,80),(0xa0,40),(0xb0,80)]
+    cases=[(2,40),(3,40),(4,80),(5,80),(9,80),(0x20,40),(0x30,40),(0x40,80),(0x50,80),(0x60,40),(0x70,80),(0x80,80),(0x90,80),(0xa0,40),(0xb0,80),(0xc0,90)]
     for mode,columns in cases:
         with tempfile.TemporaryDirectory(prefix='xios-mode-query-') as temp:
             f=Path(temp);code=bytearray(BASE)
@@ -247,7 +249,7 @@ payload:incbin "payload.bin"
             asm(body,f,'case')
             result=subprocess.run(['emu2','case.bin'],cwd=f,capture_output=True,timeout=5)
             assert result.returncode==0,(mode,columns,result.stdout,result.stderr)
-    print('PASS: 15 truthful mode/column queries and unchanged legacy native queries')
+    print('PASS: 16 truthful mode/column queries and unchanged legacy native queries')
 
 query_checks()
 

@@ -10,9 +10,12 @@ SNIPPETS=bdos.con sup.con rtm.con cio.con sysdat.con xios.con xiosnat.con mem.co
 
 all: $(SNIPPETS)
 
-# Included assembly sources must invalidate their parent object.
-xios.h86 xiosnat.h86: xbegin.lib xchar.lib xconout.lib xfloppy.lib xhard.lib xrtc.lib xinit.lib \
-  pcmode.lib xpcmode.lib egvideo.lib xdiskraw.lib
+# Three independent XIOS modules; fixed ABI checked before publication.
+XIOS_SOURCES=$(wildcard xios/*.a86 xios/*.inc xios/*.lib xios/*.json)
+xios.con xiosnat.con: $(XIOS_SOURCES) pcmode.lib ../../tools/build_xios.py
+	python3 ../../tools/build_xios.py $(basename $@)
+	@cmdinfo $@
+
 bdos.obj: $(wildcard *.bdo) uda.cic xioscb.def
 sup.h86: $(wildcard *.sup) patch.cod
 rtm.h86: $(wildcard *.rtm) s8087.lib
@@ -22,14 +25,6 @@ sysdat.h86: sysdat.dat
 
 bdos.con: bdos.obj
 	$(LINK86) $@=$< '[data[origin[0]]]'
-	@cmdinfo $@
-
-xios.con: xios.h86
-xiosnat.con: xiosnat.h86
-
-xios.con xiosnat.con:
-	$(GENCMD) $< 8080
-	mv $(basename $@).cmd $@
 	@cmdinfo $@
 
 %.con: %.h86
@@ -44,6 +39,7 @@ xios.con xiosnat.con:
 	$(RASM86) $<
 
 clean:
+	rm -rf .xios
 	rm -f *.obj *.h86 *.sym *.lst *.con *.cmd *.loc *.lnk *.lst
 
 

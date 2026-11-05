@@ -1,0 +1,792 @@
+; xbegin: core section
+xcode                   cseg    byte public 'CODE'
+xcode                   cseg    byte public 'CODE'
+xdata                   dseg    para public 'CODE'
+xdata                   dseg    para public 'CODE'
+xcode                   cseg    byte public 'CODE'
+                        org     08Ch
+                        dw      0FFFFh
+                        eject                                    ; Dec 13, 1983
+;		SYSTEM INFO
+;		-----------
+
+;************************************************
+;*						*
+;*       CCP/M-86 SYSTEM DATA AREA FORMAT	*
+;*						*
+;************************************************
+
+;files - used by status line routine
+
+;********************************************************
+;*							*
+;*		CCP/M-86 SYSTEM EQUATES 		*
+;*							*
+;********************************************************
+
+;	CCP/M-86 system calls used by the XIOS
+
+;process control functions:
+
+;device control functions:
+
+;Time function:
+
+;	Definition of flag table used by by CCP/M and this XIOS
+
+;0 - is reserved
+
+;XIOS flags:
+
+;********************************************************
+;*							*
+;*		PROCESS DESCRIPTOR			*
+;*							*
+;********************************************************
+
+;	The Process Descriptor (PD) along with the
+;	associated User Data Area (UDA), describe
+;	the current state of a Process under CCP/M-86.
+;	The process descriptor is always within the System
+;	Data Segment.
+
+;	Process Descriptor:
+
+;   +-----+-----+-----+-----+-----+-----+-----+-----+
+; 00|   link    |  thread   |stat |prior|   flag    |
+;   +-----+-----+-----+-----+-----+-----+-----+-----+
+; 08|                     name                      |
+;   +-----+-----+-----+-----+-----+-----+-----+-----+
+; 10|    uda    |disk | user|       reserved        |
+;   +-----+-----+-----+-----+-----+-----+-----+-----+
+; 18|               resereved           |  parent   |
+;   +-----+-----+-----+-----+-----+-----+-----+-----+
+; 20|cons |     reserved    |list |    reserved     |
+;   +-----+-----+-----+-----+-----+-----+-----+-----+
+; 28|                   reserved                    |
+;   +-----+-----+-----+-----+-----+-----+-----+-----+
+
+;	link	- used for placement into System Lists
+;	thread	- link field for Thread List
+;	stat	- current process activity
+;	prior	- priority
+;	flag	- process state flags
+;	name	- name of process
+;	uda	- segment address of user data area
+;	disk	- current default disk
+;	user	- current default user number
+;	mem	- pointer to MD list of memory owned
+;		  by this process
+;	parent	- process that created this process
+;	cons	- default console device (doesn't imply ownership)
+;	list	- default list device (doesn't imply ownership)
+
+;	Values of Process descriptor p_status field:
+
+;	Bit flags in Process descriptor p_flag field:
+
+;************************************************
+;*
+;*	Virtual Console Control Block Definition
+;*
+;*	+---------+---------+---------+---------+
+;*  00	|      owner        |      reserved	|
+;*	+---------+---------+---------+---------+
+;*  04	|                reserved               |
+;*	+---------+---------+---------+---------+
+;*  08	|  mimic  |      reserved               |
+;*	+---------+---------+---------+---------+
+;*  0C	|      reserved     |       state       |
+;*	+---------+---------+---------+---------+
+;*  10  |     maxbufsiz     |     reserved      |
+;*	+---------+---------+---------+---------+
+;*  14  |               reserved                |
+;*      +---------+---------+---------+---------+
+;*  18  |               reserved                |
+;*      +---------+---------+---------+---------+
+;*  1C  |               reserved                |
+;*      +---------+---------+---------+---------+
+;*  20  |               reserved                |
+;*      +---------+---------+---------+---------+
+;*  24  |               reserved                |
+;*      +---------+---------+---------+---------+
+;*  28  |               reserved                |
+;*      +---------+---------+---------+---------+
+;*
+;*
+;*
+;*	owner	- current owner of device
+;*		  if 0, no owner
+;*	mimic	- list dev that mimics us.
+;*		  0ffh means no mimic device
+;*	state	- current state of virtual console
+;*	maxbufsiz - maximum file size for buffered mode
+
+;CCB state flags
+
+;	Memory Descriptor Format for Init memory trimming
+
+;*******************************************************
+;*							*
+;*	8087 NUMERIC DATA PROCESSOR CODEMACROS		*
+;*							*
+;********************************************************
+
+;****************************************************************
+;*								*
+;*	8259 PROGRAMMABLE INTERRUPT CONTROLLER COMMANDS		*
+;*			AND PORTS				*
+;*								*
+;****************************************************************
+
+;************************************************
+;*						*
+;*		ASCII CODES			*
+;*						*
+;************************************************
+
+                        eject
+
+;	XIOS HEADER AND INTERFACE
+;	-------------------------
+
+;************************************************
+;*						*
+;*		XIOS HEADER 			*
+;*						*
+;************************************************
+xcode                   cseg    byte public 'CODE'
+                        org     0C00h                            ;8080 model XIOS base
+
+;CCP/M-86 entry points to XIOS:
+                        jmp     init                             ;called once at system boot
+                        jmp     entry                            ;subsequent calls go through here
+
+                        dw      0
+                        rw      1
+                        rw      1
+
+                        db      false
+                        db      60
+                        db      false
+                        db      0
+                        db      1
+                        db      numvircons
+                        db      4
+                        db      5
+
+                        dw      offset ccbtab
+                        dw      offset lcbtab
+
+;	This table of disk parameter header offsets is used by
+;	genccpm for internal allocations.  It gets modified by
+;	the INIT routine to match the actual physical drives.
+
+                        dw      dph0,dph1
+                        dw      dph2,dph3
+                        dw      hddph0,hddph1
+                        dw      0,0,0,0,0,0
+                        dw      dphmd
+                        dw      0,0,0
+
+                        dw      buffersize/16
+
+                        db      false
+
+;********************************************************
+;*							*
+;*		INTERFACE TO CCP/M O.S.			*
+;*							*
+;********************************************************
+xcode                   cseg    byte public 'CODE'
+;=====
+entry:                                                           ;arrive here from JMP at
+;=====					;03H in XIOS code segment
+;=====
+
+;	Note: no alteration of stack is allowed during entry except
+;	for the return address caused by the "call function_table[bx]"
+;	instruction.
+
+                        cld                                      ;set the direction flag
+                        cbw                                      ;ah = 0
+                        shl     al,1                             ;multiply by 2
+                        xchg    bx,ax                            ;save bx in ax
+                        call    functiontable[bx]                ;no range checking needed
+                        mov     bx,ax                            ;only called by O.S.
+                        retf                                     ;return to O.S. kernel
+
+functiontable:
+                        dw      ioconst                          ; 0 console status
+                        dw      ioconin                          ; 1 console input
+                        dw      ioconout                         ; 2 console output
+                        dw      iolistst                         ; 3 list status
+                        dw      iolist                           ; 4 list output
+                        dw      ioauxin                          ; 5 auxillary input
+                        dw      ioauxout                         ; 6 auxillary out
+                        dw      ioswitch                         ; 7 switch screen
+                        dw      iostatline                       ; 8 update or print new status
+                        dw      ioseldsk                         ; 9 select disk
+                        dw      ioread                           ;10 read logical sector
+                        dw      iowrite                          ;11 write logical sector
+                        dw      ioflushbuf                       ;12 flush buffers
+                        dw      iopoll                           ;13 poll device
+                        dw      iopointer                        ;14 general pointer return
+                        dw      ioformat                         ;15 format floppy track
+
+;	back door window control entry points
+
+                        dw      wwpointer                        ;16 return data pointers
+                        dw      wwkey                            ;17 wait for a key
+                        dw      wwstatline                       ;18 char/attib status line
+                        dw      wwimhere                         ;19 window process state
+                        dw      wwnewwindow                      ;20 redefine a window
+                        dw      wwcursorview                     ;21 track mode, viewpoint
+                        dw      wwwrapcolumn                     ;22 set wrap around column
+                        dw      wwfullwindow                     ;23 same as full key
+                        dw      wwswitchdisplay                  ;24 mono/color monitors
+                        dw      iortcset                         ;25 persist system date/time in BIOS RTC
+                        dw      ioret                            ;26 dummy
+                        dw      ioret                            ;27 dummy
+                        dw      ioret                            ;28 dummy
+                        dw      iovariableformat                 ;29 local 8/9-sector variable format
+                        dw      getsetscreen                     ;30 alpha/graphics screens
+                        if      not PCMODEXIOS
+                        dw      egnativevideo                    ;31 enhanced graphics packets, native-only build
+                        endif
+                        if      PCMODEXIOS
+; PCTMP hardware services retain native 24-row console ownership.
+                        dw      pcvideo                          ;31 BIOS video subset
+                        dw      pctextstate                      ;32 DOS text entry/exit
+                        dw      pcshiftstatus                    ;33 BIOS shift status
+                        dw      pcequipment                      ;34 BIOS equipment word
+                        endif
+; Keep 35/36 at the same numbers in PC-MODE and native-only builds.
+                        if      not PCMODEXIOS
+                        dw      ioret,ioret,ioret
+                        endif
+                        dw      iorawread                        ;35 local physical floppy read
+                        dw      iorawwrite                       ;36 local physical floppy write
+
+ioret:
+                        ret                                      ; for null function calls
+
+flagset:
+                        mov     cl,devflagset
+                        jmps    supif
+
+flagwait:
+                        mov     cl,devflagwait
+;	jmps supif			;fall through
+
+supif:
+                        mov     ch,0
+                        callf   supervisor
+                        ret
+
+;	Here is a little bit of room for assorted corrections
+
+patchspace              rb      100h                             ; hope that will do
+
+                        eject
+;		INTERRUPT HANDLERS
+;		------------------
+
+;********************************************************
+;*							*
+;*		XIOS BACK DOOR ENTRY			*
+;*							*
+;********************************************************
+
+;	This is included primarily for version 1.0 compatiblity
+;	It is entered with an INT 0E6h, and returns pointers to
+;	screen base addresses and PFK tables, or information to
+;	be used by HDMAINT.
+
+;	entry:	al = 18		; resume normal status line
+; or
+;	entry:	al = 21		; display status line
+;		cx:si -> new status information
+; or
+;	entry:	al = 29		; hd_maint info return
+;	exit:	al = true if there are any open files
+;		dx:cx -> hd_rom_entry
+; or
+;	entry:	al = 31		; version 1.0 pfk_control
+;		cx = vc num
+;	exit:	ax,bx -> pfk offset
+;		si -> vc segment
+; or
+;	entry:	al = 32		; return max disk
+;	exit:	al = max floppy disk number
+
+xiosv1entry:
+                        cbw
+                        cmp     al,32                            ; if al > 32
+                        ja      xiosv1exit                       ;   then forget it
+                        sub     al,18                            ; shift the offset
+                        jb      xiosv1exit                       ;   and ignore < 18
+
+                        push    ds ! push cs ! pop ds            ; local data segment
+                        shl     ax,1
+                        xchg    ax,bx                            ; bx = table index
+                        call    xiosv1table[bx]                  ; branch to routine
+                        push    ds ! pop es ! pop ds             ; es = sysdat, ds restored
+
+xiosv1exit:
+                        iret
+
+xiosv1table             dw      xiosv1statuson                   ; 18
+                        dw      v1null,v1null                    ; 19, 20
+                        dw      xiosv1displaystat                ; 21
+                        dw      v1null,v1null,v1null             ; 22,23,24
+                        dw      v1null,v1null,v1null             ; 25,26,27
+                        dw      v1null                           ; 28
+                        dw      xiosv1hd                         ; 29
+                        dw      xiosv1graphcaps                  ; 30: enhanced graphics capability
+                        dw      xiosv1pfkvc                      ; 31
+                        dw      xiosv1maxdisk                    ; 32
+
+; Reserved v1 selector 30 was a no-op in the original 3.1 kernel.
+; AX='EG' identifies this interface; BX bit 0 permits 640x350x16.
+; Query only on Concurrent BDOS 31h, with input BX=0 for old-kernel fallback.
+xiosv1graphcaps:
+                        mov     ax,4745h
+                        sub     bx,bx
+                        mov     bl,enhancedega
+                        cmp     enhancedvideo,0
+                        je      egcapsnoega
+                        or      bl,2                             ; modes 0D/0E, including 64 KB EGA
+egcapsnoega:
+                        cmp     enhancedvga,0
+                        je      egcapsdone
+                        or      bl,0Ch                           ; VGA 11/12/13 + DAC; bit 3: EGA mono 0F
+egcapsdone:
+                        cmp     enhancedmono,0
+                        je      egcapsreturn
+                        or      bl,8
+egcapsreturn:
+                        cmp     hgcpresent,0
+                        je      $+5
+                        or      bl,10h
+                        ret
+
+;	restore normal status line operation
+
+xiosv1statuson:
+                        mov     cx,0FFFFh                        ; that's the code
+                        jmps    xiosv1statline                   ; shared entry
+
+;	display cx:si on the status line
+
+xiosv1displaystat:
+                        mov     dx,cx                            ; segment to dx
+                        mov     cx,si                            ; offset to cx
+xiosv1statline:
+                        call    iostatline                       ; try to display
+                        test    al,al                            ; check success
+                        jnz     xiosv1statline                   ; retry if failure
+                        ret
+
+;	return hdmaint information
+
+xiosv1hd:
+                        mov     ax,openvec                       ; one bit per drive
+                        test    ax,ax                            ; if no files open
+                        jz      xiosv1hd1                        ;   then leave al=00
+                        mov     al,true                          ; else al=0FFh
+xiosv1hd1:
+                        mov     cx,hdromofs                      ; get rom offset
+                        mov     dx,hdromseg                      ; and segment
+                        ret
+
+;	return pfk and vc buffer pointers
+
+xiosv1pfkvc:
+                        push    dx
+                        mov     dx,cx                            ; copy vc number
+                        call    pointvs                          ; bx -> vs_
+                        mov     si,vsvcseg                       ; si -> virtual console seg
+                        mov     ax,vspfktbl                      ; ax -> pfk table
+                        mov     bx,ax                            ; copy return to bx
+                        pop     dx
+                        ret
+
+;	return maximum floppy disk number
+
+xiosv1maxdisk:
+                        mov     al,byte ptr numflop              ; max number is one less
+                        dec     al                               ;   then the number of flops
+                        ret
+
+;	for ignored entry codes
+
+v1null:
+                        ret                                      ; just return
+
+; xbegin: core section
+xcode                   cseg    byte public 'CODE'
+;********************************************************
+;*							*
+;*      8253-5 COUNTER TIMER PORT AND DATA EQUATES	*
+;*							*
+;********************************************************
+
+;********************************************************
+;*							*
+;*		CLOCK INTERRUPT HANDLER			*
+;*							*
+;********************************************************
+
+;	The following routine gets control on a timer interrupt,
+;	from the 8253-5 (?).
+
+;-------
+iclock:
+;-------				;interrupts are off
+                        push    ds                               ;use one level of user stack
+                        mov     ds,cs:sysdat
+                        mov     tickintss,ss                     ;save the registers
+                        mov     tickintsp,sp
+                        mov     ss,sysdat
+                        mov     sp,offset tickintsavearea
+
+                        push    ax ! push bx ! push cx ! push dx
+                        push    bp ! push di ! push si ! push es
+
+                        if      PCMODEXIOS
+; Preserve BIOS clock rate with the original PIT divisor.
+                        call    pcclocktick
+                        endif
+                        cmp     beepcounter,00                   ;test for beeping now
+                        jz      checkmotoroff                    ;no then leap to the next test
+                        cmp     beepticks,00                     ;is this the first time through
+                        jnz     checkbeeptick                    ;no the leap around set up
+
+setbeeptick:
+                        mov     beepticks,0ch                    ;set up for a beep
+
+checkbeeptick:
+                        dec     beepticks                        ;are we all done with this beep
+                        jz      checkmorebeeps                   ;yes then leap
+                        cmp     beepticks,2                      ;where are we in the beep cycle
+                        jb      turnbeepoff                      ;low enough to turn off
+                        in      al,portb                         ;else turn on the beeper
+                        or      al,beepon
+                        out     portb,al
+                        jmps    checkmotoroff
+
+checkmorebeeps:
+                        dec     beepcounter                      ;count down the beep
+                        jnz     setbeeptick                      ;not the last set a new one
+
+turnbeepoff:
+                        in      al,portb                         ;else get the bits
+                        and     al,beepoff
+                        out     portb,al                         ;silence the beeper
+
+checkmotoroff:
+                        cmp     diskongoing,00h                  ;test for disk operation under way
+                        jnz     checkdisktime                    ;yes, don't touch motor off counter
+                        dec     motoroffcounter
+                        jnz     checkdisktime                    ;not timed out yet leap
+                        mov     dx,fdcport
+                        mov     al,fdcon                         ;keep the fdc not reset
+                        mov     motorflags,al                    ;deselect the motors
+                        out     dx,al
+
+checkdisktime:
+                        cmp     disktimeout,0                    ;if zero, then it's not being used
+                        jz      updatetick                       ;  so, go about your business
+                        dec     disktimeout                      ;if it hasn't timed out
+                        jnz     updatetick                       ;  then there's no need to worry
+                        mov     diskerror,80h                    ;if it has timed out
+                        mov     dx,fdcflag                       ;  then tell the error routine why
+                        call    flagset                          ;  and do a flag set to unstick us
+
+updatetick:
+                        cmp     tickcounter,tickspersecond       ;test for new second
+                        jnz     updatetickdec
+
+updatetickdec:
+                        dec     tickcounter
+                        jnz     dotickflag                       ;not a second then leap
+                        mov     tickcounter,tickspersecond
+                        mov     dx,secflag
+                        call    flagset
+
+dotickflag:
+                        cmp     tick,0
+                        je      timerinterruptexit
+                        mov     dx,tickflag
+                        call    flagset
+
+timerinterruptexit:
+                        mov     al,picocwseoi + timerchannel     ;pick up end of interrupt word
+                        out     picocwport,al                    ;signal EOI
+
+                        pop     es ! pop si ! pop di ! pop bp
+                        pop     dx ! pop cx ! pop bx ! pop ax
+
+                        mov     ss,tickintss
+                        mov     sp,tickintsp
+                        pop     ds                               ;get DS from interrupted
+;process's stack
+                        jmpf    cs:dword ptr dispatcher          ;go run the next ready process
+
+;------
+itick:                                                           ;don't do anything
+;------
+                        iret
+
+;********************************************************
+;*							*
+;*		CLOCK INTERRUPT DATA AREA		*
+;*							*
+;********************************************************
+xdata                   dseg    para public 'CODE'
+                        org     ((offset $-offset datastart)+1) and 0fffeh
+beepcounter             db      0                                ;how many control g's
+beepticks               db      0                                ;elapsed ticks this beep
+
+tickcounter             db      tickspersecond                   ;counter for tick interupts
+
+                        rs      30h
+tickintsavearea         rs      2
+tickintax               rw      1                                ;storage for interrupted task
+tickintss               rw      1
+tickintsp               rw      1
+
+;************************************************
+;*						*
+;*	8087 NDP INTERRUPT HANDLER		*
+;*						*
+;************************************************
+xcode                   cseg    byte public 'CODE'
+inmi:
+                        push    ax                               ; first check parity error
+                        in      al,portc
+                        test    al,0C0h                          ; if not a parity error
+                        pop     ax                               ;   then it really is
+                        jz      indp                             ;   from the 8087
+
+;	memory parity error interrupt
+
+iparity:
+                        push    cs ! pop ds                      ; there's no coming back
+                        push    cs ! pop es                      ; so forget the registers
+                        mov     di,offset paritypmsg
+                        call    fatalproc                        ; store the process name
+                        mov     di,offset parityamsg
+                        call    fataladdr                        ; store the return address
+
+                        add     beepcounter,3                    ; beep the thrice
+                        mov     slexitvalue,true                 ; take over the status line
+                        mov     dx,cs
+                        mov     cx,offset paritymsg
+                        call    iostatline                       ; print the error message
+
+                        sti
+                        mov     bx,4                             ; about 1 second
+iparitypause:
+                        loop    iparitypause                     ; wait for beeps to end
+                        dec     bx
+                        jnz     iparitypause
+
+iparityfreeze:
+                        cli
+                        hlt                                      ; wait here foever
+                        jmps    iparityfreeze                    ;   and a day
+
+;	numeric data processor interrupt
+
+indp:
+                        push    ds                               ; on user's stack
+                        mov     ds,cs:sysdat
+                        mov     ndpsssave,ss                     ; save user's stack
+                        mov     ndpspsave,sp
+                        mov     ss,sysdat                        ; get our own stack
+                        mov     sp,ndpstacktop
+
+                        push    ax ! push bx ! push cx ! push dx
+                        push    si ! push di ! push bp ! push es
+                        mov     es,sysdat
+
+                        FNSTENV env8087                          ; store 8087 environment
+                        FWAIT                                    ; await completion
+                        FNCLEX                                   ; clear int request bit
+                        xor     ax,ax
+                        FNDISI                                   ; disable its int's
+
+                        mov     si,offset env8087
+                        mov     bx,owner8087                     ; get current owner
+                        test    bx,bx                            ; if owner has already
+                        jz      indpcontinue                     ;   terminated, skip
+
+                        mov     ax,ndpstatus[si]                 ; if not severe error, continue
+                        test    ax,003Ah                         ; 3A = under/overflow, precision
+                        jnz     indpcontinue                     ;      or denormalized operand
+                        or      pflag[bx],80h                    ; terminate interrupting process
+
+indpcontinue:
+                        mov     byte ptr 2[si],0                 ; clear stat word for env restore
+
+                        pop     es ! pop bp ! pop di ! pop si
+                        pop     dx ! pop cx ! pop bx ! pop ax
+
+                        mov     ss,ndpsssave                     ; restore user's stack
+                        mov     sp,ndpspsave
+                        FLDENV  env8087                          ; restore 8087 environment
+                        FWAIT                                    ; await completion
+                        pop     ds
+                        iret
+
+;	NUMERIC DATA PROCESSOR INTERRUPT HANDLER DATA
+xdata                   dseg    para public 'CODE'
+ndpsssave               rw      1                                ; save area for user's stack
+ndpspsave               rw      1
+
+env8087                 rw      7                                ; save area for 8087's stack
+
+ndpcontrol              rw      1                                ; for 8087 init routine
+
+                        rb      32                               ; i_ndp stack area
+ndpstacktop             equ     offset $
+
+;	parity error messages
+
+paritymsg               db      'Parity error from '
+paritypmsg              db      'PROCNAME at '
+parityamsg              db      '0000:0000   '
+                        db      ' ****  MACHINE IS HALTED!  ****'
+                        db      '       '
+
+;************************************************
+;*						*
+;*	    FATAL INTERRUPT HANDLER		*
+;*						*
+;************************************************
+xcode                   cseg    byte public 'CODE'
+idivide:
+                        mov     si,offset fataldiv               ; divide by zero
+                        jmps    fatalint
+
+;	Arithmetic overflow when followed by an Int on ovf
+
+ioverflow:
+                        mov     si,offset fatalovf               ; divide by zero
+                        jmps    fatalint
+
+;	Any undefined interrupt vectors here
+
+iunexpected:
+                        mov     si,offset fatalunx               ; divide by zero
+;	jmps	fatal_int		; fall through
+
+fatalint:
+                        sti                                      ; allow further ints
+                        push    cs ! pop ds                      ; local data segment
+                        push    cs ! pop es                      ;   and extra too
+                        mov     di,offset fataltmsg              ; error type destination
+                        call    fataltype                        ; save sub message
+                        mov     di,offset fatalpmsg              ; proc name destination
+                        call    fatalproc                        ; save process name
+                        mov     di,offset fatalamsg              ; address destination
+                        call    fataladdr                        ; save come-from addr
+
+                        mov     bx,rlr                           ; get process descriptor
+                        mov     es,puda[bx]                      ; set up user data area
+                        inc     beepcounter                      ; and extra beep here
+                        mov     si,offset fatalmsg
+                        mov     di,offset fatalresp              ; allow any key
+                        call    slerrorout                       ; display message
+
+                        mov     bx,rlr                           ;terminate the running process
+                        and     pflag[bx],not (pfkeep + pftempkeep)
+                        mov     cx,pterm
+                        mov     dx,0FFFFh
+                        jmp     supif                            ;process is terminated
+
+;	store the "type" of fatal interrupt
+
+fataltype:
+                        mov     cx,length fataltmsg              ; sub message length
+                        cld
+                        rep     movsb                            ; store the type of int
+                        ret
+
+;	store the process name which caused this mess
+
+fatalproc:
+                        mov     bx,rlr                           ; get process descriptor
+                        lea     si,pname[bx]                     ; point to proc name
+                        mov     cx,8                             ; max process name
+                        cld
+                        rep     movsb                            ; store the process name
+                        ret
+
+;	store the address whence this interrupt came
+
+fataladdr:
+                        mov     bp,sp
+                        add     bp,5                             ; look up the stack
+                        mov     bx,offset hexdigits              ; for translation
+                        call    fatalword                        ; print segment
+                        inc     di                               ; skip the :
+;	jmp	fatal_word		;   and offset
+
+fatalword:
+                        call    fatalbyte                        ; print ms byte
+;	jmp	fatal_byte		;   and ls byte
+
+fatalbyte:
+                        mov     al,[bp]                          ; return byte from stack
+                        dec     bp                               ; next byte down
+                        call    fatalnibble                      ; print ms nibble
+;	jmp	fatal_nibble		;   and ls nibble
+
+fatalnibble:
+                        mov     cl,4
+                        rol     al,cl                            ; ms nibble first
+                        push    ax                               ; save for ls nibble
+                        and     al,0Fh                           ; 4 bits only
+                        xlat    bx
+                        stosb                                    ; store hex code
+                        pop     ax
+                        ret
+
+;	Fatal error messages are all in the code seg
+
+fatalmsg                rb      0
+fataltmsg               db      'Unexpected'
+                        db      ' Interrupt from '
+fatalpmsg               db      'PROCNAME at '
+fatalamsg               db      '0000:0000  '
+                        db      ' Type any key to stop process. '
+
+fataldiv                db      '  Division'
+fatalovf                db      '  Overflow'
+fatalunx                db      'Unexpected'
+fataltypelen            equ     offset $ - offset fatalunx
+
+fatalresp               db      0                                ; allow any key
+
+hexdigits               db      '0123456789ABCDEF'
+
+;************************************************
+;*						*
+;*	RESET FUNCTION - CTRL/ALT/DEL REBOOT	*
+;*						*
+;************************************************
+
+reset:
+                        mov     ax,40H
+                        mov     ds,ax                            ;ROM data segment
+                        mov     resetflag,1234H
+                        jmpf    cs:dword ptr romreset
+
+;	Reset routine data
+
+resetkey                rb      1
+
+romreset                dw      0000h,0FFFFh

@@ -1,0 +1,74 @@
+; xdiskraw: devices section
+xdata                   dseg    para public 'CODE'
+;*******************************************************************************
+; Local raw 8/9-sector floppy services, for maintenance tools under MXdisk.
+; Function 35/36: the usual stack IOPB, TRACK=(head<<8)|cylinder, sector 0..8,
+; count 1..9, confined to one head. Function 29: DSKMAINT variable-format
+; IOPB, logical track 0..79, count 8/9, extra gap/fill word at BP+16.
+; Legacy functions 10/11/15 retain eight-sector semantics. The explicit
+; capability query on function 14 must precede any use of the new entries.
+;*******************************************************************************
+xcode                   cseg    byte public 'CODE'
+iorawread:
+                        mov     rawfunction,offset ioread
+                        jmps    rawdiskentry
+iorawwrite:
+                        mov     rawfunction,offset iowrite
+rawdiskentry:
+                        mov     bp,sp
+                        cmp     drive,1
+                        ja      rawdiskbad
+                        cmp     byte ptr track,40
+                        jae     rawdiskbad
+                        cmp     byte ptr track+1,1
+                        ja      rawdiskbad
+                        cmp     sector,8
+                        ja      rawdiskbad
+                        xor     ax,ax
+                        mov     al,mcnt
+                        or      al,al
+                        jz      rawdiskbad
+                        add     ax,sector
+                        cmp     ax,9
+                        ja      rawdiskbad
+                        xor     ax,ax
+                        mov     al,byte ptr track
+                        cmp     byte ptr track+1,0
+                        je      rawdisktrack
+                        neg     ax
+                        add     ax,79
+rawdisktrack:
+                        mov     track,ax
+                        mov     raweot,9
+                        pop     rawreturn
+                        call    rawfunction
+                        mov     raweot,8
+                        jmp     rawreturn
+rawdiskbad:
+                        mov     ax,0401h
+                        ret
+
+iovariableformat:
+                        mov     bp,sp
+                        cmp     drive,1
+                        ja      rawdiskbad
+                        cmp     track,80
+                        jae     rawdiskbad
+                        cmp     mcnt,8
+                        jb      rawdiskbad
+                        cmp     mcnt,9
+                        ja      rawdiskbad
+                        mov     al,mcnt
+                        mov     rawformatcount,al
+                        mov     ax,word ptr 16[bp]
+                        mov     rawgapfill,ax
+                        pop     rawreturn
+                        call    formatfloppy
+                        mov     rawformatcount,0
+                        jmp     rawreturn
+xdata                   dseg    para public 'CODE'
+rawfunction             dw      0
+rawreturn               dw      0
+raweot                  db      8
+rawformatcount          db      0
+rawgapfill              dw      0

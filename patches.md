@@ -574,4 +574,58 @@ these return to their startup selection for colour graphics and text.
 `make check-graphics` includes PCE EGA monochrome (switches 0x0a), colour
 EGA, VGA, CGA and Hercules. Tests cover pixel read/write and XOR, bounds,
 page rejection, graphics characters/TTY, scrolling, mode queries, actual
-BIOS modes and text restoration. Hercules retains text-only operation.
+BIOS modes and text restoration. Hercules mode 7Fh and native graphics
+are covered by the Hercules tests described below.
+
+## Native Hercules foundation
+
+CCP/M detects legacy Hercules vertical sync and exposes native mode C0h
+and capability bit 4. The page-zero backend programs 720×348 graphics,
+implements bounded pixel reads/writes and XOR, and restores the saved
+monochrome text console. It shares the existing graphics-owner checks and
+mode descriptor table; the DOS interface is described below.
+
+`make check-hercules` checks bank addressing, last-pixel placement,
+bounds/page rejection, XOR, saved text restoration and plain-MDA rejection.
+
+## Native Hercules graphics text
+
+Added 90×43 software text cells, logical cursor state, glyph read/write,
+character XOR, repeat clipping, teletype controls/wrapping and rectangular
+scrolling in both directions. Rendering uses the PC ROM 8×8 font and an
+optional INT 1Fh extension; readback matches actual framebuffer bytes.
+No shadow character buffer is allocated. Text leaves the bottom four
+raster lines intact. Palette operations and nonzero pages remain rejected.
+
+Native PCE checks cover glyph bytes, present/missing extension fonts,
+character XOR, simple and packet cursor interfaces, repeated writes across
+rows, bottom-row teletype scrolling, rectangle movement/clearing and saved
+text restoration. VGA and EGA monochrome regressions also pass.
+
+## Hercules DOS interface
+
+Project INT 10h mode 7Fh and ESC a parameter 7Fh select native C0h on
+Hercules. PCTMP mode dispatch/query and packet forwarding include the new
+entry. Firmware data records the matching mode, columns and page size;
+mode 07h and DOS termination restore mode 7, 80 columns and saved text.
+The Hercules text-reset helper now preserves the registers expected by
+its caller, including the requested native mode in CH.
+
+PCE tests cover DOS pixel/text services, explicit and exit restoration,
+the escape alias, native post-restoration mode queries, and rejection on
+plain MDA, VGA and EGA monochrome. No CDOS changes are part of this step.
+
+## XIOS independent assembly
+
+Replaced the monolithic ASM86 build with three RASM86 objects: core, console
+and devices, linked into one XIOS component. Both PC-MODE and native flavours
+use the same maintained sources. Shared declarations retain the fixed header
+and system-field ABI. Runtime calls remain near calls within one loaded segment.
+No new kernel module, resident process or segment is introduced.
+
+PC-MODE use factors are 39%/59%/35%; native-only 38%/52%/35%. Both CON file
+sizes and rounded loaded sizes match the prior build. Linked bytes differ
+because code/data placement and equivalent assembler encodings change.
+Build checks validate the fixed ABI and entry jumps. Graphics and disk unit
+checks pass; the identical prototype passed PCE native/DOS Hercules, VGA,
+EGA monochrome and native CGA 40-column tests, plus RTC checks.

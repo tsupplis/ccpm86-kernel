@@ -1,0 +1,451 @@
+; xbegin: console section
+xcode                   cseg    byte public 'CODE'
+;********************************************************
+;*							*
+;*		KEYBOARD INPUT EQUATES			*
+;*							*
+;********************************************************
+
+;	IBM PC keyboard ports
+
+;	Some of the IBM PC key codes returned from keyboard.
+;	Other key codes are used as indices into the
+;	translation tables key_table, shift_table and control_table
+;	below.
+
+;	Keyboard interrupt handler bit masks for special function keys
+
+;********************************************************
+;*							*
+;*		KEYBOARD INTERRUPT HANDLER		*
+;*							*
+;********************************************************
+
+;	The following routine gets control after a keyboard interrupt.
+;	Interrupts are generated on the IBM PC when a key is depressed
+;	or released.
+
+;----------
+ikeyboard:
+;----------
+
+                        mov     cs:keyboardax,ax                 ;save AX,SS,SP
+                        mov     cs:keyboardss,ss
+                        mov     cs:keyboardsp,sp
+
+                        mov     ax,cs                            ;set up local stack
+                        mov     ss,ax                            ;and save all registers
+                        mov     sp,offset keyboardistack         ;keyboard interrupt stack
+
+                        push    bx ! push cx ! push dx ! push bp
+                        push    si	! push di ! push ds ! push es
+
+                        mov     ds,ax                            ;set up the data segment
+                        mov     es,ax                            ;and extra segment
+
+                        in      al,kbddata                       ;get the scan code
+                        mov     scancode,al                      ;save the scan code
+                        in      al,kbdcontrol                    ;get the current control port
+                        mov     ah,al                            ;save the current state
+                        or      al,080h                          ;reset the key board
+                        out     kbdcontrol,al                    ;send to control port
+                        mov     al,ah
+                        out     kbdcontrol,al                    ;set keyboard back to normal state
+
+                        mov     al,scancode                      ;restore the scan code
+                        if      PCMODEXIOS
+; Physical prefix filter precedes native action/translation handling.
+                        if      PCMODEENHANCEDKEYS
+                        call    pcscanevent
+                        jnc     pcscanaccepted
+                        jmp     keyscandone
+pcscanaccepted:
+                        endif
+                        call    pckeyevent
+                        endif
+
+;	Test for CTRL, ALT already being down and DEL being current
+;	scan code.  If yes, call the ROM reset routine.
+
+                        cmp     al,83 ! jnz maskrelease          ;is scan code the DEL key ?
+                        test    downbits,ctrlbit                 ;yes $ is control down ?
+                        jz      maskrelease
+                        test    downbits,altbit                  ;yes $ is alt down ?
+                        jz      maskrelease
+                        jmp     reset                            ;we're gone baby
+maskrelease:                                                     ;parity is on when key is released
+                        and     al,07fh                          ;mask off the release bit
+                        cmp     al,83 ! jle validkey             ;test for non$existent key
+                        jmp     keyscandone
+
+;	Test for CTRL, SHIFT_RIGHT, SHIFT_LEFT, ALT, NUMBLOCK, CAPSLOCK
+;	keys.  The scan codes for these keys are in action_key_table.
+;	and are refered to as action keys in the comments below.
+;	The bit position in AH corresponds with what kind of key is
+;	found, see the section KEYBOARD PORT AND KEY EQUATES, above.
+;	The DOWN_BITS byte has bits on for action keys that are currently
+;	being held down by the operator.  The TOGGLE_BITS byte is similar
+;	but for keys that have toggle action, NUM LOCK, SCROLL LOCK,
+;	SHIFT
+
+validkey:
+                        mov     cx,6                             ;loop count for number of action keys
+                        mov     ah,ctrlbit                       ;first bit mask
+                        mov     bx,offset actionkeytable         ;point at table of action keys
+
+actionloop:
+                        cmp     al,[bx]                          ;is it this key
+                        jnz     actionloopnext                   ;no then try the next
+                        jmp     actionkey
+actionloopnext:
+                        shl     ah,1                             ;adjust bit mask
+                        inc     bx                               ;and point at next element
+                        loop    actionloop
+
+                        mov     al,scancode                      ;restore scan code
+                        or      al,al ! jns keymake              ;sign is on if key just released
+                        jmp     keyscandone                      ;ignore release condition on
+;non$action type key
+keymake:
+; Compact-keyboard console shortcuts.  Emit the same switch events as
+; Ctrl-keypad, so PIN still controls ownership and switch restrictions.
+                        mov     ah,downbits
+                        and     ah,ctrlbit or altbit
+                        cmp     ah,ctrlbit or altbit
+                        jne     keytranslate
+                        cmp     al,1                             ; Ctrl-Alt-Esc
+                        je      keywakemanager
+                        cmp     al,11                            ; Ctrl-Alt-0 (top row)
+                        jne     keyconsoleshortcuts
+keywakemanager:
+                        mov     al,07dh                          ; native Ctrl-keypad-Plus event
+                        mov     keytype,0ffh
+                        jmp     savekeycode
+keyconsoleshortcuts:
+                        cmp     al,15                            ; Ctrl-Alt-Tab: next foreground console
+                        je      keynextconsole
+                        cmp     al,2                             ; top-row 1 through 4, scan codes 2..5
+                        jb      keytranslate
+                        cmp     al,5
+                        ja      keytranslate
+                        sub     al,2                             ; consoles 0 through 3
+                        jmps    keyconsoleevent
+keynextconsole:
+                        mov     al,topscreen
+                        inc     al
+                        cmp     al,numvircons
+                        jb      keyconsoleevent
+                        xor     al,al                            ; wrap from console 3 to console 0
+keyconsoleevent:
+                        or      al,070h                          ; existing console-switch event encoding
+                        mov     keytype,0ffh
+                        jmp     savekeycode
+keytranslate:
+                        if      PCMODEXIOS
+                        if      PCMODEENHANCEDKEYS
+; Dedicated E0 keys bypass native keypad Num/Shift selection.
+                        cmp     pckeyextended,0
+                        je      pckeynativetranslation
+                        mov     bx,offset keytable
+                        jmp     translate
+pckeynativetranslation:
+                        endif
+                        endif
+                        mov     bx,offset keytable               ;translation table for single keys
+                        test    downbits,ctrlbit                 ;was control key already down ?
+                        jz      testforkeypad                    ;no $ try numlock
+                        mov     bx,offset controltable           ;yes $ point to control key table
+                        jmps    translate
+
+testforkeypad:
+                        cmp     al,71 ! jb testforshift          ;test for keypad
+                        test    togglebits,numlockbit            ;from keypad, numlock on ?
+                        jz      testforshift
+                        test    downbits,shftleftbit or shftrightbit
+                        jnz     translate                        ;use key_table if numlock,shifted
+                        mov     bx,offset shifttable
+                        jmps    translate                        ;use shift table if numlock
+
+testforshift:
+                        test    downbits,shftleftbit or shftrightbit
+                        jz      translate                        ;no $ return key from key_table
+                        mov     bx,offset shifttable             ;yes $ get key from shift_table
+
+translate:
+                        xlat    bx                               ;look up the key
+                        cmp     al,0ffh                          ;is it undefined
+                        jz      keyscandone                      ;yes $ done
+                        cbw                                      ;extend sign into AH
+                        mov     keytype,ah                       ;save the key type, 0 or 0FFH
+                        test    togglebits,capslockbit           ;test for caps lock
+                        jz      testforalt
+                        cmp     al,'z'                           ;yes
+                        ja      testforalt                       ;not alphabetic
+                        cmp     al,'a'                           ;is it lower case ?
+                        jae     docasechange                     ;yes $ switch case
+                        cmp     al,'Z'
+                        ja      testforalt                       ;not alphabetic
+                        cmp     al,'A'                           ;test for upper case
+                        jb      testforalt                       ;not alphabetic
+docasechange:
+                        xor     al,020h                          ;switch the case
+testforalt:
+                        test    downbits,altbit                  ;is alt key currently down ?
+                        jz      savekeycode                      ;no
+                        cmp     al,80h                           ;check for function key
+                        jb      turnonmsb                        ;skip if below F1
+                        cmp     al,89h
+                        ja      keyscandone                      ;ignore if above F10
+                        add     al,20                            ;fudge the alt-pfk code
+                        jmps    savekeycode
+turnonmsb:
+                        or      al,080h                          ;yes $ turn on msb for alt key
+                        jmps    savewithmsb
+savekeycode:
+                        and     al,07fh                          ;mask off sign bit from table
+savewithmsb:
+                        mov     keyvalue,al                      ;save the character
+                        mov     dx,keyflag                       ;get the flag number
+                        cmp     dx,wwflag                        ;if keys to window manager
+                        jnz     setkeyflag                       ;  then inform status flag
+                        mov     wwstatflag,true
+setkeyflag:
+                        call    flagset
+
+keyscandone:
+                        mov     al,picocwnseoi
+                        out     picocwport,al                    ;ack the interrupt
+
+                        pop     es ! pop ds ! pop di ! pop si
+                        pop     bp ! pop dx ! pop cx ! pop bx
+
+                        mov     ax,cs:keyboardax                 ;restore the stack
+                        mov     ss,cs:keyboardss
+                        mov     sp,cs:keyboardsp
+                        jmpf    cs: dword ptr dispatcher         ;let dispatcher do iret
+
+actionkey:
+;----------
+
+;	Scan code in AL indicates an action key.  AH has a bit on
+;	in the position corresponding to the action key type.
+;	Live action keys are those that must remain pressed down
+;	to have	an effect, i.e., CTRL, SHIFT, ALT.
+;	Toggle action keys are those that switch back and forth in
+;	function each time they are depressed, i.e., NUMLOCK, CAPSLOCK.
+
+;	entry:	AL = scan code, one of CTLR, SHIFT_LEFT, SHIFT_RIGHT,
+;			ALT, NUMLOCK, CAPSLOCK
+;		AH = bit set in position corresponding to value in AL
+;	exit:	None
+
+                        cmp     al,alt                           ;if live action: ALT,SHIFT,CTRL
+                        ja      toggleaction                     ;no $ its a toggle type key
+                        test    scancode,80H                     ;pressed or released ?
+                        jz      actionmake                       ;no high bit $ turn it on
+                        not     ah                               ;high bit on $ turn it off
+                        and     downbits,ah                      ;clear the bit for this key
+                        jmps    actionkeydone
+actionmake:
+                        or      downbits,ah                      ;set bit for this key
+                        jmps    actionkeydone
+
+toggleaction:
+                        test    scancode,80H                     ;pressed or released ?
+                        jnz     actionkeydone                    ;ignore release of toggle
+                        xor     togglebits,ah                    ;it is toggle: reverse state
+;jmps action_key_done
+
+actionkeydone:
+                        jmps    keyscandone                      ;acknowledge interrupt but
+;do not set the keyboard input
+;flag
+
+;********************************************************
+;*							*
+;*		KEYBOARD INTERRUPT DATA AREA		*
+;*							*
+;********************************************************
+xdata                   dseg    para public 'CODE'
+                        org     ((offset $-offset datastart)+1) and 0fffeh
+
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+                        dw      0CCCCH,0CCCCH,0CCCCH,0CCCCH
+keyboardistack          rs      0
+
+keyboardax              dw      0                                ;register save are for
+keyboardss              dw      0                                ;keyboard interrupt
+keyboardsp              dw      0                                ;handler
+
+key                     rw      0                                ;label for word load
+keyvalue                db      0                                ;from one of 3 tables below
+keytype                 db      0                                ;if 0 then value is ASCII data
+;if 0FFH then value is switch
+;screen value or function key
+keyflag                 dw      ciflag                           ;console in or window manager
+
+wwstatflag              db      0                                ;to help with window status
+
+scancode                db      0                                ;value returned from keyboard
+
+downbits                db      0                                ;bit vector of
+;action keys currently pressed
+togglebits              db      0                                ;bit vector of toggle action
+;keys
+
+actionkeytable:                                                  ;search table for action keys
+                        db      ctrl                             ;scan codes
+                        db      shftright
+                        db      shftleft
+                        db      alt
+                        db      numlock
+                        db      capslock
+
+pfkidtable              db      ';<=>?@abcdghikmopqrs'
+
+;********************************************************
+;*							*
+;*		KEYBOARD TRANSLATION TABLES		*
+;*							*
+;********************************************************
+
+;	Three keyboard translation tables follow.  The IBM PC returns
+;	a "scan code" from the keyboard which is used as an index into
+;	the following tables.
+;	KEY_TABLE contains ASCII for keys that have no other keys held
+;	down simultaneously.  The SHIFT_TABLE is for keys depressed
+;	when the shift, capslocks, or numslock keys are also down
+;	The CTRL_TABLE is for keys depressed when the CTRL is down.
+
+;	0FFH in the translation table designates an illegal key code.
+;	The most significant bit is set for keys that are programmable
+;	or are fixed function keys, and also for the switch screen keys.
+
+keytable:
+;	translation		keyboard scan code
+;	-----------		------------------
+
+                        db      0ffH                             ;0 - doesn't exist
+                        db      esc                              ;1
+                        db      '1234567890-='                   ;2-13 (1st row)
+                        db      bs,ht                            ;14-15 (backspace, horizontal tab)
+                        db      'qwertyuiop[]'                   ;16-27 (2nd row)
+                        db      cr, 0ffh                         ;28-29 (carriage return)
+                        db      'asdfghjkl;''`'                  ;30-41 (3rd row)
+                        db      0ffh                             ;42 (left shift)
+                        db      '\zxcvbnm,./'                    ;43-53 (4th row)
+                        db      0ffh                             ;54 (right shift)
+                        db      '*'                              ;55
+                        db      0ffh                             ;56 (alt)
+                        db      ' '                              ;57 (space bar)
+                        db      0ffh                             ;58 (caps lock)
+
+;-function keys-
+;-programmable-
+                        db      80h,81h,82h,83h                  ;59-62 (fucntion keys f1,f2,f3,f4)
+                        db      84h,85h,86h,87h                  ;63-66 (function keys f5,f6,f7,f8)
+                        db      88h,89h                          ;67-68 (function keys f9,f10)
+
+                        db      0ffh                             ;69 (num lock)
+                        db      dc3                              ;70 (scroll lock)
+
+;- key pad -
+;-programmable-
+                        db      8ah                              ;71 (home)
+                        db      8bh                              ;72 (up arrow)
+                        db      8ch                              ;73 (Pg Up)
+                        db      '-'                              ;74
+                        db      8dh                              ;75 (left arrow)
+                        db      0ffh                             ;76
+                        db      8eh                              ;77 (right arror)
+                        db      '+'                              ;78
+                        db      8fh                              ;79 (end)
+                        db      90h                              ;80 (down arrow)
+                        db      91h                              ;81 (Pg Dn)
+                        db      92h                              ;82 (Ins)
+                        db      93h                              ;83 (Del)
+
+shifttable:
+;	translation		keyboard scan code
+;	-----------		------------------
+
+                        db      0ffH                             ;0 - doesn't exist
+                        db      esc                              ;1
+                        db      '!@#$%^&*()_+'                   ;2-13 (1st row)
+                        db      bs,ff                            ;14-15 (backspace, form feed)
+                        db      'QWERTYUIOP{}'                   ;16-27 (2nd row)
+                        db      cr                               ;28 (carriage return)
+                        db      0ffh                             ;29 (ctrl)
+                        db      'ASDFGHJKL:"~'                   ;30-41 (3rd row)
+                        db      0ffh                             ;42 (left shift)
+                        db      '|ZXCVBNM<>?'                    ;43-53 (4th row)
+                        db      0ffh                             ;54 (right shift)
+                        db      dle                              ;55 (Prt Sc - ^P)
+                        db      0ffh                             ;56 (Alt)
+                        db      ' '                              ;57 (space bar)
+                        db      0ffh                             ;58 (Caps Lock)
+
+;-function keys-
+;-return fixed strings-
+                        db      9Eh,9Fh,0A0h,0A1h                ;F1 - F4
+                        db      0A2h,0A3h,0A4h,0A5h              ;F5 - F8
+                        db      0A6h,0A7h                        ;F9 - F10
+                        db      0ffh                             ;69 (Num Lock)
+                        db      dc1                              ;70 (Scroll Lock - ^Q)
+
+;-key pad-
+                        db      '789-456+1230.'                  ;71-83 (ascii values on keys)
+
+controltable:
+;	translation		keyboard scan code
+;	-----------		------------------
+
+                        db      0ffh                             ;0 (no such key code)
+                        db      ESC                              ;1
+                        db      0ffh                             ;2
+                        db      NUL                              ;3 (ctrl @)
+                        db      0ffh,0ffh,0ffh                   ;4-6
+                        db      RDS                              ;7 (ctrl ^)
+                        db      0ffh,0ffh,0ffh,0ffh              ;8-11
+                        db      US                               ;12 (ctrl _)
+                        db      0ffh                             ;13
+                        db      DEL                              ;14 (left arrow)
+                        db      0ffh                             ;15
+                        db      DC1,ETB,ENQ,DC2                  ;16-19 (ctrl q,w,e,r)
+                        db      DC4,EM,NAK,HT                    ;20-23 (ctrl t,y,u,i)
+                        db      SHI,DLE,ESC,GS                   ;24-27 (ctrl o,p,[,])
+                        db      cr                               ;28 (ctrl carriage return)
+                        db      0ffh                             ;29
+                        db      SOH,DC3,EOT,ACK                  ;30-33 (ctrl a,s,d,f)
+                        db      BEL,BS,LF,VT                     ;34-37 (ctrl g,h,j,k)
+                        db      FF                               ;38 (ctrl l)
+                        db      0ffh,0ffh,0ffh,0ffh              ;39-42
+                        db      FS,SUBB,CAN,ETX                  ;43-47 (ctrl \,z,x,c)
+                        db      SYN,STX,SO,CR                    ;47-50 (ctrl v,b,n,m)
+                        db      0ffh,0ffh,0ffh,0ffh              ;51-54
+                        db      DLE                              ;55 (^PrtSc = ^P)
+                        db      0ffh,' ',0ffh                    ;56-58
+
+;-function keys
+                        db      0A8H,0A9H,0AAH,0ABH              ;F1 - F4
+                        db      0ACH,0ADH,0AEH,0AFH              ;F5 - F8
+                        db      0B0H,0B1H                        ;F9 - F10
+                        db      0ffh                             ;69
+                        db      ETX                              ;70 break (^scroll lock = ctrl c)
+
+;-key pad-
+;-reserved for switch screens-
+                        db      247,248,249,0FCH                 ;7,8,9,-
+                        db      244,245,246,0FDH                 ;4,5,6,+
+                        db      241,242,243                      ;1,2,3
+                        db      240,0FEH                         ;0,.

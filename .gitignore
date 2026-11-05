@@ -62,3 +62,6 @@ local/**
 /kernel/sysgen/native/*.old
 /media/*.img.logical.tmp
 !/dev/*.com
+
+# Independent XIOS assembly work directories
+/kernel/con/.xios/

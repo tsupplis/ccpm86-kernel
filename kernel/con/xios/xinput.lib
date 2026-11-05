@@ -1,0 +1,844 @@
+; xchar: console section
+xcode                   cseg    byte public 'CODE'
+                        eject                                    ; Dec 13, 1983
+;			SERIAL I/O
+;			----------
+
+;************************************************
+;*						*
+;*		CONSOLE INPUT			*
+;*						*
+;************************************************
+xcode                   cseg    byte public 'CODE'
+ioconst:
+;========
+                        xor     ax,ax
+                        ret
+
+;	console input entry point
+;	entry:	dl = console number
+
+ioconin:
+                        mov     dl,topscreen                     ; current foreground console
+                        call    pointvs                          ; point to console structure
+                        cmp     vspfkcount,0                     ; check for pfk's waiting
+                        jnz     coninexpand
+                        jmp     coninwait
+coninexpand:                                                     ; skip if none
+
+                        mov     si,vspfkptr                      ; else get the current ptr
+                        lodsb                                    ; grab the value
+                        test    al,al                            ; if valid, then skip
+                        jnz     coninpfk
+
+                        mov     vspfkcount,al                    ; if not, zap the count
+                        jmps    coninwait                        ;   and wait for key
+coninpfk:
+                        mov     vspfkptr,si                      ; update pointer
+                        dec     vspfkcount                       ; decrement the count
+                        mov     ah,0                             ; clear out the flag
+                        ret                                      ; and return with value
+
+coninwait:
+                        push    bx
+                        push    cx
+                        mov     dx,ciflag                        ; get the flag number
+                        call    flagwait                         ; wait for a key
+                        pop     cx                               ; recover the virtual cons #
+                        pop     bx                               ; recover vs_ pointer
+
+                        mov     ax,key                           ; get the character and type
+                        test    ah,ah                            ; set the flags
+                        jz      conindone                        ; normal ascii then leap
+
+                        cmp     al,wakekey                       ; switch to window manager?
+                        jnz     coninnotwake
+                        jmp     wwake
+coninnotwake:
+                        cmp     al,fullkey                       ; switch to full screen?
+                        jnz     coninnotfull
+                        jmp     wfull
+coninnotfull:
+
+                        cmp     al,070h
+                        jb      newpfk                           ; set pfk pointer and count
+
+                        and     al,0Fh                           ; keep it to 16 vc's
+conindone:
+                        ret
+
+;	a pfk has just been typed, set pointers and count
+
+newpfk:
+; Override only navigation keys while CIO Function 10 owns this console.
+; Outside line input retain programmable expansion/raw application codes.
+                        push    ax ! push bx
+                        xor     bx,bx ! mov bl,topscreen ! shl bx,1
+                        mov     bx,ccblist[bx]
+                        test    ceditflag[bx],cflineedit
+                        pop     bx ! pop ax
+                        jz      pfknormal
+                        cmp     al,10 ! je pfkhome
+                        cmp     al,11 ! je pfkup
+                        cmp     al,13 ! je pfkleft
+                        cmp     al,14 ! je pfkright
+                        cmp     al,15 ! je pfkend
+                        cmp     al,19 ! je pfkdelete
+pfknormal:
+                        cmp     al,lowpfks + highpfks            ; if pfk code is too big
+                        jb      pfkvalid
+                        jmp     coninwait
+pfkvalid:                                                        ;   then ignore it
+                        cmp     vspfkexp,0                       ; if pfk expansion flag off
+                        jz      nopfkexp                         ;   then just return code
+
+                        call    pointpfk                         ; set pointer and count
+                        jmp     ioconin                          ; back to return the value
+
+; AH=1 distinguishes editor Home/End from literal high-bit characters.
+; PIN passes these tagged data events through without treating them as switches.
+pfkhome:                mov     ax,0180h ! ret
+pfkend:                 mov     ax,0181h ! ret
+pfkup:                  mov     ax,0117h ! ret                   ; exactly ^W, including its end-of-line meaning
+pfkleft:                mov     ax,0101h ! ret                   ; ^A
+pfkright:               mov     ax,0106h ! ret                   ; ^F
+pfkdelete:              mov     ax,0107h ! ret                   ; ^G
+
+nopfkexp:
+                        mov     bx,offset pfkcodetbl
+                        xlat    bx                               ; convert to code
+                        or      al,80h                           ; put the msb back
+                        mov     ah,0                             ; zero the flag
+                        ret                                      ; and return the code
+
+;	point to pfk table  -  public, called by z_prog_pfk
+;	entry:	al = pfk table index
+;		bx -> vs_
+;	exit:	vs_pfk_ptr -> pfk value
+;		vs_pfk_count = maximum char count
+
+pointpfk:
+                        sub     si,si                            ; zero offset for low table
+                        mov     cl,pfklsize                      ; chars per low pfk
+                        cmp     al,lowpfks                       ; check for low table
+                        jb      pointpfk1                        ; skip if F1 - F10
+
+                        sub     al,lowpfks                       ; index into high table
+                        mov     si,pfklsize * lowpfks            ; offset for high table
+                        mov     cl,pfkhsize                      ; chars per high pfk
+pointpfk1:
+                        mul     cl                               ; index into table
+                        add     si,ax
+                        add     si,vspfktbl                      ; add table offset
+                        mov     vspfkptr,si                      ; set initial pointer
+                        mov     vspfkcount,cl                    ; and initial count
+                        ret
+
+;	wake up the window manager
+
+wwake:
+                        cmp     imhere,1                         ; see if manager is resident
+                        jae     wakepresent
+                        jmp     coninwait
+wakepresent:                                                     ; ignore if not
+                        call    checknoswitch                    ; if console is no switch
+                        jz      wakeswitchable
+                        jmp     coninwait
+wakeswitchable:                                                  ;   then ignore wmenu key
+                        cmp     graphicbits,0                    ; if anyone is in graphics
+                        jz      waketext
+                        jmp     coninwait
+waketext:                                                        ;   then block out wmenu
+
+                        mov     imhere,2                         ; resident and active
+                        mov     dx,wwflag
+                        mov     keyflag,dx                       ; redirect the keyboard
+                        mov     wwstatflag,true                  ; for ww_key status check
+                        call    flagset                          ; wake up the manager
+                        pushf                                    ; now fake an interrupt
+                        callf   dword ptr dispatcher             ;   and a return
+                        jmp     coninwait                        ; wait for keyboard restore
+
+;	if current window is small, switch to full
+;	if current window is full, switch to previous window
+
+wfull:
+                        mov     dl,topscreen                     ; get active console num
+                        call    wwfullwindow                     ; full/small switch
+                        jmp     coninwait                        ; get another character
+
+;	check for console in no switch mode
+;	exit:	zf set switch is allowed
+
+checknoswitch:
+                        mov     al,topscreen
+                        cbw
+                        shl     ax,1
+                        xchg    bx,ax                            ; bx = screen word ptr
+                        mov     bx,ccblist[bx]                   ; get foreground ccb
+                        test    cstate[bx],csmnoswitch           ; set flag if switchable
+                        ret
+
+;	XIOS back door entry to pass window manager a keystroke.
+;	Window manager will go to sleep on this call if cl < 0FEH.
+
+;	entry:	cl = 0FFH  =>  input/status
+;			exit:	al = char if char ready
+;				al = 0 if no char ready
+;		cl = 0FEH  =>  status only
+;			exit:	al = 0FFH if char ready
+;				al = 0 if no char ready
+;		cl < 0FEH  =>  wait for input
+;			exit:	al = char when ready
+
+;	exit:	if al = char then
+;			ah = key type
+;			     0  =>  regular
+;			     0FFH  =>  special
+
+wwkey:
+                        mov     ah,0
+                        mov     al,wwstatflag                    ;true if a character is ready
+                        cmp     cl,0FEH                          ;if status check, just return
+                        jz      wwkeyexit
+                        jb      wwgetkey                         ;if cl < FE, then read a key
+                        test    al,al                            ;if cl = FF, then
+                        jz      wwkeyexit                        ;  return a 0 if not ready
+wwgetkey:                                                        ;else read a key
+                        mov     dx,wwflag                        ;get window flag
+                        call    flagwait                         ;wait till awakened
+
+                        mov     wwstatflag,false                 ;turn off status byte
+                        mov     ax,key                           ;get char and type
+wwkeyexit:
+                        ret                                      ;and just return it
+
+;************************************************
+;*						*
+;*	PROGRAMMABLE FUNCTION KEY TABLES	*
+;*						*
+;************************************************
+xdata                   dseg    para public 'CODE'
+                        org     ((offset $-offset datastart)+1) and 0fffeh
+
+pfkcodetbl              db      ';<=>?@ABCD'                     ; F1 - F10
+                        db      'GHIKMOPQRS'                     ; numeric pad
+                        db      'abcdefghij'                     ; alt F1 - F10
+                        db      'klmnopqrst'                     ; shift F1 - F10
+                        db      'uvwxyz{|}~'                     ; crtl F1 - F10
+
+pfktbl0:                                                         ; for virtual console #0
+
+;			F1 - F10
+                        db      'DIR A:',cr,0,'            '
+                        db      'DIR B:',cr,0,'            '
+                        db      'SDIR A:',cr,0,'           '
+                        db      'SDIR B:',cr,0,'           '
+                        db      'SHOW A:',cr,0,'           '
+                        db      'SHOW B:',cr,0,'           '
+                        db      'DSKMAINT',cr,0,'          '
+                        db      'PIP',cr,0,'               '
+                        db      'FUNCTION',cr,0,'          '
+                        db      'CONFIG',cr,0,'            '
+;			numeric keypad
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7Fh,0
+;			alt F1 - alt F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+;			shift F1 - shift F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+;			ctrl F1 - crtl F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+pfktbl1:                                                         ; for virtual console #1
+
+;			F1 - F10
+                        db      'DIR A:',cr,0,'            '
+                        db      'DIR B:',cr,0,'            '
+                        db      'SDIR A:',cr,0,'           '
+                        db      'SDIR B:',cr,0,'           '
+                        db      'SHOW A:',cr,0,'           '
+                        db      'SHOW B:',cr,0,'           '
+                        db      'DSKMAINT',cr,0,'          '
+                        db      'PIP',cr,0,'               '
+                        db      'FUNCTION',cr,0,'          '
+                        db      'CONFIG',cr,0,'            '
+;			numeric keypad
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7Fh,0
+;			alt F1 - alt F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+;			shift F1 - shift F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+;			ctrl F1 - crtl F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+pfktbl2:                                                         ; for virtual console #2
+
+;			F1 - F10
+                        db      'DIR A:',cr,0,'            '
+                        db      'DIR B:',cr,0,'            '
+                        db      'SDIR A:',cr,0,'           '
+                        db      'SDIR B:',cr,0,'           '
+                        db      'SHOW A:',cr,0,'           '
+                        db      'SHOW B:',cr,0,'           '
+                        db      'DSKMAINT',cr,0,'          '
+                        db      'PIP',cr,0,'               '
+                        db      'FUNCTION',cr,0,'          '
+                        db      'CONFIG',cr,0,'            '
+;			numeric keypad
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7Fh,0
+;			alt F1 - alt F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+;			shift F1 - shift F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+;			ctrl F1 - crtl F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+pfktbl3:                                                         ; for virtual console #3
+
+;			F1 - F10
+                        db      'DIR A:',cr,0,'            '
+                        db      'DIR B:',cr,0,'            '
+                        db      'SDIR A:',cr,0,'           '
+                        db      'SDIR B:',cr,0,'           '
+                        db      'SHOW A:',cr,0,'           '
+                        db      'SHOW B:',cr,0,'           '
+                        db      'DSKMAINT',cr,0,'          '
+                        db      'PIP',cr,0,'               '
+                        db      'FUNCTION',cr,0,'          '
+                        db      'CONFIG',cr,0,'            '
+;			numeric keypad
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7Fh,0
+;			alt F1 - alt F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+;			shift F1 - shift F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+;			ctrl F1 - crtl F10
+                        dw      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+;********************************************************
+;*							*
+;*		STATUS LINE ROUTINE			*
+;*							*
+;********************************************************
+
+;	Display status line on 25th line of IBM PC monochrome
+;	screen.  First gather information into local string
+;	and then copy to the video display RAM.
+
+;	The format of the status line is:
+
+;Console=1 Buffered  FILENAME ABCDM* ^S ^P=0 Printer=2  Win Caps Num  12:34:56 am
+;          Dynamic                   ^O
+
+xcode                   cseg    byte public 'CODE'
+retstatline:
+                        ret
+
+;	window manager status line call.  the same as a normal call
+;	except that source data is char/attrib (160 bytes)
+
+wwstatline:
+                        mov     si,offset slget160               ;for char/attrib fetch
+                        jmps    slfree                           ;go to it
+
+;	normal io status line call
+;	entry:	if cx = 0  normal status update
+;		if cx = offset, print 80 chars at cx:dx
+;		if cx = 0FFFFh, resume normal status
+;	exit:	al = 0  if call was successful
+;		al = 0FFh  if call was blocked
+
+iostatline:
+                        mov     si,offset slget80                ;for char/attrib fetch
+
+slshared:
+                        mov     al,true
+                        xchg    slinelocked,al                   ;is in io_statline at time
+                        test    al,al                            ;sline_locked = 0ffh if locked
+                        jz      slfree                           ;sline_locked = 0 if not
+                        cmp     slexitvalue,al                   ;if not locked on exit
+                        jnz     retstatline                      ;then just return
+slfree:
+                        push    es                               ;save UDA
+                        jcxz    slkeep                           ;if cx=0, skip source update
+                        mov     sloff,cx                         ;store offset
+                        mov     slseg,dx                         ;  and segment of source data
+slkeep:
+                        cmp     sloff,0ffffh                     ;if normal status line
+                        jz      slnorm                           ;  then skip
+                        jcxz    slex                             ;if cx=0, ignore the call
+
+                        mov     slgetchar,si                     ;save fetch call
+                        mov     si,sloff                         ;source offset
+                        mov     dl,slcrtflag                     ;which crt bits
+                        call    sldispprep                       ;ready reg's for display
+slextloop:
+                        mov     es,slseg                         ;source segment
+                        call    slgetchar                        ;either get_80 or get_160
+                        call    slputchar                        ;put one char to status line
+                        loop    slextloop                        ;80 times
+slex:
+                        jmp     slexit
+
+slget80:
+                        mov     al,es:[si]                       ;fetch character only
+                        mov     ah,slattrib                      ;status line attribute
+                        inc     si                               ;bump once
+                        ret
+
+slget160:
+                        mov     ax,es:[si]                       ;fetch character / attribute
+                        inc     si                               ;and bump twice
+                        inc     si
+                        ret
+
+;	normal status line update
+
+slnorm:
+                        push    ds ! pop es
+                        mov     di,offset smsgcnum
+                        mov     al,' ' ! mov cx,offset smsgpstr - offset smsgcnum
+                        rep     stosb                            ;blank out local status string
+                        mov     di,offset smsgpnum
+                        mov     cx,offset smsghour - offset smsgpnum
+                        rep     stosb
+
+                        mov     al,topscreen
+                        cbw                                      ;ah=0
+                        mov     bx,ax                            ;for ccb fetch
+                        add     al,'0'                           ;console numbers 0-3
+                        mov     smsgcnum,al                      ;set console number
+
+                        add     bx,bx                            ;word pointer
+                        mov     bx,ccblist[bx]                   ;get process which owns the
+                        mov     si,cowner[bx]                    ;top console
+                        test    si,si ! jz snopd                 ;make sure a process is currently
+
+                        mov     al,plist[si]
+                        add     al,'0' ! mov smsgpnum,al
+                        lea     si,pname[si]                     ;offset of process name
+                        mov     di,offset smsgpd
+                        mov     cx,4 ! rep movsw
+
+snopd:
+sctrlS:
+                        mov     ax,cstate[bx]
+                        test    ax,csmctrlS ! jz sctrlO
+                        mov     smsgctrlS,'S^' ! jmps sctrlP
+sctrlO:
+                        test    ax,csmctrlO ! jz sctrlP          ;ctrl S and ctrl O are mutally
+                        mov     smsgctrlS,'O^'                   ;exclusive print one of ^S or ^O
+sctrlP:
+                        test    ax,csmctrlP ! jz smode
+                        mov     smsgctrlP,'P^'
+                        mov     dl,'=' ! mov dh,cmimic[bx]
+                        add     dh,'0' ! mov smsgctrlPnum,dx
+smode:
+                        mov     di,offset smsgmode
+                        mov     cx,length dynstr
+
+                        mov     si,offset noswstr
+                        test    ax,csmnoswitch ! jnz smovmode    ;if 1 noswitch
+                        mov     si,offset dynstr
+                        test    ax,csmbuffered ! jz smovmode     ;if 0 dynamic
+                        mov     si,offset bufstr
+                        test    ax,csmpurging ! jz smovmode      ;if 0 buffered
+                        mov     si,offset purstr                 ;else purging
+smovmode:
+                        rep     movsb
+
+sgetopenvec:                                                     ; display a letter for each drive
+; with open files  ABCDM*
+                        mov     dx,openvec                       ; BDOS sets this vector in SYSDAT
+                        mov     di,offset smsgopenvec
+                        mov     si,offset sldrivelist
+                        mov     cx,6                             ; drives to check
+sgetopen1:
+                        lodsw                                    ; get test mask
+                        test    dx,ax                            ; if this drive is not on
+                        jz      sgetopen2                        ;   then skip
+                        movsb                                    ; store the drive letter
+                        jmps    sgetopen3                        ; skip the pointer bump
+sgetopen2:
+                        inc     si
+                        inc     di
+sgetopen3:
+                        loop    sgetopen1
+
+swindow:
+                        cmp     imhere,0 ! jz scapslock
+                        mov     si,offset winstr
+                        mov     di,offset smsgwindow
+                        mov     cx,length winstr
+                        rep     movsb
+
+scapslock:
+                        mov     al,togglebits
+                        test    al,capslockbit ! jz snumlock
+                        mov     si,offset capstr
+                        mov     di,offset smsgcapslock
+                        mov     cx,length capstr
+                        rep     movsb
+
+snumlock:
+                        test    al,numlockbit ! jz sltime
+                        mov     si,offset numstr
+                        mov     di,offset smsgnumlock
+                        mov     cx,length numstr
+                        rep     movsb
+
+sltime:
+                        cmp     slclkflag,0                      ; if clocks disabled
+                        jz      sldisplay                        ;   then skip
+
+slhours:
+                        mov     al,todhour                       ; get current hour from sysdat
+                        cmp     al,slhoursave                    ; if no change
+                        jz      slminutes                        ;   then skip
+
+                        mov     slhoursave,al                    ; save for future skip
+                        mov     dx,'ma'                          ; assume 'am'
+                        cmp     al,12h                           ; if in the morning
+                        jb      slhour1                          ;   then skip
+                        sub     al,12h                           ; correct the hour
+                        das                                      ; (it's decimal dummy!)
+                        mov     dx,'mp'                          ;   and make it 'pm'
+slhour1:
+                        cmp     al,0                             ; if hour = 0
+                        jnz     slhour2                          ;   then make it 12
+                        mov     al,12h
+slhour2:
+                        mov     smsgampm,dx                      ; save 'am' or 'pm'
+                        call    slascii                          ; convert bcd to ascii
+                        cmp     al,'0'                           ; blank a leading zero
+                        jnz     slhour3
+                        mov     al,' '
+slhour3:
+                        mov     smsghour,ax                      ; and store the hour
+
+slminutes:
+                        mov     al,todmin
+                        cmp     al,slminsave                     ; if no change in minutes
+                        jz      slseconds                        ;   then skip
+
+                        mov     slminsave,al                     ; save the value
+                        call    slascii                          ; convert bcd to ascii
+                        mov     smsgmin,ax                       ; and store the minute
+
+slseconds:
+                        mov     al,todsec                        ; always do seconds
+                        call    slascii                          ; convert bcd to ascii
+                        mov     smsgsec,ax                       ; and store the second
+
+sldisplay:
+                        mov     dl,slcrtflag                     ; get allowable crt bits
+                        test    dl,slmonobit + slcolorbit
+                        jz      slexit                           ; if both off, bag it
+
+                        mov     si,offset statusmsg
+                        call    sldispprep                       ; get the reg's ready
+                        mov     ah,slattrib                      ; status line attribute
+sldisp1:
+                        lodsb                                    ; get character
+                        call    slputchar                        ; put ax to status line
+                        loop    sldisp1
+
+slexit:
+                        pop     es
+                        mov     al,slexitvalue                   ; successful update
+                        mov     slinelocked,al                   ; free the semaphore
+                        ret
+
+;	set up pointers and count for status display
+
+sldispprep:
+                        mov     di,sloffset * 2
+                        mov     bx,offset statuscopy
+                        mov     cx,80                            ; character count
+                        ret
+
+;	put one char/attrib to either or both status lines
+;	entry:	ax = char/attrib
+;		dl = crt code mask   01 => mono  02 => color
+
+slputchar:
+                        if      PCMODEXIOS
+                        push    dx
+                        push    ax
+                        mov     al,pcstatushide
+                        not     al
+                        and     dl,al
+                        pop     ax
+                        endif
+                        cmp     ax,[bx]                          ; if character is the same
+                        jz      slput4                           ;   then just bump pointers
+
+                        mov     [bx],ax                          ; save the copy
+                        test    dl,slmonobit
+                        jz      slput1                           ; skip if not to mono
+
+                        mov     es,slmonoseg
+                        mov     es:[di],ax                       ; store if mono on
+slput1:
+                        test    dl,slcolorbit
+                        jz      slput4                           ; back to loop if off
+                        cmp     graphicbits,0                    ; if anyone is in graphics
+                        jnz     slput4                           ;   then don't show color
+
+;	color status line character output
+
+                        push    bx                               ; get some room
+                        push    cx
+                        push    dx
+                        mov     es,slcolorseg
+                        mov     bx,ax                            ; save char in bx
+                        mov     dx,colorport+6                   ; crt status
+                        mov     cx,3                             ; maximum wait
+
+                        cmp     varsync,0                        ;enhanced adapters need no snow avoidance
+                        jz      slcstore
+                        cli                                      ;; hold the interrupts
+slcnorm1:
+                        in      al,dx                            ;; wait for horiz retrace
+                        test    al,hrt                           ;;   to go away
+                        loopnz  slcnorm1                         ;; but don't wait too long
+slcnorm2:
+                        in      al,dx                            ;; wait for a fresh
+                        test    al,hrt                           ;;   horiz retrace
+                        jz      slcnorm2
+slcstore:
+                        xchg    ax,bx                            ;; char to ax
+                        stosw                                    ;; store and bump di
+                        sti                                      ;; ints back on
+
+                        pop     dx                               ; recover registers
+                        pop     cx
+                        pop     bx
+                        jmps    slput5                           ; di already bumped
+slput4:
+                        inc     di                               ; bump the crt pointer
+                        inc     di
+slput5:
+                        if      PCMODEXIOS
+                        pop     dx
+                        endif
+                        inc     bx                               ; bump the copy pointer
+                        inc     bx
+                        ret                                      ; back to loop
+
+;	convert bcd in al to ascii in ax
+
+slascii:
+                        mov     ah,33h                           ; the ms nibbles
+                        mov     cl,4
+                        ror     ax,cl                            ; al = 10's digit
+                        mov     cl,4
+                        ror     ah,cl                            ; ah = 1's digit
+                        ret
+
+;	***  Status line error message entry  ***
+;
+;	entry:	si -> error message
+;		di -> allowable responses  (count,string..)
+;	exit:	al = response character
+
+slerrorout:
+                        mov     al,true
+                        xchg    al,slinelocked                   ; test and set status semaphore
+                        test    al,al
+                        jnz     slerrorout                       ; if somebody's using it, wait
+                        mov     slexitvalue,true
+
+                        mov     slerrormsg,si                    ; save message offset
+                        mov     slerrorresp,di                   ;   and responses
+                        push    sloff                            ; save offset address
+                        push    slseg                            ;   and segment
+                        push    keyflag                          ; save keyboard state
+
+                        push    es
+                        push    ds ! pop es                      ; for local moves
+                        mov     si,offset statuscopy
+                        mov     di,offset slerrorsave
+                        mov     cx,80
+                        rep     movsw                            ; save the current status line
+                        pop     es
+
+                        mov     dx,ds
+                        mov     cx,slerrormsg
+                        call    iostatline                       ; print the error message
+                        inc     beepcounter
+
+erresponse:
+                        inc     beepcounter                      ; beep once
+
+                        mov     dx,erflag
+                        mov     keyflag,dx                       ; now keyboard is ours
+                        call    flagwait                         ; wait here for a key
+
+                        mov     ax,key                           ; get the ascii key value
+                        and     al,0DFh                          ; convert to upper case
+                        mov     di,slerrorresp
+                        mov     cl,[di]
+                        mov     ch,0
+                        jcxz    errespgood                       ; if di -> 0, take anything
+
+                        push    es
+                        push    ds ! pop es
+                        inc     di                               ; to response chars
+                        repnz   scasb                            ; check for legal value
+                        pop     es
+                        jnz     erresponse                       ; if bad, try again
+
+errespgood:
+                        mov     slerrorkey,al                    ; save the value
+                        mov     dx,ds
+                        mov     cx,offset slerrorsave
+                        call    wwstatline                       ; full 160 byte write
+
+                        pop     keyflag
+                        pop     slseg
+                        pop     sloff
+
+                        mov     slinelocked,false
+                        mov     slexitvalue,false
+                        mov     al,slerrorkey                    ; return value
+                        ret
+xdata                   dseg    para public 'CODE'
+slinelocked             db      0                                ; semaphore for status line code
+slclkflag               db      0FFh                             ; do we show the clock?
+slexitvalue             db      0                                ; restore semaphore on exit
+
+slattrib                db      0Eh                              ; bright yellow on black (mono: bright white)
+sloff                   dw      0ffffh                           ; offset of source
+slseg                   dw      0                                ; segment of source
+slgetchar               rw      1                                ; variable fetch vector
+
+slmonoseg               dw      0B000h                           ; monochrome crt base address
+slcolorseg              dw      0B800h                           ; color crt base address
+slhoursave              db      0                                ; current bcd hour
+slminsave               db      0                                ; current bcd minute
+
+slerrormsg              rw      1                                ; error message offset
+slerrorresp             rw      1                                ; allowable response table offset
+slerrorkey              rb      1                                ; response key
+
+;	status line message image
+
+statusmsg               rb      0
+                        db      'Console='                       ;0-7
+smsgcnum                rb      1                                ;8
+                        db      ' '                              ;9
+smsgmode                rb      8                                ;10-17
+                        db      '  '                             ;18-19
+smsgpd                  rb      8                                ;20-27
+                        db      ' '                              ;28
+smsgopenvec             rb      6                                ;29-34
+                        db      ' '                              ;35
+smsgctrlS               rw      0                                ;36-37
+smsgctrlO               rw      1                                ;36-37
+                        db      ' '                              ;38
+smsgctrlP               rw      1                                ;39-40
+smsgctrlPnum            rw      1                                ;41-42
+                        db      ' '                              ;43
+smsgpstr                db      'Printer='                       ;44-51
+smsgpnum                rb      1                                ;52
+                        db      '  '                             ;53-54
+smsgwindow              rb      3                                ;55-57
+                        db      ' '                              ;58
+smsgcapslock            rb      4                                ;59-62
+                        db      ' '                              ;63
+smsgnumlock             rb      3                                ;64-66
+                        db      '  '                             ;67-68
+smsghour                dw      '0 '                             ;69-70
+smsgc1                  db      ':'                              ;71
+smsgmin                 dw      '00'                             ;72-73
+smsgc2                  db      ':'                              ;74
+smsgsec                 dw      '00'                             ;75-76
+                        db      ' '
+smsgampm                dw      '  '                             ;78-79
+
+;	String constants for status line
+
+dynstr                  db      'Dynamic '                       ;these 4
+bufstr                  db      'Buffered'                       ;messages must
+purstr                  db      'Purging '                       ;be the
+noswstr                 db      'NoSwitch'                       ;same length
+
+;	Test masks and drive names for get_openvec
+
+sldrivelist             db      01,00,'A',02,00,'B'
+                        db      04,00,'C',08,00,'D'
+                        db      00,10h,'M',0F0h,0EFh,'*'
+
+;	window, capslock, and numlock indicators
+
+winstr                  db      'Win'
+capstr                  db      'Caps'
+numstr                  db      'Num'
+
+statuscopy              rw      80                               ; keep a copy of status line
+
+slerrorsave             rw      80                               ; back up for error messages
+xcode                   cseg    byte public 'CODE'
+                        eject
+
+; xchar: console section
+xdata                   dseg    para public 'CODE'
+;********************************************************
+;*							*
+;*		CONSOLE CONTROL BLOCKS			*
+;*							*
+;********************************************************
+
+;	ccb_list used by io_statline routine
+ccblist                 dw      ccb0,ccb1,ccb2,ccb3
+
+ccbtab                  rb      0
+CCB0                    DW      0                                ;OWNER
+                        dw      0,0,0
+                        db      0ffh, 0ffh                       ;mimic, msource
+                        db      0
+                        db      0                                ;virtual console number
+                        dw      0
+                        dw      0                                ;foreground and dynamic
+;be the foreground console
+                        dw      10h                              ;max buffer file size
+                        dw      0,0,0,0,0,0
+                        dw      0,0,0,0,0
+                        dw      ccb1,0                           ;first link
+
+ccb1                    dw      0                                ;owner
+                        dw      0,0,0
+                        db      0ffh, 0ffh                       ;mimic, msource
+                        db      0
+                        db      1                                ;virtual console number
+                        dw      0
+                        dw      csmbackground                    ;background and dynamic
+                        dw      10h                              ;max buffer file size
+                        dw      0,0,0,0,0,0
+                        dw      0,0,0,0,0
+                        dw      ccb2,0                           ;link to next
+
+ccb2                    dw      0                                ;owner
+                        dw      0,0,0
+                        db      0ffh, 0ffh                       ;mimic, msource
+                        db      0
+                        db      2                                ;virtual console number
+                        dw      0
+                        dw      csmbackground                    ;background and dynamic
+                        dw      10h                              ;max buffer file size
+                        dw      0,0,0,0,0,0
+                        dw      0,0,0,0,0
+                        dw      ccb3,0                           ;link to next
+
+ccb3                    dw      0                                ;owner
+                        dw      0,0,0
+                        db      0ffh, 0ffh                       ;mimic, msource
+                        db      0
+                        db      3                                ;virtual console number
+                        dw      0
+                        dw      csmbackground                    ;background and dynamic
+                        dw      10h                              ;max buffer file size
+                        dw      0,0,0,0,0,0
+                        dw      0,0,0,0,0
+                        dw      0,0                              ;end of link list

@@ -1,0 +1,267 @@
+; xchar: devices section
+xcode                   cseg    byte public 'CODE'
+;************************************************
+;*						*
+;*		LIST DEVICES			*
+;*						*
+;************************************************
+
+;	Character to list out device
+;	Entry:	CL = character
+;		DL = device
+;	Exit:	character sent
+
+iolist:
+                        mov     bl,dl                            ; get device number
+                        mov     bh,0
+                        add     bx,bx                            ; bx = word pointer
+                        jmp     ds:listout[bx]                   ; branch out
+
+;	This table is set up in Init depending on available equipment
+
+listout                 dw      nullout                          ; printer 0
+                        dw      nullout                          ; printer 1
+                        dw      nullout                          ; printer 2
+                        dw      nullout                          ; printer 3
+                        dw      nullout                          ; printer 4
+
+;	Character to parallel printer
+
+parallelout:
+                        push    cx ! push	dx                     ; save the character and device
+                        call    poll                             ; wait for device to be ready
+                        pop     dx ! pop cx                      ; device and character
+
+                        mov     ax,parstatword[bx]               ; what was the status?
+                        cmp     al,98h                           ; ready/select
+                        jz      paroutyes                        ; skip if it's a go
+                        xor     ah,al                            ; if status = ignore code
+                        and     ah,7Fh                           ;   except for busy bit
+                        jnz     paroutfault                      ;   then just quit
+                        ret
+
+;	printer fault requires a status line error message
+
+paroutfault:
+                        push    bx ! push cx ! push dx
+                        mov     si,offset parnopaper             ; out of paper message
+                        cmp     al,20h                           ; -ready/paper/error
+                        jz      parouterror
+                        mov     si,offset paroffline             ; not on-line message
+parouterror:
+                        mov     di,offset parsubmsg
+                        mov     cx,parsublen                     ; length of sub message
+                        push    es
+                        push    ds ! pop es
+                        rep     movsb                            ; save the sub message
+                        pop     es
+
+                        mov     si,offset parerrormsg
+                        mov     al,dl                            ; get printer number
+                        or      al,'0'                           ; convert to ascii
+                        mov     .8[si],al                        ; set printer number
+                        mov     di,offset parerrorresp
+                        call    slerrorout                       ; get response
+                        pop     dx ! pop cx ! pop bx
+
+                        cmp     al,'R'                           ; if retry
+                        jz      parallelout                      ;   then go again
+                        mov     al,parstatcode[bx]               ; if ignore, then
+                        mov     parignorecode[bx],al             ;   save for future ignores
+                        ret                                      ; and just return
+
+paroutyes:
+                        mov     parignorecode[bx],1              ; reset the ignore status
+                        mov     al,cl                            ; AL = character
+                        mov     dx,ds:listdata[bx]               ; get the port for this device
+
+                        out     dx,al                            ; send character
+                        inc     dx ! inc dx                      ; reset it
+                        mov     al,0dh                           ; printer strobe on
+                        out     dx,al
+                        mov     al,0ch                           ; printer strobe off
+                        out     dx,al
+                        ret
+
+;	Parallel printer status line error data
+
+parerrormsg             db      'Printer n     '
+parsubmsg               db      'Out of Paper     '              ; for instance
+                        db      'Retry, Ignore?   '
+                        db      '                 '
+                        db      '               '
+
+parnopaper              db      'Out of Paper'
+paroffline              db      'Not On-Line '
+parsublen               equ     offset $ - offset paroffline
+
+parerrorresp            db      2,'RI'
+
+;	Serial printer init routine
+;	This is called the first time
+;	that a port is to print a character
+;	entry:	bx = device# * 2
+;		cl = char
+
+serialinit:
+                        push    bx ! push cx                     ; save the data
+                        mov     dx,ds:listdata[bx]               ; get our qpb
+                        mov     cl,qopen
+                        call    supif                            ; open the output queue
+                        pop     cx ! pop bx
+                        test    ax,ax                            ; see if open succeeded
+                        jz      serialinitgood                   ; skip if it worked
+
+                        mov     ds:listout[bx],offset nullout
+                        ret                                      ; wipe us out
+
+serialinitgood:
+                        mov     ds:listout[bx],offset serialout
+;	jmps	serial_out		; now the queue is open
+
+;	Serial printer output routine
+;	This is called forever after the first time
+;	that a port is to print a character.
+;	entry:	bx = device# * 2
+;		cl = char
+
+serialout:
+                        mov     dx,ds:listdata[bx]               ; get qpb offset
+                        mov     si,dx
+                        dec     si                               ; point to character
+                        mov     [si],cl                          ; store the character
+                        mov     cl,qwrite
+                        call    supif                            ; write char to queue
+                        ret
+
+;	This is for nonexistent printer numbers
+
+nullout:
+                        ret
+
+;	List data table   This is the port number for parallel ports
+;	and the offset of the qpb for serial ports
+
+listdata                dw      03BCh                            ; BW card parallel port
+                        dw      0378H                            ; 0378h parallel port card as shipped
+                        dw      0278h                            ; 0278h parallel port card option
+                        dw      qpb0                             ; SerOut0 queue paramater block
+                        dw      qpb1                             ; SerOut1 queue parameter block
+
+;	Parallel port status code and status to ignore for 3 printers
+
+parstatcode             db      0
+parignorecode           db      1
+                        db      0,1,0,1
+parstatword             equ     word ptr parstatcode
+
+;	Queue parameter blocks for serial printers
+
+qmsg0                   db      1,0                              ; count, char
+qpb0                    dw      0,0,0,qmsg0
+                        db      'SerOut0 '
+
+qmsg1                   db      1,0                              ; count, char
+qpb1                    dw      0,0,0,qmsg1
+                        db      'SerOut1 '
+
+;	List status entry point
+;	entry:	DL =	device
+;	exit:	AX =	0 if not ready
+;			0FFFFh if ready
+;		BX =	device# * 2
+
+iolistst:
+                        mov     bl,dl                            ; get device number
+                        mov     bh,0
+                        add     bx,bx                            ; bx = word pointer
+                        jmp     ds:liststat[bx]                  ; branch out
+
+;	This table is set up in Init depending on available equipment
+
+liststat                dw      nullstat                         ; printer 0
+                        dw      nullstat                         ; printer 1
+                        dw      nullstat                         ; printer 2
+                        dw      serialstat                       ; printer 3
+                        dw      serialstat                       ; printer 4
+
+;	Get status from parallel printer
+;	Called from io_listst and from io_poll
+;	Entry:	BX =	device# * 2
+;		DL =	device#
+;	Exit:	AX =	0 if not ready
+;			0ffffh if ready
+;		BX =	device# * 2
+
+parallelstat:
+                        push    dx                               ; save device #
+                        mov     dx,ds:listdata[bx]               ; port for parallel printer
+                        inc     dx
+                        in      al,dx                            ; DX=status register, get status
+                        pop     dx                               ; restore device number
+
+                        and     al,0B8h                          ; mask ready/paper/select/error
+                        mov     ds:parstatcode[bx],al            ; save the status port value
+                        cmp     al,18h                           ; if -ready/select
+                        mov     ax,0                             ;   then set ax to zero and
+                        jz      parstatdone                      ;   continue with polling
+                        dec     ax                               ; else ready => ax=ffff
+parstatdone:
+                        ret
+
+;	Status for serial device always indicates ready
+;	because dispatch is handled by the queue mechanism
+;	Also used by non-existent printers
+;	exit:	ax = 0FFFFh  =>  ready
+
+serialstat:
+nullstat:
+                        mov     ax,0FFFFh                        ; ready
+                        ret
+
+; xchar: devices section
+xcode                   cseg    byte public 'CODE'
+;	auxiliary input/output routines are just no-ops
+
+ioauxin:
+                        ret
+
+ioauxout:
+                        ret
+
+; xchar: devices section
+xdata                   dseg    para public 'CODE'
+;********************************************************
+;*							*
+;*		LIST CONTROL BLOCK TABLE		*
+;*							*
+;********************************************************
+
+lcbtab                  rb      0
+lcb0                    dw      0,0,0,0
+                        db      0ffh, 0ffh                       ;mimic, msource
+
+lcb1                    dw      0,0,0,0
+                        db      0ffh
+                        db      0ffh
+
+lcb2                    dw      0,0,0,0
+                        db      0ffh
+                        db      0ffh
+
+lcb3                    dw      0,0,0,0
+                        db      0ffh
+                        db      0ffh
+
+lcb4                    dw      0,0,0,0
+                        db      0ffh
+                        db      0ffh
+
+;	This little garbage patch is to protect io_conout from a system bug
+;	which happens when a list device detaches.  If you can detach printer
+;	number 4 without affecting this table, then it may be safely removed.
+
+                        dw      0FFFFh,0FFFFh,0FFFFh
+                        dw      0FFFFh,0FFFFh,0FFFFh
+                        dw      0FFFFh,0FFFFh,0FFFFh
+                        dw      0FFFFh,0FFFFh,0FFFFh

@@ -305,6 +305,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 | `make -C commands/sysdisk check` | Byte-identical SYSDISK reconstruction |
 | `make check` | SYSDISK identity, source-built boot identity, every packaged file, sizes |
 | `make check-graphics` | Assembled graphics guards and adapter gates; PCE VGA/EGA/CGA, EGA monochrome and Hercules checks: pixels, palettes, graphics text/TTY and restoration |
+| `make check-hercules` | Native and DOS Hercules graphics, text/cursor/scrolling, exit restoration and plain-MDA rejection |
 | `make check-text40` | Booted 40-column text tests on CGA/EGA/VGA: cursor, wrapping, scrolling and restoration |
 | `make check-qemu` | Boot, RTC, status, switching, HELP, SDIR, SYSDISK, SETDEF, DREDIX, windows |
 | `make check-paging` | TYPE, SDIR, DIR.RSP and DIR.CMD paging, resume, Ctrl-C and default-off |
@@ -338,3 +339,17 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 ## License
 
 CP/M-derived material is covered by the [CP/M license](LICENSE.md); other material uses the [MIT license](LICENSE-bis.md), unless specified otherwise in a subdirectory.
+
+### XIOS build
+
+XIOS is one loaded component assembled from three maintained modules in
+`kernel/con/xios/`: `core.a86`, `console.a86` and `devices.a86`, each including maintained functional
+`.lib` files, with explicit
+imports/exports and shared declarations. RASM86 builds three objects; LINK86
+combines them into the existing single-segment XIOS format. The other kernel
+components and their interfaces are unchanged.
+
+`make -C kernel/con xios.con xiosnat.con` builds PC-MODE and native-only
+flavours from the same sources. `pcmode.lib` retains the PC-MODE and enhanced
+keyboard settings. The build checks fixed system/header offsets and entry
+jumps before publishing either component. See `kernel/con/xios/README.md`.

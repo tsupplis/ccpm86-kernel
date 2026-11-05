@@ -2848,7 +2848,7 @@ eg_dos_dispatch:
 	je	eg_dos_fallback
 	jmp	eg_dos_packet_ready
 eg_dos_packet_mode:
-	cmp	al,0B0h
+	cmp	al,0C0h
 	ja	eg_dos_not_enhanced
 	pop	si ! pop dx ! pop cx ! pop bx ! pop ax
 eg_dos_packet_ready:
@@ -2903,7 +2903,7 @@ eg_dos_cursor_copy:
 eg_dos_result_done:
 	ret
 
-eg_dos_modes db 10h,0Dh,0Eh,11h,12h,13h,0Fh
+eg_dos_modes db 10h,0Dh,0Eh,11h,12h,13h,0Fh,7Fh
 
 bios_video_handler:
 	sti
@@ -2955,7 +2955,7 @@ eg_dos_set_scan:
 	je	eg_dos_set_found
 	inc	bx
 	add	cl,10h
-	cmp	cl,0C0h
+	cmp	cl,0D0h
 	jb	eg_dos_set_scan
 	pop	bx
 	jmp	bios_video_restore_frame
@@ -3120,7 +3120,7 @@ bios_video_try_mode_query:
 	xor	bh,bh
 	cmp	al,50h
 	jb	eg_dos_query_legacy
-	cmp	al,0B0h
+	cmp	al,0C0h
 	ja	eg_dos_query_legacy
 	push	bx
 	sub	al,50h

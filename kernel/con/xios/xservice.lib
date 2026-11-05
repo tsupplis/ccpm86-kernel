@@ -1,0 +1,105 @@
+; xchar: core section
+xcode                   cseg    byte public 'CODE'
+;************************************************
+;*						*
+;*		POLL ROUTINES			*
+;*						*
+;************************************************
+
+;	Check device for ready status, call dev_poll if not ready
+
+poll:                                                            ;poll device
+;----
+;	Entry:	DL =	device number
+;	Exit:		device ready
+;		BX =	device# * 2
+
+                        call    iopoll                           ;check hardware first
+                        test    ax,ax                            ;AX=0 if not ready
+                        jnz     polldone                         ;BX=device# * 2 set by io_poll
+
+                        push    bx                               ;save device# * 2
+                        mov     cl,devpoll                       ;give up the CPU resource
+                        call    supif
+                        pop     bx                               ;device# * 2
+polldone:
+                        ret
+
+;	io_poll is called from the dispatcher after a process makes
+;	a dev_poll call to the O.S.  During system dispatches, a
+;	a call to io_poll is made for each polling process.
+;	Entry:	DL =	device #
+;	Exit:	AX =	0 if not ready, 0FFFFH if ready
+;		BX =	device# * 2
+
+iopoll:
+                        xor     bx,bx
+                        mov     bl,dl
+                        shl     bx,1
+                        jmp     polltable[bx]
+
+polltable               dw      parallelstat                     ;each of these must
+                        dw      parallelstat                     ;preserve BX and DX
+                        dw      parallelstat
+
+; xchar: core section
+xcode                   cseg    byte public 'CODE'
+;	a general xios information pointer return function
+;	entry:	cx = which pointer
+;		     0 => equipment data
+;		     1 => setup data
+
+iopointer:
+; Safe discovery through an existing entry: old kernels ignore DX/SI and
+; cannot return the matching signature AND changed version word in DX.
+                        cmp     cx,0
+                        jne     diskpointernormal
+                        cmp     dx,444bh
+                        jne     diskpointernormal
+                        cmp     si,534bh
+                        jne     diskpointernormal
+                        mov     ax,4b44h
+                        mov     dx,0101h
+                        ret
+diskpointernormal:
+                        mov     bx,cx
+                        add     bx,bx                            ; word index
+                        mov     ax,ptrlist[bx]                   ; here's the return value
+                        ret
+xdata                   dseg    para public 'CODE'
+                        org     ((offset $-offset datastart)+1) and 0fffeh
+;*						*
+;*		PUBLIC DATA BLOCKS		*
+;*						*
+;************************************************
+
+ptrlist                 dw      equipdata
+                        dw      setupdata
+
+;	Equipment configuration data block
+
+equipdata               rb      0
+numflop                 dw      0                                ; number of floppy disks	1-4
+numhard                 dw      0                                ; number of hard disks		0-2
+numprint                dw      0                                ; number of parallel printers	0-3
+numport                 dw      0                                ; number of serial ports	0-2
+nummono                 dw      0                                ; number of monochrome crts	0-1
+numcolor                dw      0                                ; number of color crts		0-1
+numndp                  dw      0                                ; number of 8087's		0-1
+nummmkb                 dw      0                                ; main memory in Kilobytes    256-640
+nummdkb                 dw      0                                ; memory disk in Kilobytes      0-384
+
+;	Setup data block
+
+setupdata               rb      0
+diskintoff              rw      1                                ; disk interrupt offset
+diskintseg              rw      1                                ; disk interrupt segment
+                        dw      pfktbl0
+                        dw      pfktbl1
+                        dw      pfktbl2
+                        dw      pfktbl3
+lomemtop                dw      0                                ; main mem seg ceiling    4000-A000
+himemstart              dw      0                                ; high mem seg beginning  C000-E000
+himemtop                dw      0                                ; high mem seg ceiling    D000-F000
+bootdisk                rb      1                                ; from whence we came
+                        rb      0                                ; pad

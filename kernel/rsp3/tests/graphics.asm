@@ -2,8 +2,11 @@
 bits 16
 cpu 8086
 org 100h
-%ifdef HGC
+%ifdef MDA
 %define MODE_COUNT 0
+%define MONOTEXT
+%elifdef HGC
+%define MODE_COUNT 1
 %define MONOTEXT
 %elifdef EGAMONO
 %define MODE_COUNT 1
@@ -60,6 +63,11 @@ next_mode:
     mov al,[mode]
     mov bp,640
     mov di,200
+%ifdef HGC
+    mov bp,720
+    mov di,348
+    jmp dimensions
+%endif
     cmp al,0fh
     je height350
     cmp al,10h
@@ -231,6 +239,9 @@ packed:
     cmp cl,49
     jne failed
 character:
+%ifdef HGC
+    jmp palette_done
+%endif
     cmp byte [mode],6
     jbe palette_done
     mov byte [stage],6
@@ -315,8 +326,20 @@ restore_text:
     int 21h
     jmp next_mode
 passed:
-%ifdef HGC
+%ifdef MDA
+    mov ax,7fh
+    int 10h
+%elifdef HGC
     mov ax,0fh
+    int 10h
+    mov dx,native_hercules
+    mov ah,9
+    int 21h
+    mov ah,0fh
+    int 10h
+    cmp ax,5a7fh
+    jne failed
+    mov ax,TEXT_MODE
     int 10h
 %elifdef NO_VGA
     mov ax,0fh
@@ -363,6 +386,15 @@ reject_done:
     cmp byte [es:49h],TEXT_MODE
     pop es
     jne failed
+%ifndef HGC
+    ; The project Hercules extension must not alias an IBM mode.
+    mov ax,7fh
+    int 10h
+    mov ah,0fh
+    int 10h
+    cmp ax,5000h+TEXT_MODE
+    jne failed
+%endif
     cmp byte [passes],MODE_COUNT
     jne failed
     mov dx,success
@@ -374,9 +406,16 @@ failed:
 finish:
     mov ah,9
     int 21h
-    int 20h
 %ifdef HGC
+    ; Leave graphics active: DOS termination must restore the saved text.
+    mov ax,7fh
+    int 10h
+%endif
+    int 20h
+%ifdef MDA
 modes: db 0
+%elifdef HGC
+modes: db 7fh,0
 %elifdef EGAMONO
 modes: db 0fh,0
 %elifdef CGA
@@ -400,3 +439,5 @@ error: db 'GRAPHICS FAIL',13,10,'$'
 native_mono: db 27,"a",0fh,"$"
 
 unsupported: db 3,4,0dh,0eh,10h,11h,12h,13h,0
+
+native_hercules: db 27,"a",7fh,"$"
