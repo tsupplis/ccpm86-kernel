@@ -7,7 +7,7 @@ eg_reorg equ offset $
 ; Enhanced graphics adapter bridge (local copy in each independent project).
 ;
 ; Native function 30 assigns 50h=10h, 60h=0Dh, 70h=0Eh,
-; 80h=11h, 90h=12h, A0h=13h. A single foreground console owns graphics.
+; 80h=11h, 90h=12h, A0h=13h, B0h=0Fh (VGA emulation). A single foreground console owns graphics.
 ; Function 31 accepts the usual packet AX,BX,CX,DX,console (nine bytes).
 ; Set bit 7 of its BIOS selector to use a packet also for cursor/cell/TTY
 ; operations. Plain selectors retain the historical native argument ABI.
@@ -91,14 +91,30 @@ eg_packet:
 	jmp	eg_reject
 	call	point_vs
 	cmp	vs_screen_mode,50h
-	jae	$+5
+	jae	eg_enhanced_owner
+	; CGA packet services use the same ROM guard, even on a real CGA.
+	test	si,80h
+	jz	$+5
+	jmp	eg_cga_owner
 	jmp	eg_fallback
-	cmp	vs_screen_mode,0A0h
+eg_cga_owner:
+	cmp	vs_screen_mode,20h
+	jb	$+5
+	jmp	eg_cga_upper
+	jmp	eg_reject
+eg_cga_upper:
+	cmp	vs_screen_mode,40h
+	jbe	$+5
+	jmp	eg_reject
+	jmp	eg_owner_check
+eg_enhanced_owner:
+	cmp	vs_screen_mode,0B0h
 	jbe	$+5
 	jmp	eg_reject
 	cmp	bios_graphics,0
 	jne	$+5
 	jmp	eg_reject
+eg_owner_check:
 	mov	al,vs_number
 	cmp	al,top_screen
 	je	$+5
@@ -133,24 +149,29 @@ eg_owned:
 	mov	bp,200
 	mov	cx,640
 	cmp	vs_screen_mode,50h
-	je	$+5
-	jmp	eg_not_350
-	mov	bp,350
-eg_not_350:
+	je	eg_height_350
+	cmp	vs_screen_mode,0B0h
+	je	eg_height_350
 	cmp	vs_screen_mode,80h
-	jae	$+5
-	jmp	eg_not_480
-	mov	bp,480
-eg_not_480:
+	je	eg_height_480
+	cmp	vs_screen_mode,90h
+	je	eg_height_480
+	cmp	vs_screen_mode,20h
+	je	eg_narrow
+	cmp	vs_screen_mode,30h
+	je	eg_narrow
 	cmp	vs_screen_mode,60h
-	jne	$+5
-	jmp	eg_narrow
+	je	eg_narrow
 	cmp	vs_screen_mode,0A0h
-	je	$+5
-	jmp	eg_dimensions
-	mov	bp,200
+	jne	eg_dimensions
 eg_narrow:
 	mov	cx,320
+	jmp	eg_dimensions
+eg_height_350:
+	mov	bp,350
+	jmp	eg_dimensions
+eg_height_480:
+	mov	bp,480
 eg_dimensions:
 	test	si,80h
 	jz	$+5
@@ -244,6 +265,9 @@ eg_pixel:
 	jmp	eg_packet_call
 
 eg_palette:
+	cmp	vs_screen_mode,50h
+	jae	$+5
+	jmp	eg_owned_bad
 	mov	al,es:byte ptr [di]
 	cmp	al,0
 	jne	$+5
@@ -488,6 +512,11 @@ eg_640_200:
 	jmp	eg_mode_unsupported
 	mov	al,0Eh
 	jmp	eg_mode_begin
+; VGA emulates EGA monochrome without changing the attached monitor.
+; Physical EGA monochrome startup/routing is not enabled by this gate.
+eg_ega_mono:
+	mov	al,0Fh
+	jmps	eg_vga_mode
 eg_vga_mono:
 	mov	al,11h
 	jmps	eg_vga_mode
@@ -509,9 +538,44 @@ eg_mode_unsupported:
 	jmp	screen_not_sup
 
 ; Immutable map used by both native mode query and DOS mode translation.
-eg_bios_modes db 10h,0Dh,0Eh,11h,12h,13h
+eg_bios_modes db 10h,0Dh,0Eh,11h,12h,13h,0Fh
 enhanced_vga db 0
 video_result_ax dw 0
 video_result_bx dw 0
 video_result_cx dw 0
 video_result_dx dw 0
+
+; Function 30 CH=4: truthful mode/column query for DOS and new callers.
+; CH=1 retains the historical CDOS graphics-as-text compatibility result.
+eg_screen_query:
+	mov	al,vs_screen_mode
+	mov	ah,80
+	cmp	al,20h
+	je	eg_query_narrow
+	cmp	al,30h
+	je	eg_query_narrow
+	cmp	al,60h
+	je	eg_query_narrow
+	cmp	al,0A0h
+	je	eg_query_narrow
+	cmp	al,2
+	je	eg_query_narrow
+	cmp	al,3
+	jne	eg_query_done
+eg_query_narrow:
+	mov	ah,40
+eg_query_done:
+	ret
+
+; Physical text stride; the user's wrap width is a separate setting.
+; AX only is clobbered. Window backing screens always retain 80 columns.
+eg_text_columns:
+	mov	ax,80
+	cmp	cs:vs_screen_mode,2
+	je	eg_text_40
+	cmp	cs:vs_screen_mode,3
+	jne	eg_text_width_done
+eg_text_40:
+	mov	al,40
+eg_text_width_done:
+	ret

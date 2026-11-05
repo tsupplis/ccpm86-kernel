@@ -401,58 +401,67 @@ end parse$file;
 
 
             /* parse & interpret all options - assume global */
+/* Scan option characters directly: BDOS filename parsing treats commas as
+   filename separators and can stop before a following P or Gn option.
+   Outside brackets filenames are left untouched for parse$file. */
 parse$options: procedure boolean;
-  dcl (n,i) word;
-  dcl (options, in$brackets, error) boolean;
-  i = 0;          /* parse file name doesn't work with delimiters */
-  parse$fn.fcb$adr = .dirbuf;
-  error = false;
-  options = true;
-  do while options and not error;
-    if (n := findb(@tbuff(i), '[', tail$len - i)) = 0ffffh then
-      options = false;
-    else
-    do;
-      i = i + n + 1;
-      parse$fn.buff$adr = .tbuff(i);
-      in$brackets = true;
-      do while in$brackets and not error;
-        if (parse$fn.buff$adr := parse) <> 0ffffh then
-        do;
-          if dirbuf(1) = 'P' and dirbuf(2) = ' ' then
-            page$enabled = true;
-          else if dirbuf(1) = 'S' then
-            incl$sys = true;
-          else if dirbuf(1) = 'G' then
-          do;
-            temp = dirbuf(2) - '0';
-            if dirbuf(2) < '0' or dirbuf(2) > '9' then error = true;
-            if dirbuf(3) <> ' ' then do;
-              if dirbuf(3) < '0' or dirbuf(3) > '9' or
-                 dirbuf(4) <> ' ' then error = true;
-              temp = temp * 10 + dirbuf(3) - '0';
-            end;
-            if temp > 15 then error = true;
-            if not error then do;
-              call mon1(m$setusr, (user:=temp));
-              new$user = true;
-            end;
+  dcl (i,value) word;
+  dcl (c,digits) byte;
+  dcl (in$brackets,error,number) boolean;
+$if rsp
+  i = 0;
+$else
+  i = 1;                       /* skip the command-tail length byte */
+$endif
+  if tail$len > 128 then tail$len = 128;
+  error,in$brackets = false;
+  do while i < tail$len and not error;
+    c = tbuff(i);
+    if not in$brackets then do;
+      if c = '[' then in$brackets = true;
+      i = i + 1;
+    end;
+    else if c = ']' then do;
+      in$brackets = false;
+      i = i + 1;
+    end;
+    else if c = ' ' or c = 9 or c = ',' then i = i + 1;
+    else do;
+      if c >= 'a' and c <= 'z' then c = c - 20h;
+      if c = 'P' then do;
+        page$enabled = true;
+        i = i + 1;
+      end;
+      else if c = 'S' then do;
+        incl$sys = true;
+        i = i + 1;
+      end;
+      else if c = 'G' then do;
+        i = i + 1;
+        value,digits = 0;
+        number = true;
+        do while i < tail$len and number and not error;
+          c = tbuff(i);
+          if c < '0' or c > '9' then number = false;
+          else do;
+            value = value * 10 + c - '0';
+            digits = digits + 1;
+            i = i + 1;
+            if value > 15 then error = true;
           end;
-          else
-            error = true;
-        end;  /* if parse */
-        if delimiter = ']' or parse$fn.buff$adr = 0 or
-          parse$fn.buff$adr = 0ffffh then
-          in$brackets = false;
-      end;  /* while in$brackets */
-    end;  /* else               */
-  end;  /* while options       */
-
-  if error then
-  do;
+        end;
+        if digits = 0 then error = true;
+        if not error then do;
+          call mon1(m$setusr, (user:=value));
+          new$user = true;
+        end;
+      end;
+      else error = true;
+    end;
+  end;
+  if error then do;
     call print$buf(.(cr, lf, 'Invalid Command Option$'));
     return(false);
-    /* call help; */
   end;
   return(true);
 end parse$options;

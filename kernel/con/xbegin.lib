@@ -599,7 +599,7 @@ xios_v1_graph_caps:
 egcaps_no_ega:
 	cmp	enhanced_vga,0
 	je	egcaps_done
-	or	bl,4			; VGA 11/12/13 and 256-entry DAC
+	or	bl,0Ch		; VGA 11/12/13 + DAC; bit 3: EGA mono 0F
 egcaps_done:
 	ret
 

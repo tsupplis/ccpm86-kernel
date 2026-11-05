@@ -111,3 +111,16 @@ check-disk:
 
 check-disk-live: all
 	python3 tools/disk_live_check.py
+
+.PHONY: check-options
+check-options: all
+	python3 -B tools/option_combinations_check.py
+
+.PHONY: check-text40
+check-text40: all
+	python3 tools/graphics_check.py cga text40
+	python3 tools/graphics_check.py ega text40
+	python3 tools/graphics_check.py vga text40
+	python3 tools/graphics_check.py cga text40native
+	python3 tools/graphics_check.py ega text40native
+	python3 tools/graphics_check.py vga text40native

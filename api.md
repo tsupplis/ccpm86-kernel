@@ -99,7 +99,7 @@
 | 54 | Get verify flag | Missing | — |
 | 56 / 57 | Rename pathname / file date and time | Missing | NEW |
 
-## Graphics modes and entry points
+## Video modes and entry points
 
 Mode selection and drawing support are separate contracts. “BIOS mode” below
 identifies the display format; native callers select it through XIOS or the
@@ -107,6 +107,8 @@ console escape stream, without executing a DOS program.
 
 | BIOS mode (hex) | Display | Adapter | Native XIOS mode byte | Native `ESC a` parameter | DOS INT 10h/AH=00h |
 | --- | --- | --- | --- | --- | --- |
+| 00 | 40×25 text, monochrome/burst-disabled | CGA or colour EGA/VGA | 02h | 00h | Implemented |
+| 01 | 40×25 text, colour | CGA or colour EGA/VGA | 03h | 01h | Implemented |
 | 04 | 320×200, 4 colours | CGA, or detected colour EGA/VGA | 20h | 04h | Implemented |
 | 05 | 320×200, 4 pixel values, CGA monochrome/burst-disabled variant | CGA, or detected colour EGA/VGA | 30h | 05h | Implemented |
 | 06 | 640×200, 2 colours | CGA, or detected colour EGA/VGA | 40h | 06h | Implemented |
@@ -116,21 +118,46 @@ console escape stream, without executing a DOS program.
 | 11 | 640×480, 2 colours | VGA | 80h | 11h | Implemented |
 | 12 | 640×480, 16 colours | VGA | 90h | 12h | Implemented |
 | 13 | 320×200, 256 colours | VGA | A0h | 13h | Implemented |
-| Other graphics modes | 0Fh (EGA monochrome), VESA and nonstandard modes | — | Not assigned | Not supported | No compatibility claim |
+| 0F | 640×350 monochrome, video/intensity planes | VGA emulation; physical EGA monochrome deferred | B0h | 0Fh | Implemented |
+| Other graphics modes | VESA and nonstandard modes | — | Not assigned | Not supported | No compatibility claim |
 
 Text modes use the existing native console/window implementation. DOS mode
 selectors 00h–03h and 07h have text mappings; these are not a promise of
 arbitrary BIOS pages, fonts or EGA/VGA text geometries. `ESC a` does not use
 the same mapping for every text selector as INT 10h.
 
+40-column text modes 00h/01h own the foreground screen exclusively; return
+to 80-column text before switching consoles or using window management. DOS
+uses 25 rows; native CCP/M uses 24 rows. Cursor addressing, character output,
+wrapping, scrolling, and native line insertion/deletion use the 40-column
+stride. The 80-column console backing layout remains unchanged.
+
+CCP/M selects these modes through DOS INT 10h/AH=00h, XIOS function 30
+CH=0 with CL=02h/03h, or native ESC a followed by binary 00h/01h. Mode setup
+uses the guarded adapter BIOS on CGA, EGA and VGA. Selecting 80-column text
+or leaving the DOS session restores the saved native screen and cursor.
+
 | Native interface | Contract |
 | --- | --- |
 | `ESC a` | Emit bytes 1Bh, 61h, then the binary mode parameter above (not ASCII digits) |
-| XIOS function 30 decimal | CH=0 sets the mode byte in CL for console DL; CH=1 queries. This is an XIOS entry, **not** BDOS function 30 or a permitted direct-BIOS packet selector |
+| XIOS function 30 decimal | CH=0 sets the mode byte in CL for console DL; CH=1 retains the historical query; CH=4 returns the actual native mode in AL and column count in AH (40 or 80). DOS AH=0Fh uses CH=4. This is an XIOS entry, **not** BDOS function 30 or a permitted direct-BIOS packet selector |
 | CGA palette extension | XIOS function 30, CH=2, CL=CGA colour-select value (bits 0–5); graphics owner only |
-| EGA palette extension | XIOS function 30, CH=3, CL=palette entry 0–15, DH=6-bit EGA colour, DL=console; requires native planar mode 50h–90h and graphics ownership |
-| Capability probe | INT E6h, AL=1Eh (30 decimal), input BX=0: AX=4745h (`EG`), BX bit 0 enables BIOS 10h (native 50h), bit 1 enables 0Dh/0Eh, bit 2 enables VGA 11h/12h/13h and DAC; probe before selecting |
+| EGA palette extension | XIOS function 30, CH=3, CL=palette entry 0–15, DH=6-bit EGA colour, DL=console; requires native planar mode 50h–90h or B0h and graphics ownership |
+| Capability probe | INT E6h, AL=1Eh (30 decimal), input BX=0: AX=4745h (`EG`), BX bit 0 enables BIOS 10h (native 50h), bit 1 enables 0Dh/0Eh, bit 2 enables VGA 11h/12h/13h and DAC, bit 3 enables 0Fh (native B0h) through VGA; probe before selecting |
 | Console switching | BIOS-backed graphics keeps the foreground console until the owner restores text mode; there is no per-console saved EGA/VGA graphics framebuffer |
+
+CGA graphics modes 04h/05h/06h use the same guarded packet path for DOS
+cursor, character read/write, teletype, scrolling and pixel operations. Mode
+queries return the actual BIOS mode and 40/40/80 columns respectively. Page
+zero, foreground ownership, pixel/cursor bounds and valid scroll rectangles
+are enforced. AH=0Bh retains the existing CGA palette path; AH=10h EGA/VGA
+palette services are rejected in CGA modes. The historical native CH=1 query
+is unchanged, including CDOS's graphics-as-text result; new callers use CH=4.
+
+Mode 0Fh currently requires detected VGA. Its monochrome video and intensity
+use pixel bits 0 and 2 (values 0, 1, 4, 5); planar XOR remains supported.
+Original EGA and CGA reject the request without changing the current mode.
+Physical EGA monochrome monitor detection and console routing remain deferred.
 
 Planar graphics uses the captured adapter ROM through the XIOS IRQ/PIC
 and private-stack guard, without calling the intercepted INT 10h. Page zero
@@ -164,7 +191,7 @@ Sources: [xconout.lib](kernel/con/xconout.lib), [xpcmode.lib](kernel/con/xpcmode
 | 10 | AH=00 | Set video mode | Implemented: text/CGA and EGA/VGA modes in the graphics table | PCTMP + XIOS | — |
 | 10 | AH=01 | Set cursor shape | Implemented | PCTMP + XIOS | — |
 | 10 | AH=02 | Set cursor position | Implemented; bounded to console | PCTMP + XIOS | — |
-| 10 | AH=03 | Get cursor position/shape | Partial in text/CGA: position returned, CX=0; enhanced graphics returns ROM position/shape | PCTMP + XIOS | NEW |
+| 10 | AH=03 | Get cursor position/shape | Partial in text: position returned, CX=0; CGA and enhanced graphics return ROM position/shape | PCTMP + XIOS | NEW |
 | 10 | AH=04 | Light pen | No operation | PCTMP | — |
 | 10 | AH=05 | Select display page | No operation; one page exposed | PCTMP | NEW |
 | 10 | AH=06 / 07 | Scroll up / down | Implemented; bounded rectangle | PCTMP + XIOS | — |

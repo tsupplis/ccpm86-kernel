@@ -9,6 +9,7 @@ HELPCMD=../help/help.cmd
 all: help.hlp
 
 check: all
+	python3 -B ../../tools/help_style.py help.dat
 
 $(HELPCMD):
 	$(MAKE) -C ../help help.cmd
@@ -17,7 +18,8 @@ $(HELPCMD):
 # repository's text remains editable without rebuilding a malformed index.
 # Tabs compact space runs in that copy only; displayed columns are asserted
 # identical, preserving space on the 320 KB system disk.
-help.hlp: $(HELPCMD) help.dat ../../tools/help_tabs.py Makefile
+help.hlp: $(HELPCMD) help.dat ../../tools/help_style.py ../../tools/help_tabs.py Makefile
+	python3 -B ../../tools/help_style.py help.dat
 	@set -e; tmp=$$(mktemp -d); \
 	trap 'rm -rf "$$tmp"' EXIT HUP INT TERM; \
 	cp $(HELPCMD) "$$tmp/help.cmd"; \

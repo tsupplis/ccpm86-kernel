@@ -315,7 +315,7 @@ process_start:
 	mov	dl,byte ptr .sd_system_disk
 	pop	ds
 	call	current_disk_set
-	db	032h,0d2h				; xor dl,dl: original register/register encoding
+	xor	dl,dl
 	call	current_user_set
 	call	console_attach
 	push	ds
@@ -369,7 +369,7 @@ startup_file:
 	inc	di
 	mov	byte ptr [di],'$'
 	sub	di,command_text
-	db	08bh,0c7h				; mov ax,di, original direction encoding
+	mov	ax,di
 	sub	ax,2
 	mov	byte ptr .command_length,al
 	mov	dx,offset original_startup_message	; startup announcement, CODE string
@@ -417,24 +417,24 @@ command_normalize:
 	lea	bx,.command_text
 	cmp	byte ptr .command_length,0
 	je	command_line_empty
-	db	08bh,0fbh				; mov di,bx, original direction encoding
+	mov	di,bx
 	dec	di
 	call	skip_command_separators
-	db	08bh,0dfh				; mov bx,di, original direction encoding
+	mov	bx,di
 	cmp	byte ptr [bx],0
 	je	command_line_empty
 	lea	ax,.command_text
-	db	03bh,0c3h				; cmp ax,bx, original direction encoding
+	cmp	ax,bx
 	je	command_line_comment
 	push	ds
 	pop	es
 	xor	ch,ch
 	mov	cl,byte ptr .command_length
-	db	08bh,0f8h				; mov di,ax, original direction encoding
-	db	08bh,0f3h				; mov si,bx, original direction encoding
+	mov	di,ax
+	mov	si,bx
 	cld
 	rep	movsb
-	db	08bh,0d8h				; mov bx,ax, original direction encoding
+	mov	bx,ax
 command_line_comment:
 	cmp	byte ptr [bx],';'
 	je	command_line_empty
@@ -481,7 +481,7 @@ command_parse_entry:
 command_parse_tail:
 	mov	al,.command_length
 	mov	ah,00h
-	db	003h,0d8h				; add bx,ax (original encoding)
+	add	bx,ax
 	mov	byte ptr [bx],00h
 	mov	cx,040h
 	mov	si,command_text
@@ -493,7 +493,7 @@ command_parse_tail:
 	mov	di,saved_command_text
 	call	parse_command_filename
 	jcxz	command_parse_ok
-	db	02bh,0dbh				; sub bx,bx (original encoding)
+	sub	bx,bx
 	mov	bl,.command_length
 	add	bx,saved_command_text
 	mov	byte ptr [bx],024h
@@ -587,7 +587,7 @@ original_memory_dispatch:
 	jz	memory_invalid
 	mov	cl,06h
 	shl	bx,cl
-	db	08bh,0d3h				; mov dx,bx (original encoding)
+	mov	dx,bx
 	mov	cl,02h
 	callf	dword ptr .service_entry
 	jmp	memory_show
@@ -1043,13 +1043,13 @@ read_command_line:
 	mov	cl,10
 	mov	dx,command_buffer
 	call	ccpm_call
-	db	032h,0ffh				; xor bh,bh, original encoding
+	xor	bh,bh
 	mov	bl,byte ptr .command_length
 	add	bx,command_text
-	db	08bh,0fbh				; mov di,bx, original encoding
+	mov	di,bx
 	mov	cx,command_buffer_end
-	db	02bh,0cbh				; sub cx,bx, original encoding
-	db	032h,0c0h				; xor al,al, original encoding
+	sub	cx,bx
+	xor	al,al
 	rep	stosb
 	ret
 
@@ -1077,7 +1077,7 @@ close_command_file:
 ; Set the FCB filename F6 flag (bit 7 at +6), then open; preserve BX.
 open_command_file:
 	push	bx
-	db	08bh,0dah				; mov bx,dx (original encoding)
+	mov	bx,dx
 	add	bx,06h
 	or	byte ptr [bx],080h
 	mov	cl,0fh
@@ -1092,7 +1092,7 @@ scan_command_character:
 	push	bx
 	mov	ch,00h
 	mov	cl,.shell_scan_limits_offset
-	db	08bh,0d9h				; mov bx,cx (original encoding)
+	mov	bx,cx
 	mov	di,.shell_delimiter_pointer
 	repne	scasb
 	pop	bx
@@ -1127,7 +1127,7 @@ print_decimal_place:
 	push	dx
 	cmp	byte ptr .decimal_started_offset,0ffh
 	jz	print_nonzero_place
-	db	00bh,0c0h				; or ax,ax (original encoding)
+	or	ax,ax
 	jz	decimal_place_remainder
 print_nonzero_place:
 	mov	byte ptr .decimal_started_offset,0ffh
@@ -1136,14 +1136,14 @@ print_nonzero_place:
 	call	print_console_character
 decimal_place_remainder:
 	pop	ax
-	db	033h,0d2h				; xor dx,dx (original encoding)
+	xor	dx,dx
 	ret
 
 ; Print unsigned AX (0..65535), including zero, using 10000/1000/100/10 divisors.
 ; Modifies AX/CX/DX and DATA:02EFh.
 print_unsigned_decimal:
 	mov	byte ptr .decimal_started_offset,00h
-	db	033h,0d2h				; xor dx,dx (original encoding)
+	xor	dx,dx
 	mov	cx,02710h
 	call	print_decimal_place
 	mov	cx,03e8h
@@ -1174,7 +1174,7 @@ prepare_chain_command:
 	pop	es
 	mov	cx,084h
 	mov	di,command_buffer_end
-	db	08bh,0f7h				; mov si,di (original encoding)
+	mov	si,di
 	dec	si
 	dec	si
 	std
@@ -1608,7 +1608,7 @@ pcmode_service:
 	jnc	service_return
 	call	cs:word ptr service_table[bx]
 service_return:
-	db	08bh,0d8h				; mov bx,ax, original direction encoding
+	mov	bx,ax
 	pop	ds
 	pop	es
 	popf
@@ -1630,11 +1630,11 @@ service_table_end:
 service_load:
 	push	ds
 	mov	ds,word ptr .service_caller_ds
-	db	08bh,0f2h				; mov si,dx, original direction encoding
+	mov	si,dx
 	lodsw
-	db	08bh,0d8h				; mov bx,ax, original direction encoding
+	mov	bx,ax
 	lodsw
-	db	08bh,0d0h				; mov dx,ax, original direction encoding
+	mov	dx,ax
 	lodsw
 	push	ax
 	lodsw
@@ -1643,7 +1643,7 @@ service_load:
 	mov	es:byte ptr .loader_user_zero,al
 	mov	di,program_fcb
 	mov	cx,18
-	db	08bh,0f3h				; mov si,bx, original direction encoding
+	mov	si,bx
 	mov	ds,dx
 	rep	movsw
 	pop	ds
@@ -1671,7 +1671,7 @@ service_ndp:
 	mov	bl,byte ptr .service_flags
 	and	bl,2
 	jnz	service_ndp_return
-	db	033h,0c0h				; xor ax,ax, original direction encoding
+	xor	ax,ax
 service_ndp_return:
 	ret
 service_ndp_set:
@@ -1689,7 +1689,7 @@ service_suspend:
 	mov	bl,byte ptr .service_flags
 	and	bl,1
 	jnz	service_suspend_return
-	db	033h,0c0h				; xor ax,ax, original direction encoding
+	xor	ax,ax
 service_suspend_return:
 	ret
 service_suspend_set:
@@ -1714,7 +1714,7 @@ service_word_set:
 ; Nonzero copies out; zero copies in. Return AX=0.
 service_copy_settings:
 	mov	es,word ptr .service_caller_ds
-	db	08bh,0dah				; mov bx,dx, original direction encoding
+	mov	bx,dx
 	db	026h					; ES override; retain original instruction addressing
 	test	byte ptr [bx],0ffh
 	jz	service_settings_in
@@ -1731,7 +1731,7 @@ service_settings_in:
 service_settings_copy:
 	mov	cx,6
 	rep	movsw
-	db	033h,0c0h				; xor ax,ax, original direction encoding
+	xor	ax,ax
 	ret
 service_command_names:
 	mov	dx,offset dos_command_names		; original DOS command-name table
@@ -1743,7 +1743,7 @@ service_command_names:
 ; Reset per-launch console/file flags without changing the DATA layout.
 service_cleanup:
 	mov	ax,word ptr .loader_memory_size
-	db	00bh,0c0h				; or ax,ax, original direction encoding
+	or	ax,ax
 	jz	cleanup_vectors
 	mov	dx,loader_memory_base
 	mov	cl,57
@@ -1753,7 +1753,7 @@ cleanup_vectors:
 	cmp	byte ptr .dos_vectors_active,0ffh
 	jne	cleanup_file_slots
 	cld
-	db	033h,0c9h				; xor cx,cx, original direction encoding
+	xor	cx,cx
 	mov	es,cx
 	mov	di,040h					; original vector region begins at INT 10h
 	mov	si,original_vectors_offset				; saved vector region, 47 words
@@ -1767,7 +1767,7 @@ cleanup_file_slots:
 	pop	es
 	mov	di,dos_file_slots
 	mov	cx,fcb_slot_count*fcb_slot_bytes/2
-	db	033h,0c0h				; xor ax,ax, original direction encoding
+	xor	ax,ax
 	cld
 	rep	stosw
 	mov	di,dos_file_slots
@@ -1784,7 +1784,7 @@ cleanup_mark_unused:
 	mov	byte ptr .dos_printer_echo,0
 	mov	byte ptr .dos_nested_console,0
 	mov	word ptr .bios_keyboard_pending,0
-	db	033h,0c0h				; xor ax,ax, original direction encoding
+	xor	ax,ax
 	ret
 
 
@@ -1821,7 +1821,7 @@ launch_banner_drive:
 	call	launch_banner_character
 	mov	cx,08h
 	call	launch_banner_name
-	db	003h,0f1h				; add si,cx (original encoding)
+	add	si,cx
 	mov	dl,02eh
 	call	launch_banner_character
 	mov	cx,03h
@@ -1940,7 +1940,7 @@ load_exe_header:
 	mov	dl,01h
 	call	set_multi_record_count
 	mov	si,program_fcb
-	db	08bh,0d6h				; mov dx,si (original encoding)
+	mov	dx,si
 	mov	word ptr 021h[si],00h
 	mov	byte ptr 023h[si],00h
 	mov	cl,021h
@@ -1975,12 +1975,12 @@ exe_page_paragraphs:
 	add	bx,15					; ceil(last-page bytes / 16), not nearest
 
 	shr	bx,cl
-	db	003h,0c3h				; add ax,bx (original encoding)
+	add	ax,bx
 	sub	ax,.record_buffer_offset_8
 	mov	.exe_image_paragraphs,ax
 	add	ax,02bh
 	add	ax,.record_buffer_offset_10
-	db	08bh,0d8h				; mov bx,ax (original encoding)
+	mov	bx,ax
 	mov	si,command_fcb_offset_1
 	mov	di,offset dos_command_names
 
@@ -2003,7 +2003,7 @@ exe_special_compared:
 	pop	si
 	pop	di
 	or	cx,cx
-	db	08bh,0c3h				; mov ax,bx (original encoding)
+	mov	ax,bx
 	jz	exe_allocate_memory
 	add	di,08h
 	cmp	di,offset dos_command_names_end
@@ -2083,7 +2083,7 @@ prepare_exe_entry:
 	mov	word ptr .child_entry_offset,ax
 	mov	byte ptr .child_is_com,0
 	call	construct_psp
-	db	033h,0d2h				; xor dx,dx: DMA begins at offset zero
+	xor	dx,dx		; DMA begins at offset zero
 	mov	cl,26
 	call	loader_bdos_call
 	mov	ax,word ptr .exe_load_segment
@@ -2124,15 +2124,15 @@ read_exe_image_chunk:
 	cmp	word ptr .exe_records_left,di
 	jae	read_exe_image_records
 	mov	di,word ptr .exe_records_left
-	db	08bh,0d7h				; mov dx,di: final shorter multi-read
+	mov	dx,di		; final shorter multi-read
 	call	set_multi_record_count
-	db	08bh,0c7h				; mov ax,di
+	mov	ax,di
 	shl	ax,1
 	shl	ax,1
 	shl	ax,1					; records to paragraphs
 read_exe_image_records:
 	mov	dx,program_fcb
-	db	08bh,0f2h				; mov si,dx
+	mov	si,dx
 	add	word ptr .exe_dma_segment,ax
 	mov	ax,word ptr .exe_next_record
 	mov	word ptr fcb_random_record[si],ax
@@ -2142,7 +2142,7 @@ read_exe_image_records:
 	adc	byte ptr .exe_next_record+2,0
 	mov	cl,33					; random read with current multi-count
 	call	loader_bdos_call
-	db	00ah,0c0h				; or al,al
+	or	al,al
 	jz	exe_image_chunk_done
 	cmp	al,1					; EOF is accepted by the original loader
 	jz	exe_image_chunk_done
@@ -2217,7 +2217,7 @@ refill_exe_relocations:
 	mov	dx,exe_header
 	call	set_loader_dma
 	mov	dx,program_fcb
-	db	08bh,0f2h				; mov si,dx: original encoding
+	mov	si,dx
 	mov	ax,word ptr .exe_next_record
 	mov	word ptr fcb_random_record[si],ax
 	mov	al,byte ptr .exe_next_record+2
@@ -2228,7 +2228,7 @@ refill_exe_relocations:
 	call	loader_bdos_call
 	pop	si
 	pop	es
-	db	00ah,0c0h				; or al,al: original encoding
+	or	al,al
 	jz	exe_relocation_ready
 	jmp	loader_read_error
 exe_relocation_ready:
@@ -2294,7 +2294,7 @@ com_memory_valid:
 ; chunk against the PSP call-area limit; accept native EOF result 1.
 com_next_chunk:
 	mov	ax,.child_segments_offset_6
-	db	003h,0c7h				; add ax,di (original encoding)
+	add	ax,di
 	jc	com_chunk_too_large
 	cmp	ax,es:.06h
 	jna	com_read_chunk
@@ -2340,12 +2340,12 @@ prepare_dos_execution:
 	mov	es,ax
 	mov	si,.loader_command_text
 	mov	cx,080h
-	db	033h,0c0h				; xor ax,ax (original encoding)
-	db	08bh,0feh				; mov di,si (original encoding)
+	xor	ax,ax
+	mov	di,si
 	repne	scasb
 	mov	ax,080h
-	db	02bh,0c1h				; sub ax,cx (original encoding)
-	db	08bh,0c8h				; mov cx,ax (original encoding)
+	sub	ax,cx
+	mov	cx,ax
 	dec	cx
 	mov	.launch_command_count_offset,cl
 	or	cl,cl
@@ -2357,7 +2357,7 @@ prepare_dos_execution:
 	pop	cx
 	cmp	byte ptr [si],00h
 	jz	launch_build_process
-	db	08bh,0c6h				; mov ax,si (original encoding)
+	mov	ax,si
 	sub	ax,.loader_command_text
 	sub	cl,al
 	jz	launch_build_process
@@ -2384,8 +2384,8 @@ prepare_dos_execution:
 ; snapshot interrupt vectors and enable the XIOS PC-MODE service.
 launch_build_process:
 	mov	word ptr .private_service_word_offset,0fffeh
-	db	033h,0c9h				; xor cx,cx (original encoding)
-	db	08bh,0d1h				; mov dx,cx (original encoding)
+	xor	cx,cx
+	mov	dx,cx
 	mov	cl,.dos_console_number
 	mov	ax,02ch
 	mul	cl
@@ -2394,7 +2394,7 @@ launch_build_process:
 	mov	es,cs:word ptr shared_sysdat_segment
 	db	026h					; ES override; original addressing
 	mov	si,[si]
-	db	003h,0f0h				; add si,ax (original encoding)
+	add	si,ax
 	db	026h					; ES override; original addressing
 	test	word ptr 0eh[si],0200h
 	jz	launch_set_dma
@@ -2409,7 +2409,7 @@ launch_set_dma:
 	pop	es
 	push	ds
 	pop	es
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	mov	ds,ax
 	mov	si,040h
 	mov	di,original_vectors_offset
@@ -2437,7 +2437,7 @@ launch_set_dma:
 ; Return AX=BX=FFFFh with error CX, restoring user through result-preserving BDOS.
 loader_failure:
 	mov	ax,0ffffh
-	db	08bh,0d8h				; mov bx,ax (original encoding)
+	mov	bx,ax
 loader_restore_user:
 	push	cx
 	mov	dl,.loader_saved_user
@@ -2453,8 +2453,8 @@ construct_psp:
 	mov	es,ax
 	add	ax,018h
 	mov	.child_segments_offset,ax
-	db	033h,0c0h				; xor ax,ax (original encoding)
-	db	08bh,0f8h				; mov di,ax (original encoding)
+	xor	ax,ax
+	mov	di,ax
 	mov	cx,0158h
 	rep	stosw
 	mov	ax,.rsp_sysdat_segment
@@ -2502,7 +2502,7 @@ psp_inherit_console:
 	mov	es:.012h,cx
 	mov	al,.loader_compatibility_flags
 	mov	es:.018h,al
-	db	033h,0ffh				; xor di,di (original encoding)
+	xor	di,di
 	mov	si,command_fcb_offset_1
 	mov	cx,04h
 psp_copy_process_name:
@@ -2517,7 +2517,7 @@ psp_copy_process_name:
 
 ; Build DOS PSP: INT 20h entry, allocation end, far-call stub and INT 22h/23h/24h.
 	mov	es,word ptr .child_psp_segment
-	db	033h,0ffh				; xor di,di (original encoding)
+	xor	di,di
 	mov	ax,020cdh
 	stosw
 	mov	ax,.loader_memory_size
@@ -2626,11 +2626,11 @@ install_child_vector:
 	mov	word ptr [di],cs
 	loop	install_child_vector
 	mov	es,bx
-	db	033h,0c0h				; xor ax,ax, original direction encoding
-	db	08bh,0d8h				; mov bx,ax, original direction encoding
-	db	08bh,0c8h				; mov cx,ax, original direction encoding
-	db	08bh,0f0h				; mov si,ax, original direction encoding
-	db	08bh,0f8h				; mov di,ax, original direction encoding
+	xor	ax,ax
+	mov	bx,ax
+	mov	cx,ax
+	mov	si,ax
+	mov	di,ax
 	retf
 ; Return the segment adjustment to address the paragraph-aligned CALL stub.
 ; AX is the caller offset adjustment on entry; DX/CX/BX are scratch.
@@ -2640,8 +2640,8 @@ call_trampoline_segment:
 	mov	cl,4
 	shr	bx,cl
 	shr	ax,cl
-	db	003h,0dah				; add bx,dx, original direction encoding
-	db	02bh,0d8h				; sub bx,ax, original direction encoding
+	add	bx,dx
+	sub	bx,ax
 	xchg	ax,bx
 	ret
 ; DOS INT 22h return path: restore vectors, then terminate the native process.
@@ -2680,19 +2680,19 @@ swap_child_vectors:
 	push	es
 	push	cx
 	mov	cx,47
-	db	00bh,0c0h				; or ax,ax, original direction encoding
+	or	ax,ax
 	jnz	restore_child_vectors
 	mov	si,040h
 	mov	di,active_vectors_offset
 	mov	ax,ds
 	mov	es,ax
-	db	033h,0c0h				; xor ax,ax, original direction encoding
+	xor	ax,ax
 	mov	ds,ax
 	jmps	copy_child_vectors
 restore_child_vectors:
 	mov	si,active_vectors_offset
 	mov	di,040h
-	db	033h,0c0h				; xor ax,ax, original direction encoding
+	xor	ax,ax
 	mov	es,ax
 copy_child_vectors:
 	rep	movsw
@@ -2731,7 +2731,7 @@ select_console_data:
 	mov	ds,cs:word ptr shared_sysdat_segment
 	mov	bx,word ptr .sd_running_process
 	mov	bl,byte ptr pd_console_number[bx]
-	db	032h,0ffh				; xor bh,bh: original register/register encoding
+	xor	bh,bh
 	mov	ax,console_data_bytes
 	shr	ax,1
 	shr	ax,1
@@ -2836,13 +2836,22 @@ eg_dos_dispatch:
 	je	eg_dos_fallback
 	push	ax ! push bx ! push cx ! push dx ! push si
 	mov	al,30
-	mov	ch,1
+	mov	ch,4
 	call	xios_gateway
-	cmp	al,50h
+	cmp	al,20h
 	jb	eg_dos_not_enhanced
-	cmp	al,0A0h
+	cmp	al,50h
+	jae	eg_dos_packet_mode
+	; CGA palette keeps its historical selector ABI.
+	pop	si ! pop dx ! pop cx ! pop bx ! pop ax
+	cmp	ah,0Bh
+	je	eg_dos_fallback
+	jmp	eg_dos_packet_ready
+eg_dos_packet_mode:
+	cmp	al,0B0h
 	ja	eg_dos_not_enhanced
 	pop	si ! pop dx ! pop cx ! pop bx ! pop ax
+eg_dos_packet_ready:
 	push	bx
 	mov	bx,ax
 	or	bh,80h
@@ -2894,7 +2903,7 @@ eg_dos_cursor_copy:
 eg_dos_result_done:
 	ret
 
-eg_dos_modes db 10h,0Dh,0Eh,11h,12h,13h
+eg_dos_modes db 10h,0Dh,0Eh,11h,12h,13h,0Fh
 
 bios_video_handler:
 	sti
@@ -2920,7 +2929,7 @@ bios_video_handler:
 	jc	bios_video_ordinary
 	jmp	bios_video_packet
 bios_video_ordinary:
-	db	00ah,0e4h				; or ah,ah: original encoding
+	or	ah,ah
 	jnz	bios_video_try_cursor_shape
 	cmp	al,07h
 	jz	bios_mode_text_number
@@ -2933,7 +2942,7 @@ bios_video_ordinary:
 bios_mode_text_number:
 	inc	al
 	inc	al
-	db	08ah,0c8h				; mov cl,al: original encoding
+	mov	cl,al
 	jmps	bios_mode_set
 bios_mode_graphics_number:
 	cmp	al,0Dh
@@ -2946,7 +2955,7 @@ eg_dos_set_scan:
 	je	eg_dos_set_found
 	inc	bx
 	add	cl,10h
-	cmp	cl,0B0h
+	cmp	cl,0C0h
 	jb	eg_dos_set_scan
 	pop	bx
 	jmp	bios_video_restore_frame
@@ -2963,10 +2972,10 @@ eg_dos_cga_set:
 	shl	al,1
 	shl	al,1
 	shl	al,1
-	db	08ah,0c8h				; mov cl,al: original encoding
+	mov	cl,al
 bios_mode_set:
 	mov	ax,01eh
-	db	032h,0edh				; xor ch,ch: original encoding
+	xor	ch,ch
 	call	xios_gateway
 	jmp	bios_video_restore_frame
 bios_video_try_cursor_shape:
@@ -2979,7 +2988,7 @@ bios_video_try_cursor_shape:
 bios_video_try_cursor_set:
 	cmp	ah,02h
 	jnz	bios_video_try_cursor_get
-	db	08bh,0cah				; mov cx,dx: original encoding
+	mov	cx,dx
 	mov	al,01fh
 	mov	bl,02h
 	call	xios_gateway
@@ -2996,7 +3005,7 @@ bios_video_try_cursor_get:
 	mov	bl,03h
 	call	xios_gateway
 	mov	word ptr .bios_frame_dx,ax
-	db	033h,0c9h				; xor cx,cx: original encoding
+	xor	cx,cx
 	mov	word ptr .bios_frame_cx,cx
 	jmp	bios_video_restore_frame
 
@@ -3027,7 +3036,7 @@ bios_video_try_scroll_down:
 ; In particular the AH=0Dh pixel-read result is discarded in the recovered code.
 ;------------------------------------------------------------------------------
 bios_video_packet:
-	db	032h,0e4h				; xor ah,ah: original encoding
+	xor	ah,ah
 	mov	word ptr .bios_packet_ax,ax
 	mov	word ptr .bios_packet_bx,bx
 	mov	word ptr .bios_packet_cx,cx
@@ -3038,8 +3047,8 @@ bios_video_packet:
 	mov	al,byte ptr pd_console_number[bx]
 	pop	ds
 	mov	byte ptr .bios_packet_console,al
-	db	08bh,0c6h				; mov ax,si: original encoding
-	db	08ah,0dch				; mov bl,ah: original encoding
+	mov	ax,si
+	mov	bl,ah
 	mov	cx,ds
 	mov	dx,bios_packet_ax
 	call	bios_video_packet_result
@@ -3092,7 +3101,7 @@ bios_video_try_pixel_read:
 bios_video_try_teletype:
 	cmp	ah,0eh
 	jnz	bios_video_try_mode_query
-	db	08ah,0c8h				; mov cl,al: original encoding
+	mov	cl,al
 	mov	al,01fh
 	mov	bl,0eh
 	call	xios_gateway
@@ -3106,12 +3115,12 @@ bios_video_try_mode_query:
 	cmp	ah,0fh
 	jnz	bios_video_restore_frame
 	mov	al,01eh
-	mov	ch,01h
+	mov	ch,04h
 	call	xios_gateway
-	db	032h,0ffh				; xor bh,bh: original encoding
+	xor	bh,bh
 	cmp	al,50h
 	jb	eg_dos_query_legacy
-	cmp	al,0A0h
+	cmp	al,0B0h
 	ja	eg_dos_query_legacy
 	push	bx
 	sub	al,50h
@@ -3307,7 +3316,7 @@ bios_keyboard_handler:
 	push	si
 	push	es
 	push	di
-	db	00ah,0e4h				; or ah,ah, recovered encoding
+	or	ah,ah
 	jz	bios_keyboard_read
 	dec	ah
 	jz	bios_keyboard_poll
@@ -3319,7 +3328,7 @@ bios_keyboard_handler:
 	jmps	bios_keyboard_return
 bios_keyboard_poll:
 	mov	ax,word ptr .bios_keyboard_pending
-	db	00bh,0c0h				; or ax,ax, recovered encoding
+	or	ax,ax
 	jnz	bios_keyboard_result
 	mov	word ptr .bios_frame_ax,0
 	mov	cl,6
@@ -3327,20 +3336,20 @@ bios_keyboard_poll:
 	pushf
 	call	loader_bdos_call
 	popf
-	db	00bh,0c0h				; zero means no queued input
+	or	ax,ax		; zero means no queued input
 	jz	bios_keyboard_return
 	mov	word ptr .bios_keyboard_pending,ax
 	jmps	bios_keyboard_result
 bios_keyboard_read:
 	mov	ax,word ptr .bios_keyboard_pending
 	mov	word ptr .bios_keyboard_pending,0
-	db	00bh,0c0h				; or ax,ax, original direction encoding
+	or	ax,ax
 	jnz	bios_keyboard_result
 	pushf
 	call	bios_keyboard_wait
 	popf
 bios_keyboard_result:
-	db	00bh,0c0h				; supply AH=01h ZF without changing AX
+	or	ax,ax		; supply AH=01h ZF without changing AX
 	mov	word ptr .bios_frame_ax,ax
 bios_keyboard_return:
 	pop	di
@@ -3413,7 +3422,7 @@ printer_wait_ready:
 	pop	cx
 	test	ah,080h
 	jnz	printer_write
-	db	08bh,0c3h				; mov ax,bx, original encoding
+	mov	ax,bx
 	loop	printer_wait_ready
 	or	ah,1
 	mov	byte ptr .dos_saved_function,ah
@@ -3473,13 +3482,13 @@ dos_terminate_entry:
 	mov	byte ptr .dos_nested_console,0
 	pop	ds
 	push	bp
-	db	08bh,0ech				; mov bp,sp, original encoding
+	mov	bp,sp
 	push	ds
 	push	es
 	push	si
 	push	di
 	push	cx
-	db	033h,0f6h				; xor si,si, original encoding
+	xor	si,si
 	mov	es,si
 	mov	di,088h					; INT 22h vector address
 	mov	si,00ah					; saved vectors in PSP
@@ -3511,7 +3520,7 @@ original_trampoline_prefix:
 ; jump to the DOS dispatcher. Console-zero initialization writes the far target.
 dos_call_trampoline:
 	push	bp
-	db	08bh,0ech				; mov bp,sp, original direction encoding
+	mov	bp,sp
 	pushf
 	pop	ax
 	xchg	ax,6[bp]
@@ -3571,7 +3580,7 @@ dos_dispatch_save:
 dos_dispatch_select:
 	mov	word ptr .dos_saved_ax,ax
 	mov	bl,ah
-	db	032h,0ffh				; xor bh,bh, original direction encoding
+	xor	bh,bh
 	shl	bx,1
 	cmp	bx,offset dos_function_fallback-offset dos_function_table
 	jc	dos_dispatch_call
@@ -3650,7 +3659,7 @@ file_bdos_error_ready:
 	pop	si
 	mov	al,ah
 	xor	ah,ah
-	db	08bh,0f8h				; mov di,ax, original direction encoding
+	mov	di,ax
 	mov	ax,word ptr .critical_context
 	jmp	dos_critical_error
 file_bdos_return:
@@ -3750,11 +3759,11 @@ dos_error_handler:
 	push	dx
 	push	ax
 	call	critical_newline
-	db	08bh,0dfh				; mov bx,di (original encoding)
+	mov	bx,di
 	xor	bh,bh
 	shl	bx,1
 	mov	si,offset critical_message_table
-	db	003h,0f3h				; add si,bx (original encoding)
+	add	si,bx
 	db	02eh					; CS override; original addressing
 	mov	dx,[si]
 	push	ds
@@ -3972,7 +3981,7 @@ dos_fn_checked_input:
 
 ; AH=09h prints from the application's DS, saved by the dispatcher.
 dos_fn_print_string:
-	db	08bh,0cah				; mov cx,dx, original direction encoding
+	mov	cx,dx
 	push	ds
 	mov	ds,word ptr .dos_caller_ds
 	call	dos_print_string
@@ -3988,7 +3997,7 @@ dos_fn_console_status:
 ; by the scan code on the next read. Consume the per-console pending word.
 raw_console_input:
 	mov	ax,word ptr .bios_keyboard_pending
-	db	00bh,0c0h				; or ax,ax, original direction encoding
+	or	ax,ax
 	jz	dos_input_wait
 	cmp	byte ptr .dos_scan_pending,0ffh
 	je	dos_input_scan
@@ -4024,7 +4033,7 @@ dos_read_echo:
 	call	classify_echo_byte			; classify echoable character; CF=control
 	jc	control_echo_return			; shared RET, control byte needs no echo
 	push	ax
-	db	08ah,0c8h				; mov cl,al: original encoding
+	mov	cl,al
 	call	console_echo_byte			; console echo helper
 	pop	ax
 	ret
@@ -4067,7 +4076,7 @@ dos_status_paused:
 dos_status_try_resume:
 	cmp	al,011h
 	jne	dos_status_paused
-	db	033h,0c0h				; xor ax,ax, original direction encoding
+	xor	ax,ax
 	mov	word ptr .bios_keyboard_pending,0
 dos_status_return:
 	ret
@@ -4157,7 +4166,7 @@ dos_console_newline:
 ; Print a dollar-terminated string at application DS:CX. Switch to private
 ; DATA only around console processing; leave CX on the terminator.
 dos_print_string:
-	db	08bh,0f1h				; mov si,cx, original direction encoding
+	mov	si,cx
 	lodsb
 	cmp	al,'$'
 	je	dos_echo_return
@@ -4237,8 +4246,8 @@ dos_line_try_ctrl_p:
 dos_line_toggle_printer:
 	push	cx
 	push	bx
-	db	033h,0c9h				; xor cx,cx (original encoding)
-	db	08bh,0d9h				; mov bx,cx (original encoding)
+	xor	cx,cx
+	mov	bx,cx
 	push	es
 	mov	es,cs:word ptr shared_sysdat_segment
 	mov	si,es:.sd_running_process
@@ -4255,10 +4264,10 @@ dos_line_toggle_printer:
 	mov	cl,.dos_console_number
 	mov	ax,02ch
 	mul	cl
-	db	003h,0f0h				; add si,ax (original encoding)
+	add	si,ax
 	mov	ax,0ah
 	mul	bl
-	db	003h,0f8h				; add di,ax (original encoding)
+	add	di,ax
 	test	byte ptr .dos_printer_echo,0ffh
 	jz	dos_line_attach_printer
 	db	026h					; ES override; retain original addressing
@@ -4413,7 +4422,7 @@ unwind_dos_break:
 ; Return buffered key AX or native direct-console status; ZF indicates empty.
 dos_poll_character:
 	mov	ax,word ptr .bios_keyboard_pending
-	db	00bh,0c0h				; or ax,ax, original direction encoding
+	or	ax,ax
 	jnz	dos_poll_return
 	push	cx
 	mov	dl,0feh
@@ -4502,7 +4511,7 @@ count_next_drive:
 ; Return/save the device identifier in AL (zero means ordinary file).
 match_dos_device:
 	xor	al,al
-	db	08bh,0feh				; mov di,si (original encoding)
+	mov	di,si
 	db	026h					; ES override; original addressing
 	cmp	byte ptr 01h[si],03fh
 	jz	device_name_result
@@ -4536,7 +4545,7 @@ device_name_compared:
 	cmp	di,offset dos_device_names_end
 	jnz	compare_device_name
 	dec	si
-	db	08bh,0feh				; mov di,si (original encoding)
+	mov	di,si
 	xor	al,al
 	jmps	device_name_result
 device_name_matched:
@@ -4544,7 +4553,7 @@ device_name_matched:
 	mov	al,[di]
 	pop	di
 	dec	si
-	db	08bh,0feh				; mov di,si (original encoding)
+	mov	di,si
 device_name_result:
 	mov	.dos_device_id,al
 	or	al,al
@@ -4557,7 +4566,7 @@ dos_fn_open_fcb:
 	mov	byte ptr .dos_saved_ax,00h
 	call	select_dos_fcb
 	add	di,0ch
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	mov	cx,015h
 	rep	stosb
 	db	026h					; ES override; original addressing
@@ -4614,7 +4623,7 @@ open_cache_flushed:
 	mov	byte ptr .record_cache_valid,00h
 	mov	byte ptr .record_cache_dirty,00h
 open_close_existing_slot:
-	db	08bh,0d3h				; mov dx,bx (original encoding)
+	mov	dx,bx
 	push	bx
 	mov	cl,010h
 	mov	al,[bx]
@@ -4642,15 +4651,15 @@ open_issue_request:
 	mov	byte ptr 020h[bx],0ffh
 	mov	ah,04h
 open_request_ready:
-	db	08bh,0d3h				; mov dx,bx (original encoding)
+	mov	dx,bx
 	mov	al,[bx]
 	dec	al
 	call	file_bdos_checked
-	db	08bh,0dah				; mov bx,dx (original encoding)
+	mov	bx,dx
 	cmp	al,0ffh
 	jz	open_release_failed_slot
 	mov	si,.dos_fcb_slot
-	db	08bh,0deh				; mov bx,si (original encoding)
+	mov	bx,si
 	call	check_device_fcb
 	jz	open_collect_metadata
 	test	byte ptr 010h[si],02h
@@ -4670,7 +4679,7 @@ open_collect_metadata:
 	rep	movsw
 	pop	es
 	pop	di
-	db	08bh,0f2h				; mov si,dx (original encoding)
+	mov	si,dx
 	push	si
 	call	native_file_timestamp
 	db	026h					; ES override; original addressing
@@ -4678,7 +4687,7 @@ open_collect_metadata:
 	db	026h					; ES override; original addressing
 	mov	016h[di],cx
 	pop	si
-	db	08bh,0d6h				; mov dx,si (original encoding)
+	mov	dx,si
 	call	native_file_size_bytes
 	mov	byte ptr 020h[si],00h
 	db	026h					; ES override; original addressing
@@ -4696,7 +4705,7 @@ open_fcb_failed:
 ; subtract unused final-record bytes when an exact byte count is recorded.
 ; Internal device FCBs carry their size directly at +1Ch.
 native_file_size_bytes:
-	db	08bh,0deh				; mov bx,si (original encoding)
+	mov	bx,si
 	call	check_device_fcb
 	jnz	file_size_device
 	mov	cl,023h
@@ -4708,7 +4717,7 @@ native_file_size_bytes:
 	cmp	al,0ffh
 	jz	file_size_failed
 	push	si
-	db	08bh,0f2h				; mov si,dx (original encoding)
+	mov	si,dx
 	mov	ax,021h[si]
 	mov	dl,023h[si]
 	xor	dh,dh
@@ -4726,7 +4735,7 @@ file_size_adjust_tail:
 	jz	file_size_return
 	mov	bx,080h
 	sub	bl,cl
-	db	02bh,0c3h				; sub ax,bx (original encoding)
+	sub	ax,bx
 	sbb	dx,00h
 file_size_return:
 	ret
@@ -4742,7 +4751,7 @@ file_size_failed:
 ; then read file stamps (102): prefer modification, otherwise creation.
 ; Missing or zero stamps return CX=DX=0; internal device fields bypass BDOS.
 native_file_timestamp:
-	db	08bh,0deh				; mov bx,si (original encoding)
+	mov	bx,si
 	call	check_device_fcb
 	jnz	file_timestamp_device
 	cmp	byte ptr .dos_saved_function,012h
@@ -4757,7 +4766,7 @@ native_file_timestamp:
 file_timestamp_read:
 	mov	cl,066h
 	mov	dx,metadata_fcb_offset
-	db	08bh,0f2h				; mov si,dx (original encoding)
+	mov	si,dx
 	mov	al,.metadata_fcb_offset
 	dec	al
 	mov	ah,04h
@@ -4781,20 +4790,20 @@ file_timestamp_convert:
 	jz	file_timestamp_zero
 	push	bx
 	call	pack_dos_date
-	db	08bh,0d0h				; mov dx,ax (original encoding)
+	mov	dx,ax
 	pop	ax
 	call	pack_dos_time
-	db	08bh,0c8h				; mov cx,ax (original encoding)
+	mov	cx,ax
 	ret
 file_timestamp_zero:
-	db	033h,0c9h				; xor cx,cx (original encoding)
-	db	08bh,0d1h				; mov dx,cx (original encoding)
+	xor	cx,cx
+	mov	dx,cx
 	ret
 file_timestamp_device:
 	mov	ax,018h[si]
-	db	08bh,0d0h				; mov dx,ax (original encoding)
+	mov	dx,ax
 	mov	ax,016h[si]
-	db	08bh,0c8h				; mov cx,ax (original encoding)
+	mov	cx,ax
 	ret
 
 ; Pack native day word AX into DOS date AX: year since 1980, month and day.
@@ -4805,8 +4814,8 @@ pack_dos_date:
 	call	native_days_to_date
 	pop	di
 	sub	cx,07bch
-	db	033h,0c0h				; xor ax,ax (original encoding)
-	db	08bh,0d8h				; mov bx,ax (original encoding)
+	xor	ax,ax
+	mov	bx,ax
 	mov	ah,cl
 	shl	ax,1
 	mov	bl,dh
@@ -4829,7 +4838,7 @@ pack_dos_time:
 	shl	ah,1
 	shl	ah,1
 	shl	ah,1
-	db	08bh,0d0h				; mov dx,ax (original encoding)
+	mov	dx,ax
 	pop	ax
 	mov	al,ah
 	call	bcd_to_binary
@@ -4906,7 +4915,7 @@ close_check_modified:
 	mov	byte ptr .record_cache_dirty,0ffh
 	mov	al,ch
 	xor	ah,ah
-	db	08bh,0f8h				; mov di,ax (original encoding)
+	mov	di,ax
 close_pad_final_record:
 	mov	byte ptr exe_header[di],01ah
 	inc	di
@@ -4952,7 +4961,7 @@ close_unmodified_file:
 
 ; Close private native FCB DS:BX with write-error context; preserve BX.
 close_native_slot:
-	db	08bh,0d3h				; mov dx,bx (original encoding)
+	mov	dx,bx
 	push	bx
 	mov	cl,010h
 	mov	al,[bx]
@@ -5032,7 +5041,7 @@ build_find_result:
 	jnz	find_copy_name
 	mov	ax,0ffh
 	stosw
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	stosw
 	stosw
 	mov	al,.dos_fcb_attribute
@@ -5048,7 +5057,7 @@ find_copy_character:
 	mov	al,.directory_dos_attributes
 	stosb
 	mov	cx,013h
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	rep	stosb
 	pop	di
 	ret
@@ -5082,7 +5091,7 @@ directory_prepare_result:
 ; The original special-entry marker also supplies hidden/subdirectory bits.
 ; Apply the original attribute filter; volume-label requests take a separate path.
 search_matching_attributes:
-	db	08bh,0feh				; mov di,si (original encoding)
+	mov	di,si
 	test	byte ptr .dos_fcb_attribute,08h
 	jz	search_attribute_first
 	jmp	search_volume_label
@@ -5138,7 +5147,7 @@ directory_skip_entry:
 	mov	cl,012h
 	jmp	search_attribute_next
 directory_match:
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 directory_match_result:
 	or	al,al
 	ret
@@ -5172,7 +5181,7 @@ volume_label_next:
 volume_label_found:
 	mov	[di],dl
 	mov	byte ptr .directory_dos_attributes,08h
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 volume_label_restore_drive:
 	mov	cl,0eh
 	mov	dl,.dos_current_drive
@@ -5183,7 +5192,7 @@ volume_label_restore_drive:
 ; Issue native search CL with DS:DI FCB; map successful directory index AL
 ; to its 32-byte entry in the private DMA buffer, returning DS:SI.
 native_directory_search:
-	db	08bh,0d7h				; mov dx,di (original encoding)
+	mov	dx,di
 	mov	al,[di]
 	dec	al
 	cmp	al,03eh
@@ -5198,7 +5207,7 @@ directory_issue_bdos:
 	mov	cl,05h
 	shl	ax,cl
 	mov	si,exe_header
-	db	003h,0f0h				; add si,ax (original encoding)
+	add	si,ax
 directory_search_return:
 	ret
 
@@ -5321,7 +5330,7 @@ delete_next_entry:
 	mov	al,.metadata_fcb_offset
 	mov	[si],al
 	mov	cl,013h
-	db	08bh,0d6h				; mov dx,si (original encoding)
+	mov	dx,si
 	mov	al,[si]
 	dec	al
 	mov	ah,05h
@@ -5443,7 +5452,7 @@ rename_find_source:
 	pop	ds
 	mov	si,metadata_fcb_offset
 	call	resolve_default_fcb_drive
-	db	08bh,0d6h				; mov dx,si (original encoding)
+	mov	dx,si
 	mov	cl,011h
 	mov	al,[si]
 	dec	al
@@ -5457,7 +5466,7 @@ rename_source_found:
 	mov	cl,05h
 	shl	ax,cl
 	add	ax,exe_header
-	db	08bh,0f0h				; mov si,ax (original encoding)
+	mov	si,ax
 	mov	di,program_fcb
 	mov	cx,06h
 	rep	movsw
@@ -5470,7 +5479,7 @@ rename_source_found:
 	pop	es
 	mov	word ptr .dos_fcb_segment,ds
 	mov	si,program_fcb
-	db	08bh,0feh				; mov di,si (original encoding)
+	mov	di,si
 	mov	.dos_fcb_offset,si
 	call	close_resolved_fcb
 	pop	es
@@ -5508,7 +5517,7 @@ rename_store_character:
 	mov	cl,011h
 	push	dx
 	push	bx
-	db	08bh,0dah				; mov bx,dx (original encoding)
+	mov	bx,dx
 	mov	al,[bx]
 	dec	al
 	mov	ah,04h
@@ -5529,7 +5538,7 @@ rename_issue_request:
 	mov	cl,017h
 	push	dx
 	push	bx
-	db	08bh,0dah				; mov bx,dx (original encoding)
+	mov	bx,dx
 	mov	al,[bx]
 	dec	al
 	mov	ah,05h
@@ -5585,8 +5594,8 @@ dos_fn_allocation_info:
 	mov	si,08h[bx]
 	db	026h					; ES override; original addressing
 	mov	ax,012h[bx]
-	db	033h,0c9h				; xor cx,cx (original encoding)
-	db	08bh,0d1h				; mov dx,cx (original encoding)
+	xor	cx,cx
+	mov	dx,cx
 	push	ds
 	mov	di,.child_stack_offset
 	mov	ds,word ptr .child_stack_segment
@@ -5601,7 +5610,7 @@ dos_fn_allocation_info:
 	mov	cl,01bh[si]
 	shl	ax,cl
 	mov	.bios_frame_cx,ax
-	db	08bh,0d8h				; mov bx,ax (original encoding)
+	mov	bx,ax
 	db	026h					; ES override; original addressing
 	mov	ax,08h[si]
 	div	bx
@@ -5616,7 +5625,7 @@ allocation_native_dpb:
 	mov	cl,0fh[si]
 	shl	ax,cl
 	mov	.bios_frame_cx,ax
-	db	08bh,0d8h				; mov bx,ax (original encoding)
+	mov	bx,ax
 	mov	ax,080h
 	db	026h					; ES override; original addressing
 	mov	cl,02h[si]
@@ -5662,7 +5671,7 @@ cache_read_native:
 	les	dx,dword ptr .record_cache_buffer
 	call	set_loader_dma
 	mov	si,.dos_fcb_slot
-	db	08bh,0d6h				; mov dx,si (original encoding)
+	mov	dx,si
 	mov	.cached_fcb_slot,dx
 	push	word ptr 021h[si]
 	push	word ptr 022h[si]
@@ -5727,7 +5736,7 @@ cache_write_dirty:
 	les	dx,dword ptr .record_cache_buffer
 	call	set_loader_dma
 	mov	dx,.cached_fcb_slot
-	db	08bh,0f2h				; mov si,dx (original encoding)
+	mov	si,dx
 	push	word ptr 021h[si]
 	push	word ptr 022h[si]
 	mov	ax,.record_cache_number
@@ -5785,11 +5794,11 @@ file_size_find_entry:
 	call	native_directory_search
 	cmp	al,0ffh
 	jz	file_size_restore_dma
-	db	033h,0dbh				; xor bx,bx (original encoding)
+	xor	bx,bx
 	mov	bl,0dh[si]
 	push	bx
 	mov	dx,metadata_fcb_offset
-	db	08bh,0f2h				; mov si,dx (original encoding)
+	mov	si,dx
 	mov	cl,023h
 	mov	al,[si]
 	dec	al
@@ -5810,7 +5819,7 @@ file_size_find_entry:
 	jz	file_size_divide_records
 	sub	ax,080h
 	sbb	dx,00h
-	db	003h,0c3h				; add ax,bx (original encoding)
+	add	ax,bx
 	adc	dx,00h
 file_size_divide_records:
 	les	si,dword ptr .dos_fcb_offset
@@ -5820,7 +5829,7 @@ file_size_divide_records:
 	jnz	file_size_divisor_ready
 	mov	cx,080h
 file_size_divisor_ready:
-	db	08bh,0dah				; mov bx,dx (original encoding)
+	mov	bx,dx
 	call	divide_record_offset
 	or	cx,cx
 	jz	file_size_store_records
@@ -5851,15 +5860,15 @@ dos_fn_set_random:
 	jz	set_random_from_sequential
 	ret
 set_random_from_sequential:
-	db	08bh,0f2h				; mov si,dx (original encoding)
+	mov	si,dx
 	db	026h					; ES override; original addressing
 	mov	ax,0ch[si]
-	db	033h,0d2h				; xor dx,dx (original encoding)
+	xor	dx,dx
 	call	records_to_bytes
 	db	026h					; ES override; original addressing
 	mov	cl,020h[si]
 	xor	ch,ch
-	db	003h,0c1h				; add ax,cx (original encoding)
+	add	ax,cx
 	adc	dx,00h
 	db	026h					; ES override; original addressing
 	mov	021h[si],ax
@@ -5880,8 +5889,8 @@ dos_fn_set_vector:
 	xor	ah,ah
 	shl	ax,1
 	shl	ax,1
-	db	08bh,0f8h				; mov di,ax (original encoding)
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	mov	di,ax
+	xor	ax,ax
 	mov	es,ax
 	push	ds
 	lds	ax,dword ptr .bios_frame_dx
@@ -5899,14 +5908,14 @@ dos_fn_set_vector:
 ; vectors, and rebuild the far-call fields with the existing loader helpers.
 dos_fn_new_psp:
 	mov	es,dx
-	db	033h,0ffh				; xor di,di (original encoding)
+	xor	di,di
 	push	ds
 	mov	ds,word ptr .child_psp_segment
-	db	033h,0f6h				; xor si,si (original encoding)
+	xor	si,si
 	cld
 	mov	cx,080h
 	rep	movsw
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	mov	ds,ax
 	mov	si,088h
 	mov	di,0ah
@@ -5915,7 +5924,7 @@ dos_fn_new_psp:
 	pop	ds
 	sub	dx,.child_psp_segment
 	mov	ax,.child_memory_size
-	db	02bh,0c2h				; sub ax,dx (original encoding)
+	sub	ax,dx
 	call	limit_segment_bytes
 	mov	di,06h
 	stosw
@@ -5972,7 +5981,7 @@ block_read_console:
 	test	byte ptr .console_record_pending,0ffh
 	jnz	console_record_copy
 	mov	dx,console_record_capacity_offset
-	db	08bh,0fah				; mov di,dx (original encoding)
+	mov	di,dx
 	push	si
 	push	es
 	push	ds
@@ -5986,7 +5995,7 @@ block_read_console:
 	pop	es
 	pop	si
 	mov	byte ptr .console_record_pending,0ffh
-	db	033h,0dbh				; xor bx,bx (original encoding)
+	xor	bx,bx
 	mov	bl,.console_record_length
 	inc	byte ptr .console_record_length
 	inc	byte ptr .console_record_length
@@ -5996,15 +6005,15 @@ block_read_console:
 	mov	word ptr .console_record_position,00h
 console_record_copy:
 	mov	byte ptr .dos_saved_ax,00h
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	mov	al,.console_record_length
 	sub	ax,.console_record_position
 	db	026h					; ES override; original addressing
 	mov	cx,0eh[si]
-	db	08bh,0d1h				; mov dx,cx (original encoding)
+	mov	dx,cx
 	cmp	ax,cx
 	jnc	console_copy_available
-	db	08bh,0c8h				; mov cx,ax (original encoding)
+	mov	cx,ax
 	mov	byte ptr .dos_saved_ax,03h
 console_copy_available:
 	les	di,dword ptr .dos_dta_offset
@@ -6013,16 +6022,16 @@ console_copy_available:
 	push	cx
 	rep	movsb
 	pop	cx
-	db	02bh,0d1h				; sub dx,cx (original encoding)
+	sub	dx,cx
 	jz	console_record_advance
 	push	cx
-	db	08bh,0cah				; mov cx,dx (original encoding)
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	mov	cx,dx
+	xor	ax,ax
 	rep	stosb
 	pop	cx
 console_record_advance:
 	add	.console_record_position,cx
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	mov	al,.console_record_length
 	cmp	.console_record_position,ax
 	jc	console_record_return
@@ -6077,9 +6086,9 @@ block_read_partial:
 	mov	cx,0eh[si]
 	pop	ds
 	mov	ax,.transfer_bytes_done
-	db	033h,0d2h				; xor dx,dx (original encoding)
+	xor	dx,dx
 	div	cx
-	db	02bh,0cah				; sub cx,dx (original encoding)
+	sub	cx,dx
 	xor	al,al
 	cld
 	rep	stosb
@@ -6108,7 +6117,7 @@ update_transfer_position:
 	mov	ax,.transfer_buffer_offset
 	sub	ax,.dos_dta_offset
 	mov	.transfer_bytes_done,ax
-	db	033h,0d2h				; xor dx,dx (original encoding)
+	xor	dx,dx
 	les	si,dword ptr .dos_fcb_offset
 	db	026h					; ES override; original addressing
 	mov	bx,0eh[si]
@@ -6176,7 +6185,7 @@ read_first_extent:
 	mov	cx,.transfer_last_byte
 	inc	cx
 read_first_count:
-	db	02bh,0ceh				; sub cx,si (original encoding)
+	sub	cx,si
 	ja	read_first_copy_setup
 	mov	ax,0800ch
 	jmp	dos_critical_error
@@ -6197,7 +6206,7 @@ read_first_copy_next:
 	mov	si,.dos_fcb_slot
 	add	word ptr 021h[si],01h
 	adc	byte ptr 023h[si],00h
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	ret
 
 ; Read whole 128-byte records directly to DTA in batches of at most 128.
@@ -6213,13 +6222,13 @@ read_whole_records:
 read_whole_limit:
 	sub	.transfer_whole_records,dx
 	mov	bx,.transfer_buffer_offset
-	db	08bh,0c2h				; mov ax,dx (original encoding)
+	mov	ax,dx
 	mov	cl,07h
 	shl	ax,cl
-	db	003h,0d8h				; add bx,ax (original encoding)
+	add	bx,ax
 	jnc	read_whole_request
 	mov	byte ptr .dos_saved_ax,02h
-	db	033h,0d2h				; xor dx,dx (original encoding)
+	xor	dx,dx
 	sub	dx,.transfer_buffer_offset
 	shr	dx,cl
 read_whole_request:
@@ -6231,7 +6240,7 @@ read_whole_nonzero:
 	call	set_multi_record_count
 	push	dx
 	mov	dx,.dos_fcb_slot
-	db	08bh,0f2h				; mov si,dx (original encoding)
+	mov	si,dx
 	mov	cl,021h
 	mov	al,[si]
 	dec	al
@@ -6274,7 +6283,7 @@ read_whole_continue:
 	jz	read_whole_done
 	jmp	read_whole_records
 read_whole_done:
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	ret
 
 ; Read final partial record through cache, detecting destination offset wrap.
@@ -6304,7 +6313,7 @@ read_last_copy_next:
 	loop	read_last_copy_byte
 	pop	ds
 	mov	.transfer_buffer_offset,di
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	ret
 
 ; Zero-length file-write path: derive byte size from random position, close,
@@ -6592,7 +6601,7 @@ write_first_extent:
 	mov	cx,.transfer_last_byte
 	inc	cx
 write_first_count:
-	db	02bh,0cfh				; sub cx,di (original encoding)
+	sub	cx,di
 	ja	write_first_mark_dirty
 	jmps	write_first_failed
 write_first_mark_dirty:
@@ -6624,7 +6633,7 @@ write_first_copy_next:
 	mov	si,.dos_fcb_slot
 	add	word ptr 021h[si],01h
 	adc	byte ptr 023h[si],00h
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	ret
 write_first_failed:
 	mov	ax,01h
@@ -6642,13 +6651,13 @@ write_whole_records:
 write_whole_limit:
 	sub	.transfer_whole_records,dx
 	mov	bx,.transfer_buffer_offset
-	db	08bh,0c2h				; mov ax,dx (original encoding)
+	mov	ax,dx
 	mov	cl,07h
 	shl	ax,cl
-	db	003h,0d8h				; add bx,ax (original encoding)
+	add	bx,ax
 	jnc	write_whole_request
 	mov	byte ptr .dos_saved_ax,02h
-	db	033h,0d2h				; xor dx,dx (original encoding)
+	xor	dx,dx
 	sub	dx,.transfer_buffer_offset
 	shr	dx,cl
 write_whole_request:
@@ -6660,7 +6669,7 @@ write_whole_nonzero:
 	call	set_multi_record_count
 	push	dx
 	mov	dx,.dos_fcb_slot
-	db	08bh,0f2h				; mov si,dx (original encoding)
+	mov	si,dx
 	mov	cl,022h
 	mov	al,[si]
 	dec	al
@@ -6740,7 +6749,7 @@ write_last_copy_next:
 	loop	write_last_copy_byte
 	pop	ds
 	mov	.transfer_buffer_offset,si
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	ret
 
 ; Open missing private FCB slot through AH=0Fh logic while preserving caller
@@ -6752,7 +6761,7 @@ open_fcb_on_demand:
 	db	026h					; ES override; original addressing
 	push	word ptr 0eh[si]
 	mov	byte ptr .dos_saved_function,0fh
-	db	08bh,0d6h				; mov dx,si (original encoding)
+	mov	dx,si
 	call	dos_fn_open_fcb
 	les	si,dword ptr .dos_fcb_offset
 	db	026h					; ES override; original addressing
@@ -6793,14 +6802,14 @@ parse_dos_fcb:
 	push	es
 	push	ds
 	push	bp
-	db	08bh,0ech				; mov bp,sp (original encoding)
+	mov	bp,sp
 	cld
 	push	ds
 	call	select_console_data
 	mov	ax,ds
 	pop	ds
 	mov	es,ax
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	mov	di,parse_status
 	stosb
 	stosw
@@ -6852,7 +6861,7 @@ parse_name_character:
 	stosb
 	loop	parse_name_character
 parse_type_begin:
-	db	003h,0f9h				; add di,cx (original encoding)
+	add	di,cx
 	mov	cx,03h
 	lodsb
 	cmp	al,02eh
@@ -6989,19 +6998,19 @@ dos_fn_get_date:
 ; leap cycle. Month boundaries come from the cumulative-day table.
 native_days_to_date:
 	sub	ax,02dah
-	db	08bh,0c8h				; mov cx,ax (original encoding)
-	db	033h,0d2h				; xor dx,dx (original encoding)
-	db	08bh,0fah				; mov di,dx (original encoding)
+	mov	cx,ax
+	xor	dx,dx
+	mov	di,dx
 	sub	ax,03ch
 	jc	date_year_divide
 	mov	bx,05b5h
 	div	bx
 	inc	ax
-	db	02bh,0c8h				; sub cx,ax (original encoding)
-	db	08bh,0f8h				; mov di,ax (original encoding)
+	sub	cx,ax
+	mov	di,ax
 date_year_divide:
-	db	08bh,0c1h				; mov ax,cx (original encoding)
-	db	033h,0d2h				; xor dx,dx (original encoding)
+	mov	ax,cx
+	xor	dx,dx
 	mov	bx,016dh
 	div	bx
 	or	dx,dx
@@ -7009,10 +7018,10 @@ date_year_divide:
 	dec	ax
 	mov	dx,016dh
 date_year_ready:
-	db	08bh,0f0h				; mov si,ax (original encoding)
+	mov	si,ax
 	add	ax,07bch
 	push	ax
-	db	033h,0dbh				; xor bx,bx (original encoding)
+	xor	bx,bx
 	mov	cx,0ch
 date_find_month:
 	cmp	dx,month_starts_offset[bx]
@@ -7024,8 +7033,8 @@ date_month_ready:
 	push	bx
 	dec	bx
 	shl	bx,1
-	db	08bh,0c6h				; mov ax,si (original encoding)
-	db	08bh,0cfh				; mov cx,di (original encoding)
+	mov	ax,si
+	mov	cx,di
 	cmp	bx,02h
 	jnz	date_day_ready
 	test	ax,03h
@@ -7047,7 +7056,7 @@ date_day_ready:
 ; February length uses year modulo four; AL=0 success, FFh invalid.
 dos_fn_set_date:
 	mov	byte ptr .dos_saved_ax,0ffh
-	db	08bh,0c1h				; mov ax,cx (original encoding)
+	mov	ax,cx
 	sub	ax,07bch
 	cmp	ax,077h
 	ja	set_date_return
@@ -7065,25 +7074,25 @@ set_date_check_month:
 	jc	set_date_return
 	cmp	month_days_offset[bx],dl
 	jc	set_date_return
-	db	003h,0dbh				; add bx,bx (original encoding)
+	add	bx,bx
 	mov	ax,month_starts_offset[bx]
 	xor	dh,dh
-	db	003h,0c2h				; add ax,dx (original encoding)
+	add	ax,dx
 	push	ax
-	db	08bh,0c1h				; mov ax,cx (original encoding)
+	mov	ax,cx
 	sub	ax,07bah
 	mov	bx,016dh
 	mul	bx
 	pop	bx
-	db	003h,0c3h				; add ax,bx (original encoding)
-	db	08bh,0c8h				; mov cx,ax (original encoding)
+	add	ax,bx
+	mov	cx,ax
 	sub	ax,0316h
 	jc	set_date_store
 	mov	bx,05b5h
-	db	02bh,0d2h				; sub dx,dx (original encoding)
+	sub	dx,dx
 	div	bx
 	inc	ax
-	db	003h,0c8h				; add cx,ax (original encoding)
+	add	cx,ax
 set_date_store:
 	les	bx,dword ptr .native_clock_pointer
 	db	026h					; ES override; original addressing
@@ -7207,14 +7216,14 @@ select_dos_fcb:
 	mov	.dos_fcb_attribute,al
 dos_fcb_selected:
 	mov	.dos_fcb_offset,si
-	db	08bh,0feh				; mov di,si (original encoding)
-	db	08bh,0d6h				; mov dx,si (original encoding)
+	mov	di,si
+	mov	dx,si
 	ret
 
 ; Test the internal device marker: FCB bytes +10h/+11h equal and bit 7 set.
 ; AL=FFh and ZF clear for a device; otherwise AL=0 and ZF set.
 check_device_fcb:
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	mov	cx,010h[bx]
 	cmp	ch,cl
 	jnz	device_fcb_result
@@ -7241,7 +7250,7 @@ normalize_fcb_character:
 store_fcb_character:
 	stosb
 	loop	normalize_fcb_character
-	db	033h,0c0h				; xor ax,ax (original encoding)
+	xor	ax,ax
 	stosw
 	stosw
 	ret
@@ -7264,7 +7273,7 @@ initialize_fcb_slot:
 	mov	.dos_fcb_slot,si
 	mov	ax,ds
 	mov	es,ax
-	db	08bh,0feh				; mov di,si (original encoding)
+	mov	di,si
 	push	ds
 	lds	si,dword ptr .dos_fcb_offset
 	push	si
@@ -7359,7 +7368,7 @@ multiply_record_offset:
 	xchg	ax,bx
 	mul	cx
 	pop	dx
-	db	003h,0c2h				; add ax,dx (original encoding)
+	add	ax,dx
 	xchg	ax,bx
 	ret
 
@@ -7395,27 +7404,27 @@ divide_record_offset:
 	jcxz	divide_record_zero
 	cmp	cx,01h
 	jnz	divide_record_general
-	db	08bh,0d3h				; mov dx,bx (original encoding)
-	db	033h,0c9h				; xor cx,cx (original encoding)
+	mov	dx,bx
+	xor	cx,cx
 	ret
 divide_record_general:
-	db	033h,0d2h				; xor dx,dx (original encoding)
+	xor	dx,dx
 	xchg	ax,bx
 	push	ax
 	div	cx
-	db	08bh,0f8h				; mov di,ax (original encoding)
+	mov	di,ax
 	mul	cx
 	pop	dx
-	db	02bh,0d0h				; sub dx,ax (original encoding)
-	db	08bh,0c3h				; mov ax,bx (original encoding)
+	sub	dx,ax
+	mov	ax,bx
 	div	cx
-	db	08bh,0cah				; mov cx,dx (original encoding)
-	db	08bh,0d7h				; mov dx,di (original encoding)
+	mov	cx,dx
+	mov	dx,di
 	ret
 divide_record_zero:
 	mov	ax,0ffffh
-	db	08bh,0d8h				; mov bx,ax (original encoding)
-	db	08bh,0d0h				; mov dx,ax (original encoding)
+	mov	bx,ax
+	mov	dx,ax
 	ret
 
 ; Prepare random block transfer from DOS FCB record size and random record.
@@ -7451,7 +7460,7 @@ random_record_ready:
 	mov	.transfer_start_offset,ax
 	mov	.transfer_start_high,bx
 	push	ax
-	db	08bh,0d3h				; mov dx,bx (original encoding)
+	mov	dx,bx
 	add	ax,.transfer_size_offset
 	adc	bx,00h
 	sub	ax,01h

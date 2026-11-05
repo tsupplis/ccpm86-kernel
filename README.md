@@ -305,6 +305,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 | `make -C commands/sysdisk check` | Byte-identical SYSDISK reconstruction |
 | `make check` | SYSDISK identity, source-built boot identity, every packaged file, sizes |
 | `make check-graphics` | Assembled graphics guards and adapter gates; PCE VGA/EGA/CGA pixels, palettes, graphics text/TTY and restoration |
+| `make check-text40` | Booted 40-column text tests on CGA/EGA/VGA: cursor, wrapping, scrolling and restoration |
 | `make check-qemu` | Boot, RTC, status, switching, HELP, SDIR, SYSDISK, SETDEF, DREDIX, windows |
 | `make check-paging` | TYPE, SDIR, DIR.RSP and DIR.CMD paging, resume, Ctrl-C and default-off |
 | `make test` | Launch PCE |
@@ -313,7 +314,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 
 [Source pedigree](http://www.cpm.z80.de) · [License correspondence](LICENSE.md).
 
---
+---
 
 ## Companion projects
 
@@ -332,7 +333,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 | [cpm86-make](https://github.com/tsupplis/cpm86-make)   | A simple submit based make tool for CP/M-86 |
 | [pcdos11-hacking](https://github.com/tsupplis/pcdos11-hacking) | PC-DOS 1.1 distribution, tools and notes |
 
---
+---
 
 ## License
 

@@ -4,10 +4,12 @@ cpu 8086
 org 100h
 %ifdef CGA
 %define MODE_COUNT 3
+%define NO_VGA
 %elifdef EGA
-%define MODE_COUNT 3
-%else
 %define MODE_COUNT 6
+%define NO_VGA
+%else
+%define MODE_COUNT 10
 %endif
 start:
     push cs
@@ -32,15 +34,17 @@ next_mode:
     mov [actual],ax
     mov [actualcx],cx
     mov [actualdx],dx
-%ifndef CGA
     cmp al,[mode]
     jne failed
-%endif
+    mov [columns],ah
     mov al,[mode]
     mov bp,640
     mov di,200
+    cmp al,0fh
+    je height350
     cmp al,10h
     jne not350
+height350:
     mov di,350
 not350:
     cmp al,11h
@@ -59,6 +63,12 @@ not480:
 narrow:
     mov bp,320
 dimensions:
+    mov ax,bp
+    shr ax,1
+    shr ax,1
+    shr ax,1
+    cmp al,[columns]
+    jne failed
     mov byte [stage],3
     xor bx,bx
     xor cx,cx
@@ -87,7 +97,19 @@ dimensions:
     mov [actual],ax
     mov [actualcx],cx
     mov [actualdx],dx
-%ifndef CGA
+    mov byte [stage],41
+    mov ah,0dh
+    int 10h
+    mov [actual],ax
+    cmp al,1
+    jne failed
+    mov byte [stage],43
+    mov ah,0dh
+    int 10h
+    mov [actual],ax
+    cmp al,1
+    jne failed
+    mov byte [stage],42
     inc cx
     mov ax,0c00h
     int 10h
@@ -95,6 +117,12 @@ dimensions:
     mov [actualcx],cx
     mov [actualdx],dx
     dec cx
+    mov byte [stage],44
+    mov ah,0dh
+    int 10h
+    mov [actual],ax
+    cmp al,1
+    jne failed
     inc dx
     mov ax,0c00h
     int 10h
@@ -102,6 +130,13 @@ dimensions:
     mov [actualcx],cx
     mov [actualdx],dx
     dec dx
+    mov byte [stage],45
+    mov ah,0dh
+    int 10h
+    mov [actual],ax
+    cmp al,1
+    jne failed
+    mov byte [stage],46
     mov bh,1
     mov ax,0c00h
     int 10h
@@ -116,7 +151,6 @@ dimensions:
     mov [actualdx],dx
     cmp al,1
     jne failed
-%endif
     mov byte [stage],5
     cmp byte [mode],13h
     je packed
@@ -131,6 +165,22 @@ dimensions:
     mov [actualcx],cx
     mov [actualdx],dx
     cmp al,0
+    jne failed
+    cmp byte [mode],0fh
+    jne character
+    ; Video and intensity are independent plane bits in monochrome mode.
+    mov byte [stage],54
+    mov ax,0c05h
+    int 10h
+    mov ah,0dh
+    int 10h
+    cmp al,5
+    jne failed
+    mov ax,0c84h
+    int 10h
+    mov ah,0dh
+    int 10h
+    cmp al,1
     jne failed
     jmp character
 packed:
@@ -173,9 +223,8 @@ packed:
     cmp cl,49
     jne failed
 character:
-%ifdef CGA
-    jmp restore_text
-%endif
+    cmp byte [mode],6
+    jbe palette_done
     mov byte [stage],6
     cmp byte [mode],13h
     je palette_done
@@ -258,6 +307,25 @@ restore_text:
     int 21h
     jmp next_mode
 passed:
+%ifdef NO_VGA
+    mov ax,0fh
+    int 10h
+    mov ah,0fh
+    int 10h
+    cmp ax,5003h
+    jne failed
+%else
+    mov byte [stage],8
+    mov dx,native_mono
+    mov ah,9
+    int 21h
+    mov ah,0fh
+    int 10h
+    cmp ax,500fh
+    jne failed
+    mov ax,3
+    int 10h
+%endif
     cmp byte [passes],MODE_COUNT
     jne failed
     mov dx,success
@@ -273,10 +341,11 @@ finish:
 %ifdef CGA
 modes: db 4,5,6,0
 %elifdef EGA
-modes: db 0dh,0eh,10h,0
+modes: db 4,5,6,0dh,0eh,10h,0
 %else
-modes: db 0dh,0eh,10h,11h,12h,13h,0
+modes: db 4,5,6,0dh,0eh,0fh,10h,11h,12h,13h,0
 %endif
+columns: db 0
 mode: db 0
 stage: db 0
 passes: db 0
@@ -286,3 +355,5 @@ actualdx:dw 0
 progress: db 'MODE PASS',13,10,'$'
 success: db 'GRAPHICS PASS',13,10,'$'
 error: db 'GRAPHICS FAIL',13,10,'$'
+
+native_mono: db 27,"a",0fh,"$"

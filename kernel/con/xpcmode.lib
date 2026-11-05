@@ -139,9 +139,11 @@ pc_cursor_set:
         jbe pc_cursor_row
         mov dh,vs_text_last
 pc_cursor_row:
-        cmp dl,crt_cols-1
+        call eg_text_columns
+        dec al
+        cmp dl,al
         jbe pc_cursor_column
-        mov dl,crt_cols-1
+        mov dl,al
 pc_cursor_column:
         call put_cursor
         mov vs_mx,0
@@ -311,15 +313,20 @@ pc_scroll_console:
         mov ax,pc_sc_bottom
         cmp ch,vs_text_last
         ja pc_scroll_empty
-        cmp cl,crt_cols
+        push ax
+        call eg_text_columns
+        mov dl,al
+        pop ax
+        cmp cl,dl
         jae pc_scroll_empty
         cmp ah,vs_text_last
         jbe pc_scroll_bottom
         mov ah,vs_text_last
 pc_scroll_bottom:
-        cmp al,crt_cols-1
+        dec dl
+        cmp al,dl
         jbe pc_scroll_right
-        mov al,crt_cols-1
+        mov al,dl
 pc_scroll_right:
         cmp ch,ah
         ja pc_scroll_empty
@@ -355,8 +362,10 @@ pc_scroll_count:
         mov dl,byte ptr pc_sc_top
         call point_cursor
         mov pc_sc_last,di
+        call eg_text_columns
+        shl ax,1
+        mov cx,ax
         mov ax,pc_sc_count
-        mov cx,crt_cols*2
         mul cx
         mov pc_sc_step,cx
         cmp pc_sc_direction,6
@@ -931,9 +940,10 @@ pc_clock_phase dw 0
 ; BX=screen, AX=result in cells. Preserve DX used by cursor/erase callers.
 pc_text_cells:
         push dx
+        call eg_text_columns
+        mov dl,al
         mov al,vs_text_last
         inc al
-        mov dl,crt_cols
         mul dl
         pop dx
         ret

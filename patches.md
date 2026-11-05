@@ -513,3 +513,61 @@ BIOS-format correction: CP/M INT 13h/AH=05h reads the sector-ID count from
 the INT 1Eh table. DCOPY now selects eight/nine there for each format call,
 then restores nine for geometry probes without changing returned AX/CF.
 The regression harness checks this count; native XIOS formatting is unchanged.
+
+## DIR combined options and resident filter consistency
+
+DIR.CMD and DIR.RSP now consume each P/S/Gn option in a token. Previously
+[SP] enabled S but silently ignored P, while [PG0] was rejected. Compact
+options in either order, whitespace/comma tokens and separate bracket groups
+are accepted; Gn requires digits in the range 0..15. Unknown letters and
+filename-style option extensions are rejected instead of partially applied.
+
+The resident RSP's S filter is also aligned with the documented standalone
+policy: system files only, rather than normal plus system files. Its page,
+abort, user and filter state resets at every queue request. No kernel API changes.
+
+The native option matrix exercises DIR.RSP/DIR.CMD and unchanged SDIR/TYPE on
+disposable disks. TYPE has one paging setting and accepts it with an inline
+password; SDIR retains its space/comma-separated keyword lists and modifiers.
+
+## CGA graphics services and truthful mode queries
+
+- DOS INT 10h now uses the existing guarded graphics packet/ROM path in
+  modes 04h/05h/06h for cursor, character read/write, teletype, scrolling and
+  pixel operations. Page-zero, foreground-owner and coordinate checks apply.
+  AH=0Bh keeps its existing palette ABI; EGA palette/DAC packets are rejected.
+- XIOS function 30 CH=4 returns the actual native mode and 40/80 columns.
+  DOS dispatch and AH=0Fh use it. CH=1 retains its historical behavior,
+  including CDOS's graphics-as-text result, for existing native callers.
+- Graphics regressions cover CGA modes on CGA, EGA and VGA, exact mode/column
+  queries, pixels/XOR, bounds/pages, character readback, TTY cursor advance,
+  scrolling and return to text. Assembled-XIOS tests cover cursor/rectangle
+  bounds, ownership, raw queries and unchanged legacy queries.
+- That CGA patch did not add EGA monochrome; the subsequent VGA-only
+  extension is documented below.
+
+## 40-column text
+
+BIOS text modes 00h/01h are now implemented as exclusive foreground screens,
+following CDOS's ownership pattern. Native XIOS selectors 02h/03h and ESC a
+parameters 00h/01h select them too. The captured BIOS configures each adapter;
+native output, cursor addressing, repeat counts, wrapping and line operations
+use 40 columns. Returning to normal text or leaving DOS restores the saved
+80-column image and cursor. CGA retrace-synchronized backward copies now
+keep the source pointer consistent when a burst starts, fixing native line
+insertion. No EGA monochrome graphics mode is added.
+
+`make check-text40` runs booted CGA/EGA/VGA fixtures, including native-only
+CCP/M selection, output and restoration. The existing graphics regression
+suite remains separate.
+
+## EGA monochrome mode through VGA
+
+Mode 0Fh (640×350 monochrome) follows the existing guarded BIOS graphics
+path. Native mode B0h, ESC a parameter 0Fh and DOS INT 10h expose the same
+mode. Capability bit 3 advertises it only when VGA is detected. Existing
+mode numbers and capability bits keep their meaning. Pixel bounds, video
+and intensity bits, XOR, graphics text and restoration are covered by the
+booted VGA regression; CGA and EGA reject this request unchanged.
+
+Physical EGA monochrome monitor startup/routing remains deferred.

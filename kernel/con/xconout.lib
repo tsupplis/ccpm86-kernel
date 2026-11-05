@@ -354,6 +354,9 @@ get_set_screen:
 	jae	screen_bad_param	; skip if too high
 
 	call	point_vs		; bx -> vs_
+	cmp	ch,4
+	jne	$+5
+	jmp	eg_screen_query
 	cmp	ch,3
 	jnz	screen_regular
 	jmp	screen_ega_palette
@@ -487,8 +490,10 @@ screen_ega_palette:
 	jae	screen_ega_bad
 	cmp	vs_screen_mode,50h
 	jb	screen_ega_unsupported
+	cmp	vs_screen_mode,0B0h
+	ja	screen_ega_unsupported
 	cmp	vs_screen_mode,0A0h
-	jae	screen_ega_unsupported
+	je	screen_ega_unsupported
 	mov	al,vs_bit
 	test	graphic_bits,al
 	jz	screen_ega_unsupported
@@ -506,7 +511,7 @@ screen_ega_unsupported:
 	jmp	screen_not_sup
 
 alpha_vector	dw	screen_bad_param, general_alpha
-		dw	screen_not_sup, screen_not_sup
+		dw	black_white_40, color_40
 		dw	black_white_80, color_80
 		dw	screen_not_sup, screen_not_sup
 		dw	screen_not_sup, screen_not_sup
@@ -519,7 +524,7 @@ graph_vector	dw	screen_bad_param, general_graph
 		dw	black_white_640, ega_640_350
 		dw	eg_320_200, eg_640_200
 		dw	eg_vga_mono, eg_vga_color
-		dw	eg_vga_256, screen_not_sup
+		dw	eg_vga_256, eg_ega_mono
 		dw	screen_not_sup, screen_not_sup
 		dw	screen_not_sup, screen_not_sup
 
@@ -534,6 +539,14 @@ general_alpha:
 	jz	alpha_variables
 	call	enhanced_alpha
 alpha_variables:
+	cmp	text40_active,0
+	je	alpha_width_ready
+	mov	ax,text40_cursor
+	mov	vs_cursor,ax
+alpha_width_ready:
+	mov	text40_active,0
+	mov	vs_width,80
+	or	vs_mode,match_bit
 	mov	vs_screen_mode,ch	; save the new mode
 	mov	al,vs_bit
 	not	al
@@ -543,6 +556,25 @@ alpha_variables:
 	call	z_sl_blank		; restore status line
 	sub	ax,ax			; successful return code
 	ret
+
+; Like CDOS, 40-column text owns the foreground display exclusively.
+; Keep the native 80-column backing image for restoration, and operate on
+; the physical 40-column screen until the owner selects normal text again.
+black_white_40:
+color_40:
+	cmp	text40_active,0
+	jne	text40_saved
+	mov	ax,vs_cursor
+	mov	text40_cursor,ax
+text40_saved:
+	call	general_graph
+	mov	vs_width,40
+	and	vs_mode,not match_bit
+	mov	vs_cursor,0
+	mov	text40_active,1
+	mov	al,ch
+	sub	al,2
+	jmp	enhanced_graph_init
 
 black_white_80:
 	mov	ax,002Dh		; video mode / color sel
@@ -571,6 +603,7 @@ legacy_alpha_init:
 	jne	eg_bda_alpha_mode
 	mov	al,2
 eg_bda_alpha_mode:
+	mov	enhanced_text,al	; restoration must match the requested text mode
 	mov	ah,40
 	cmp	al,2
 	jb	eg_bda_alpha_ready
@@ -873,12 +906,21 @@ put_cursor:
 	test	vs_mode,cursor_bit
 	jz	put_cur2	; skip if cursor off
 
+	cmp	vs_screen_mode,2
+	je	put_cur_40
+	cmp	vs_screen_mode,3
+	jne	put_cur_window
+put_cur_40:
+	call	point_cursor
+	jmp	put_cur_address
+put_cur_window:
 	call	in_window	; if cursor outside
 	jnc	put_cur1	;   then just
 	jmp	old_cursor_off	;   turn it off
 put_cur1:
 	call	point_cursor	; ax = byte pointer
 	add	ax,vs_correct
+put_cur_address:
 	xchg	ax,cx		; cx = cursor pointer
 	mov	al,cursor_hi	; set cursor code
 	call	video_out	; set crt registers
@@ -929,7 +971,10 @@ endif	; if at the bottom
 vc_lf1:
 	sub	ax,ax		; zero offset from
 	mov	di,ax		;   the top left
-	mov	si,crt_cols*2	; one row down
+	call	eg_text_columns
+	shl	ax,1
+	mov	si,ax
+	xor	ax,ax		; zero offset from top
 	jmp	z_line		; delete one line to scroll
 
 
@@ -943,7 +988,8 @@ vc_out_bs:
 
 	mov	dl,vs_width	; if at left, wrap
 	sub	dx,0101h	; up one, left one
-	jns	put_cursor	; if not at top
+	js	$+5
+	jmp	put_cursor	; if not at top
 vc_bs1:
 	ret			; if top left, bag it
 
@@ -990,7 +1036,8 @@ endif	;   then set cursor
 ;	esc C  -  cursor forward
 z_forward:
 	inc	dl		; next column right
-	cmp	dl,crt_cols	; if not already at right,
+	call	eg_text_columns
+	cmp	dl,al		; physical right edge
 	jb	z_cursor	;   then set cursor
 	ret
 
@@ -1093,13 +1140,29 @@ if PCMODE_XIOS
 	dec ax
 	shl ax,1
 	mov di,ax
-	sub ax,crt_cols*2
+	push cx
+	mov cx,ax
+	call eg_text_columns
+	shl ax,1
+	sub cx,ax
+	mov ax,cx
+	pop cx
 	mov si,ax
 	pop ax
 endif
 if not PCMODE_XIOS
-	mov	di,(crt_size-1)*2	; end of screen
-	mov	si,(crt_size-crt_cols-1)*2
+	push ax
+	call eg_text_columns
+	mov si,ax
+	mov di,crt_rows
+	mul di
+	dec ax
+	shl ax,1
+	mov di,ax
+	shl si,1
+	sub ax,si
+	mov si,ax
+	pop ax
 endif
 	std			; backwards move
 	jmps	z_line		; shared code
@@ -1109,7 +1172,11 @@ z_delete_line:
 	mov	dl,0
 	call	point_cursor	; di -> line start
 	mov	si,di
-	add	si,crt_cols*2	; next row down
+	push	ax
+	call	eg_text_columns
+	shl	ax,1
+	add	si,ax
+	pop	ax
 
 ;	external entry point
 ;	entry:	si,di set up for movsw
@@ -1119,18 +1186,25 @@ if PCMODE_XIOS
 	push ax
 	call pc_text_cells
 	mov cx,ax
-	sub cx,crt_cols
+	call eg_text_columns
+	sub cx,ax
 	pop ax
 endif
 if not PCMODE_XIOS
-	mov	cx,buffer_cells-crt_cols
+	push ax
+	call eg_text_columns
+	mov cx,crt_rows-1
+	mul cx
+	mov cx,ax
+	pop ax
 endif
 	sub	cx,ax		; cx = character count
 	jbe	zline1		; skip if nothing to move
 
 	call	z_movsw		; movsw in vc_segment
 z_line1:
-	mov	cx,crt_cols	; one line's worth
+	call	eg_text_columns
+	mov	cx,ax		; one line's worth
 	jmp	erase		; blank one line
 
 ;	repeat movsw in current screen segment
@@ -1154,7 +1228,11 @@ z_movsw1:
 ;	esc N  -  delete one character
 z_delete_char:
 	call	point_cursor	; point to current char
-	mov	cx,crt_cols-1	; last column
+	push	ax
+	call	eg_text_columns
+	mov	cx,ax
+	dec	cx
+	pop	ax
 	sub	cl,dl		; cx = chars to line end
 	jz	z_del_ch1	; skip if at line end
 
@@ -1184,7 +1262,8 @@ endif	; maximum allowable row
 	ret			; advance to col set
 
 z_set2:
-	mov	al,crt_cols-1	; maximum allowable column
+	call	eg_text_columns
+	dec	al			; maximum allowable column
 	call	z_limit
 	mov	dl,cl		; dx = new cursor location
 	call	restore_state	; back to normal
@@ -1383,7 +1462,7 @@ z_video_enhanced_scan:
 	je	z_video_set
 	inc	si
 	add	cl,10h
-	cmp	cl,0B0h
+	cmp	cl,0C0h
 	jb	z_video_enhanced_scan
 	ret				; unsupported enhanced mode, no alias
 z_video_legacy:
@@ -1396,7 +1475,7 @@ z_video_set:
 	mov	dl,vs_number	; vc number
 	jmp	get_set_screen	; just like a back door
 
-screen_table	db	00h,00h,04h,05h
+screen_table	db	02h,03h,04h,05h
 		db	20h,30h,40h,00h
 
 
@@ -1631,6 +1710,9 @@ new_mon3:
 ;	called from new_window, new_monitor and general_alpha
 
 update_all:
+	cmp	text40_active,0
+	je	$+3
+	ret
 if PCMODE_XIOS
 	call pc_status_refresh
 endif
@@ -2236,7 +2318,8 @@ point_vs:
 ;		di = 2*ax
 
 point_cursor:
-	mov	al,176		; 256 - 80 = 176
+	call	eg_text_columns
+	neg	al			; 256 minus physical column count
 	mul	dh
 	neg	ax		; ax = -176*row
 	add	ax,dx		; ax = 80*row + col
@@ -2321,6 +2404,9 @@ erase_crt3:
 ;	entry:	bx -> vs_
 
 copy_full_top:
+	cmp	text40_active,0
+	je	$+3
+	ret
 	call	check_full_top	; if not full top screen
 	jnz	copy_f_done	;   then skip
 ;
@@ -2362,6 +2448,10 @@ put_crt_s:
 	push bx ! push dx ! push es
 	mov	dx,vs_crt_seg	; get our segment
 	mov	es,dx		;   and set it up
+	cmp	vs_screen_mode,2
+	je	put_s_alpha
+	cmp	vs_screen_mode,3
+	je	put_s_alpha
 	cmp	graphic_bits,0
 	jz	put_s_alpha	; if alpha, continue
 	cmp	dx,color_seg
@@ -2412,6 +2502,7 @@ put_s_all:
 ;	finished with the store
 ;
 put_s_done:
+	cld			; backward line insertion has finished
 	sti			; allow interrupts
 	pop es ! pop dx ! pop bx
 	ret
@@ -2430,6 +2521,10 @@ put_crt_m:
 	push	bx
 	push	dx
 	push	bp
+	cmp	cs:vs_screen_mode,2
+	je	put_m_alpha
+	cmp	cs:vs_screen_mode,3
+	je	put_m_alpha
 	cmp	cs:graphic_bits,0
 	jz	put_m_alpha	; if alpha, continue
 	cmp	cs:vs_crt_seg,color_seg
@@ -2460,9 +2555,7 @@ put_m1:
 	test	al,hrt
 	jz	put_m1		; wait for fresh hrt
 put_m2:
-	lodsw			; get crt character
-	dec	si
-	dec	si		; in case we burst
+	mov	ax,[si]		; leave source unchanged if retrace starts a burst
 	test	bh,out_sync	; do we wait on ouput?
 	jz	put_m5		;   if not, skip
 	xchg	ax,bp		; save char in bp
@@ -2482,8 +2575,15 @@ put_m4:
 	xchg	ax,bp		; char back to ax
 put_m5:
 	stosw			; put it out
-	inc	si		; now it's safe to inc
-	inc	si
+	pushf
+	pop	bp
+	test	bp,0400h		; source must follow the string direction
+	jnz	put_m_reverse
+	add	si,2
+	jmp	put_m_advance
+put_m_reverse:
+	sub	si,2
+put_m_advance:
 	loop	put_m_top	; more if you've got 'em
 	jmps	put_m_done	; done if not
 
@@ -2533,6 +2633,10 @@ put_crt_c:
 	push	es
 	push	dx
 	push	bx
+	cmp	vs_screen_mode,2
+	je	put_c_alpha
+	cmp	vs_screen_mode,3
+	je	put_c_alpha
 	cmp	graphic_bits,0
 	jz	put_c_alpha	; if alpha, continue
 	cmp	vs_crt_seg,color_seg
@@ -2623,6 +2727,8 @@ graphic_bits	db	0	; which vc's in graphics
 enhanced_video db 0	; active color EGA/VGA detected at startup
 enhanced_ega db 0	; 128 KB or more, native 640x350x16 permitted
 enhanced_text db 3	; BIOS text mode to restore
+text40_cursor dw 0	; cursor in saved 80-column image
+text40_active db 0	; exclusive 40-column text, not a window image
 bios_graphics db 0	; enhanced hardware currently in graphics
 video_bios_mask db 0
 		 db 0		; word alignment
