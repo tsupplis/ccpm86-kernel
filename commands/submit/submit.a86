@@ -274,7 +274,6 @@ skiparg:
 
 filldone:
 	mov numargs,di
-	call crlf
 
 	mov cmdbuf,maxcmdlen		;get first command
 	mov dx,offset cmdbuf
@@ -306,58 +305,11 @@ mpm:	; INTERFACE ROUTINE FOR SYSTEM ENTRY POINTS
 topofcmdloop:	; LOOP FOREVER
 ;===========
 
-	;
-	; print CR,LF if we just sent a command
-	;
-
-	    cmp cmdsent,false ! je noclearline
-		mov cmdsent,false
-		call crlf
-
-noclearline:
-
-	;
-	; set up and print user prompt
-	;
-
-		; get current default disk
-
-
-	    call getdisk
-	    mov defdisk,al
-
-		; get current default user #
-		; this call should be made on every
-		; loop in case the 'USER' program
-		; has changed the default user number
-
-	    call getuser
-	    mov defuser,al
-
-		;create user part of prompt string
-
-	    mov promptutens,13
-	    mov promptuones,13
-	    test al,al			;don't print user 0
-	    jz prprompt
-	      mov promptuones,'0'
-	      cmp al,10 ! jb ones
-	        mov promptutens,'1'
-		sub al,10
-ones:	    add promptuones,al
-prprompt:
-		; create disk part of prompt string
-
-	    mov al,'A' ! add al,defdisk
-	    mov promptdisk,al	
-
-		; write user prompt
-
-	    mov dx,offset prompt
-	    cmp promptutens,13 ! jne writeprompt
-		mov dx,offset promptutens
-writeprompt:
-	    call print_ds_string
+	; Refresh defaults even while echo is disabled: file reads restore user.
+	call getdisk
+	mov defdisk,al
+	call getuser
+	mov defuser,al
 
 	;
 	; copy command to cli buffer, make upper case and
@@ -438,36 +390,76 @@ writeprompt:
 	    dec cx
 	    ret
 
-	echo_cmd:
-	    mov si, offset clicmd	;print command line after
-	    mov cx, clicmdlen		;parameter substitution
-	    call printcmdline
+echo_cmd:
+	; Interpret ECHO only when executing this line, never during lookahead.
+	mov si,offset clicmd
+	mov di,offset echoword
+	call matchword
+	jc normal_echo
+	push si
+	mov di,offset offcmd
+	call matchword
+	jc echo_try_on
+	cmp byte ptr [si],0
+	jne echo_try_on
+	pop si
+	mov echo_enabled,false
+	jmp getnxtcmd
+echo_try_on:
+	pop si
+	mov di,offset oncmd
+	call matchword
+	jc echo_bad
+	cmp byte ptr [si],0
+	jne echo_bad
+	mov echo_enabled,true
+	jmp getnxtcmd
+echo_bad:
+	mov dx,offset echoerr
+	call print_string
+	jmp submitabort
+normal_echo:
+	cmp echo_enabled,false
+	je silent_command
+	cmp clicmd,'$'		; directives are always silent
+	je silent_command
+	cmp cmdsent,false
+	je echo_prompt
+	call crlf
+echo_prompt:
+	mov cmdsent,false
+	mov al,defuser
+		;create user part of prompt string
 
-	;
-	; echo newline
-	;
+	    mov promptutens,13
+	    mov promptuones,13
+	    test al,al			;don't print user 0
+	    jz prprompt
+	      mov promptuones,'0'
+	      cmp al,10 ! jb ones
+	        mov promptutens,'1'
+		sub al,10
+ones:	    add promptuones,al
+prprompt:
+		; create disk part of prompt string
 
-	    call crlf
+	    mov al,'A' ! add al,defdisk
+	    mov promptdisk,al
 
-	;
-	; make sure not a null command
-	;
+		; write user prompt
 
-	    lea bx,cmd
-	    cmp blen,0 ! je gonextcmd
-dblank:
-	    cmp byte ptr [bx],' ' ! je zapblank
-	    cmp byte ptr [bx],9 ! jne noblanks	;no tabs
-zapblank:
-	    inc bx ! dec blen ! jmps dblank
-noblanks:
-	    lea ax,cmd ! cmp ax,bx ! je chksemi
-			; remove leading blanks
-		push ds ! pop es ! xor ch,ch ! mov cl,blen
-		mov di,ax ! mov si,bx ! cld ! rep movsb
-		mov bx,ax
-chksemi:		; see if line starts with semicolon
-		cmp byte ptr [bx],';' ! je gonextcmd
+	    mov dx,offset prompt
+	    cmp promptutens,13 ! jne writeprompt
+		mov dx,offset promptutens
+writeprompt:
+	    call print_ds_string
+
+	mov si,offset clicmd
+	mov cx,clicmdlen
+	call printcmdline
+	call crlf
+silent_command:
+	lea bx,cmd		; reader already trimmed and skipped empty lines
 
 	;
 	; see if disk change - if 'X:' change def disk to X
@@ -626,8 +618,6 @@ include_tail:
     mov cx,di ! sub cx,offset cmd ! dec cx
     mov clicmdlen,cx ! inc cx
     mov si,offset cmd ! mov di,offset clicmd ! rep movsb
-			    mov dx,offset includemsg
-			    call print_string
 			    
 			    jmps clicall	; send submit command
 
@@ -644,8 +634,6 @@ notinclude:
 		    jnz notglobcmd
 
 		        mov fix_parent,true	;for d:, USER & PRINTER cmds
-			mov dx,offset globalmsg
-			call print_string
 			jmp getnxtcmd
 notglobcmd:
 		    ; check for '$local' option
@@ -657,8 +645,6 @@ notglobcmd:
 		    jnz notlocal
 
 		        mov fix_parent,false	;for d:, USER & PRINTER cmds
-			mov dx,offset localmsg
-			call print_string
 			jmp getnxtcmd
 notlocal:
 
@@ -778,20 +764,84 @@ read_another:
 	    pop di
 	    cmp bx,0			;non-zero or eof error
 	    jz not_error
+	    cmp byte ptr 1[di],0
+	    jne done_ok
 	    ret
 not_error:
 	    cmp byte ptr [si],0ah ! jne not_lf
 		jmps done_ok
 not_lf:	    cmp byte ptr [si],0dh ! je done_ok
-
+	    cmp byte ptr 1[di],0
+	    jne keep_character
+	    cmp byte ptr [si],' '
+	    je read_another
+	    cmp byte ptr [si],9
+	    je read_another
+	    cmp byte ptr [si],';'
+	    jne keep_character
+; Discard the entire comment, even beyond one command buffer/disk record.
+read_comment:
+	    push di
+	    call readchar
+	    pop di
+	    or bx,bx
+	    jnz comment_eof
+	    cmp byte ptr [si],0dh
+	    je read_another
+	    cmp byte ptr [si],0ah
+	    jne read_comment
+	    jmp read_another
+comment_eof:
+	    ret
+keep_character:
 	    inc byte ptr 1[di]		;not cr, inc buffer count
 	    inc si			;inc char position
 	    jmp read_another
 done_ok:
-	    cmp byte ptr 1[di],0	;no characters read in buffer 
-	    jz read_another		;skip leading cr's and lf's
-	    mov byte ptr [si],0
-	    mov bx,0 ! ret
+	; Trim spaces/tabs before echo, substitution, builtins and CLI copying.
+	mov byte ptr [si],0
+trim_right:
+	cmp byte ptr 1[di],0
+	je skip_line
+	cmp byte ptr 0ffffh[si],' '
+	je trim_last
+	cmp byte ptr 0ffffh[si],9
+	jne trim_left_start
+trim_last:
+	dec si
+	dec byte ptr 1[di]
+	mov byte ptr [si],0
+	jmps trim_right
+trim_left_start:
+	lea bx,2[di]
+trim_left:
+	cmp byte ptr [bx],' '
+	je trim_first
+	cmp byte ptr [bx],9
+	jne check_comment
+trim_first:
+	inc bx
+	dec byte ptr 1[di]
+	jmps trim_left
+check_comment:
+	cmp byte ptr [bx],';'
+	je skip_line
+	push di
+	mov si,bx
+	inc di ! inc di
+trim_copy:
+	mov al,[si]
+	mov [di],al
+	inc si ! inc di
+	or al,al
+	jnz trim_copy
+	pop di
+	xor bx,bx
+	ret
+skip_line:
+	mov byte ptr 1[di],0
+	lea si,2[di]
+	jmp read_another
 
 ;========
 readchar:
@@ -848,6 +898,44 @@ read_ret:
 ;*	SUBROUTINES
 ;*
 ;*****************************************************
+
+; Match a case-insensitive word at DS:SI against a zero-terminated DS:DI.
+; CF clear on match; SI advances past following spaces/tabs.
+matchword:
+	mov al,[si]
+	mov ah,[di]
+	or ah,ah
+	jz match_end
+	cmp al,'a'
+	jb match_compare
+	cmp al,'z'
+	ja match_compare
+	sub al,20h
+match_compare:
+	cmp al,ah
+	jne match_fail
+	inc si ! inc di
+	jmps matchword
+match_end:
+	or al,al
+	jz match_ok
+	cmp al,' '
+	je match_space
+	cmp al,9
+	jne match_fail
+match_space:
+	inc si
+	mov al,[si]
+	cmp al,' '
+	je match_space
+	cmp al,9
+	je match_space
+match_ok:
+	clc
+	ret
+match_fail:
+	stc
+	ret
 
 printcmdline:		;SI = string to print, CX = length
 	    test cx,cx			;print byte by byte
@@ -970,6 +1058,8 @@ clierrtab	dw	e_nullcmd,	0	;null command
 
 ;	MESSAGES
 
+echoerr	db	'Expected ECHO ON or OFF',13,10,'$'
+
 wrongvers	db	'Requires CCP/M-86 or MP/M-86'
 crlfstr		db	10,13,'$'
 
@@ -1084,6 +1174,11 @@ pdadr		rw	1		;our pd address
 sysdatseg	rw	1		;the system data area's segment
 parent_offset	rw	1		;parents pd address
 fix_parent	db	false		;local/global mode
+
+echo_enabled	db	true
+echoword		db	'$ECHO',0
+oncmd		db	'ON',0
+offcmd		db	'OFF',0
 
 usercmd		db	'USER    '
 printercmd	db	'PRINTER '

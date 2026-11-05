@@ -1696,16 +1696,41 @@
 ///1SUBMIT
     Syntax:
 
-    SUBMIT filespec (optional parameters)
+    SUBMIT filespec {parameters}
 
     Explanation:
 
-    SUBMIT  processes  a  command  file  with  a  filetype   of  .SUB
-    consisting  of  Concurrent  CP/M  commands  given one command per
-    line.   Any  optional  parameters  (such  as a drive or filespec)
-    following  the  filespec  in the command line are substituted for
-    their corresponding formal parameters ($1,$2,$3...) in the SUBMIT
-    file.
+    SUBMIT executes a .SUB file containing one command per line.
+    Parameters following the filespec replace $1 through $99 in the
+    script. Use $$ for a literal dollar sign.
+
+    CR, CRLF and LF line endings are accepted. Leading and trailing
+    spaces and tabs are removed; interior spacing is preserved.
+    The final command needs no newline before Ctrl-Z or end of file.
+    Ctrl-Z ends the script; bytes after it are ignored.
+
+    Empty lines, spaces/tabs-only lines and lines whose first nonblank
+    character is ; are ignored without any output, not even CR/LF.
+    Comments may span disk records. Inline comments are not supported.
+
+    ///2ECHO
+    Syntax:
+
+    $ECHO ON
+    $ECHO OFF
+
+    Explanation:
+
+    Echo starts ON each time SUBMIT is invoked. $ECHO OFF hides SUBMIT's
+    prompts and command echoes; program output and errors remain visible.
+    $ECHO ON restores normal echo. Names and ON/OFF are case-insensitive;
+    spaces or tabs may separate the operand. A missing or invalid operand
+    aborts the script with an error.
+
+    All $ directives are silent, including $ECHO, $GLOBAL, $LOCAL and
+    $INCLUDE. Global/local/include informational messages are suppressed.
+    $INCLUDE invokes SUBMIT again: the child starts with echo ON, while
+    the parent's setting remains its own.
 
     ///2EXAMPLES
     Examples:
@@ -1713,6 +1738,14 @@
     A>SUBMIT START
     A>SUBMIT B:START
     A>SUBMIT MAX.SUB data1 data2 data3
+
+    Example .SUB file:
+
+    ; This comment is always silent.
+    $ECHO OFF
+    DIR
+    $ECHO ON
+    SHOW
 
 ///1SETDEF
     Syntax:

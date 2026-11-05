@@ -66,6 +66,7 @@ and verification details, and [distributions](#distributions) for all seven disk
 | Usability and Bug fixes| CP/M Plus usability, known problem fixes (like the failing sysdisk on systems with 2 floppies and a hard disk) ... |
 
 Alongside PC-MODE, the current version includes:
+- Enhanced SUBMIT
 - CP/M Plus mapped and direction keys command line recall and editing,
 - CP/M Plus setdef style configurability
 - CP/M Plus style Input/Ouput redirection with put/get/rdr commands

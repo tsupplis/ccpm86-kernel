@@ -22,6 +22,7 @@ clean:
 	rm -f *.sys *.loc *.cmd *.obj *.h86 *.sym *.lin *.lst *.prn
 	rm -f *.loc *.mp? *.lnk
 
-# Structural validation; byte comparisons or runtime checks are separate where available.
+# Validate the command and execute its reader/directive regression scenarios.
 check: all
 	@set -e; for file in $(TOOLS); do $(CMDINFO) $$file; done
+	python3 ../../tools/submit_check.py
