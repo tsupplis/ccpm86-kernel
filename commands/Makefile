@@ -2,7 +2,7 @@
 SUBDIRS=tod asm86 ddt86 submit chset initdir pip era sdir ed \
     set show date gencmd dir ren vcmode type help helphlp systat \
     genccpm asm80 hexcom dredix sysdisk setdef dskmaint disk putget \
-    function batch hdmaint print setup config window chkcpmfs
+    function batch hdmaint print setup config window chkcpmfs stop
 
 all check clean:
 	set -e; for d in $(SUBDIRS); do \

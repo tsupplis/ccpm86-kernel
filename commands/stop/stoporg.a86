@@ -1,0 +1,1767 @@
+;*****************************************************
+;*
+;*	STOP.CMD   Concurrent DOS 4.11
+;*
+;*****************************************************
+
+; Display process and memory usage.
+; With no argument, prompt for the entry number to stop.
+; A nonempty command tail displays the report and exits.
+; The kernel supplies the command tail at DATA:0080h.
+
+;Revisions:
+;	Reconstructed from the CDOS 4.11 release binary.
+
+; SYSDAT list roots and descriptor fields used while taking the snapshot.
+sd_free_list    equ     5ah
+sd_shared_list  equ     70h
+sd_thread_root  equ     72h
+pd_flags        equ     6
+pd_name         equ     8
+pd_memory       equ     16h
+pd_console      equ     20h
+
+        cseg
+
+entry:
+; Establish SS:SP in DATA before calling the PL/M entry point.
+        pushf   
+        pop     ax
+        cli     
+        mov     cx,ds
+        mov     ss,cx
+        lea     sp,stack_top
+        push    ax
+        popf    
+        call    stop_main
+        xor     cx,cx
+        mov     dx,cx
+        int     0e0h
+
+bdos_call:
+; PL/M BDOS gate: function and parameter are stack words. Save all four return registers.
+        push    bp
+        mov     bp,sp
+        mov     dx,word ptr 4[bp]
+        mov     cx,word ptr 6[bp]
+        int     0e0h
+        mov     word ptr last_ax,ax
+        mov     word ptr last_bx,bx
+        mov     word ptr last_cx,cx
+        mov     word ptr last_dx,dx
+        pop     bp
+        ret     4
+
+        org     003ah
+        db      '010884Concurrent  V3.2'
+        db      'COPYRIGHT 1984, DIGITAL RESEARCH'
+        db      '1031-0000-009373'
+        org     00f1h
+        db      'CSEG patch area'
+
+plm_prologue:
+; Compiler prologue. The startup CALL enters at stop_main, following STI.
+        mov     bp,sp
+        sti     
+
+stop_main:
+; Check the OS version, retrieve SYSDAT and print a process/memory snapshot.
+        mov     sp,offset stack_top
+        mov     bp,sp
+        call    get_version
+        mov     word ptr os_version,ax
+        mov     ax,word ptr os_version
+        cmp     al,30h
+        jc      version_error
+        mov     ax,word ptr os_version
+        mov     al,ah     ; release encoding 88 E0
+        push    ax
+        cmp     al,14h
+        mov     al,0ffh
+        jc      version_family
+        inc     ax
+
+version_family:
+        pop     cx
+        push    ax
+        cmp     cl,11h
+        mov     al,0ffh
+        jnz     version_mask
+        inc     ax
+
+version_mask:
+        pop     cx
+        and     al,cl
+        rcr     al,1
+        jnc     system_ok
+
+version_error:
+        mov     ax,offset bad_version
+        push    ax
+        call    print_dollar
+        call    terminate_os
+
+leave_report:
+        jmp     exit_stop
+
+system_ok:
+        call    get_sysdat
+        mov     word ptr sys_ptr,bx
+        mov     word ptr sys_seg,es
+        mov     ax,word ptr sys_seg
+        mov     word ptr md_seg,ax
+        mov     word ptr owner_seg,ax
+        mov     word ptr pd_seg,ax
+        call    print_headings
+        call    snapshot_and_report
+        cmp     byte ptr debug_tail,0ffh
+        jnz     check_tail
+        mov     byte ptr input_pos,0
+
+dump_next:
+; Optional diagnostic: dump the 128-byte base-page tail, 16 bytes per line.
+        cmp     byte ptr input_pos,7fh
+        ja      check_tail
+        mov     al,input_pos
+        mov     ah,0
+        mov     cx,10h
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        cmp     dx,0
+        jnz     dump_byte
+        call    newline
+
+dump_byte:
+        mov     al,3
+        push    ax
+        mov     al,72h
+        push    ax
+        mov     bl,input_pos
+        mov     bh,0
+        push    word ptr cmd_tail[bx]
+        call    hex_byte_field
+        inc     byte ptr input_pos
+        jnz     dump_next
+
+check_tail:
+; With a nonempty command tail STOP lists and exits. With no tail it prompts.
+        cmp     byte ptr cmd_tail,0
+        jnz     leave_report
+        mov     ax,offset prompt_number
+        push    ax
+        call    print_dollar
+        mov     byte ptr cmd_tail,7eh
+        mov     ax,offset cmd_tail
+        push    ax
+        call    read_line
+        mov     al,0
+        cmp     input_length,al
+        jnz     parse_selection
+        jmp     exit_stop
+
+parse_selection:
+; Accept a decimal entry number with leading spaces or tabs. Empty input exits.
+        mov     ah,0
+        mov     word ptr selection,ax
+        mov     word ptr parse_aux,ax
+        mov     byte ptr input_pos,2
+
+skip_space:
+        mov     bl,input_pos
+        mov     bh,0
+        mov     al,cmd_tail[bx]
+        push    ax
+        cmp     al,20h
+        mov     al,0ffh
+        jz      space_flag
+        inc     ax
+
+space_flag:
+        pop     cx
+        push    ax
+        cmp     cl,9
+        mov     al,0ffh
+        jz      tab_flag
+        inc     ax
+
+tab_flag:
+        pop     cx
+        or      al,cl
+        rcr     al,1
+        jnc     test_digit
+        inc     byte ptr input_pos
+        jmps    skip_space
+
+invalid_digit:
+        mov     ax,offset bad_number
+
+input_error:
+        push    ax
+        call    print_dollar
+        call    exit_process
+
+advance_digit:
+        inc     byte ptr input_pos
+
+test_digit:
+        mov     al,input_length
+        inc     al
+        mov     cl,input_pos
+        cmp     cl,al
+        ja      count_parsed
+        mov     ch,0
+        mov     bx,cx     ; release encoding 89 CB
+        mov     al,cmd_tail[bx]
+        cmp     al,30h
+        jc      invalid_digit
+        cmp     al,39h
+        ja      invalid_digit
+        mov     ax,word ptr selection
+        mov     dx,0ah
+        mul     dx
+        mov     word ptr selection,ax
+        mov     dl,cmd_tail[bx]
+        sub     dl,30h
+        mov     dh,0
+        add     dx,ax
+        mov     word ptr selection,dx
+        mov     al,last_row
+        mov     ah,0
+        cmp     dx,ax
+        jna     advance_digit
+        mov     ax,offset too_large
+        jmps    input_error
+
+count_parsed:
+        cmp     word ptr selection,0
+        jna     exit_stop
+        push    word ptr selection
+        call    stop_entry
+
+exit_stop:
+        call    exit_process
+        sti     
+        hlt     
+
+reserved_adds:
+; Uncalled arithmetic reserve retained by the compiler. No kernel services are invoked.
+        push    bp
+        mov     bp,sp
+        mov     ax,word ptr patch_counter
+        mov     cx,5
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     ax,cx
+        mov     word ptr patch_counter,ax
+        add     word ptr patch_counter,cx
+        pop     bp
+        ret     
+
+terminate_os:
+        push    bp
+        mov     bp,sp
+        mov     al,0
+        mov     ah,0
+        push    ax
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     
+
+console_input:
+        push    bp
+        mov     bp,sp
+        mov     al,1
+        push    ax
+        mov     ax,0
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     
+
+console_output:
+        push    bp
+        mov     bp,sp
+        mov     al,2
+        push    ax
+        mov     al,4[bp]
+        mov     ah,0
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     2
+
+raw_key:
+        push    bp
+        mov     bp,sp
+        mov     al,6
+        push    ax
+        mov     ax,0fdh
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     
+
+console_status:
+        push    bp
+        mov     bp,sp
+        mov     al,0bh
+        push    ax
+        mov     ax,0
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     
+
+raw_console:
+        push    bp
+        mov     bp,sp
+        mov     al,6
+        push    ax
+        mov     al,4[bp]
+        mov     ah,0
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     2
+
+delay_ticks:
+        push    bp
+        mov     bp,sp
+        mov     al,8dh
+        push    ax
+        push    word ptr 4[bp]
+        call    bdos_call
+        pop     bp
+        ret     2
+
+print_dollar:
+        push    bp
+        mov     bp,sp
+        mov     al,9
+        push    ax
+        push    word ptr 4[bp]
+        call    bdos_call
+        pop     bp
+        ret     2
+
+read_line:
+        push    bp
+        mov     bp,sp
+        mov     al,0ah
+        push    ax
+        push    word ptr 4[bp]
+        call    bdos_call
+        pop     bp
+        ret     2
+
+get_version:
+        push    bp
+        mov     bp,sp
+        mov     al,0ch
+        push    ax
+        mov     ax,0
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     
+
+exit_process:
+        push    bp
+        mov     bp,sp
+        mov     al,8fh
+        push    ax
+        mov     ax,0
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     
+
+get_sysdat:
+        push    bp
+        mov     bp,sp
+        mov     al,9ah
+        push    ax
+        mov     ax,0
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     
+
+get_pd:
+        push    bp
+        mov     bp,sp
+        mov     al,9ch
+        push    ax
+        mov     ax,0
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     
+
+abort_process:
+; BDOS 157 (P_ABORT). Clear byte 5 of the parameter block before dispatch.
+        push    bp
+        mov     bp,sp
+        mov     ax,word ptr 4[bp]
+        mov     word ptr abort_ptr,ax
+        mov     bx,ax     ; release encoding 89 C3
+        mov     byte ptr 5[bx],0
+        mov     cl,9dh
+        push    cx
+        push    ax
+        call    bdos_call
+        pop     bp
+        ret     4
+
+newline:
+        push    bp
+        mov     bp,sp
+        mov     al,0dh
+        push    ax
+        call    console_output
+        mov     al,0ah
+        push    ax
+        call    console_output
+        pop     bp
+        ret     
+
+hex_byte:
+; Print one byte as two hexadecimal digits, high nibble first.
+        push    bp
+        mov     bp,sp
+        mov     bl,4[bp]
+        mov     cl,4
+        shr     bl,cl
+        mov     bh,0
+        push    word ptr hex_digits[bx]
+        call    console_output
+        mov     al,4[bp]
+        mov     ah,0
+        mov     cx,10h
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     bx,dx     ; release encoding 89 D3
+        push    word ptr hex_digits[bx]
+        call    console_output
+        pop     bp
+        ret     2
+
+hex_word:
+; Print a word as two consecutive hexadecimal bytes.
+        push    bp
+        mov     bp,sp
+        mov     ax,word ptr 4[bp]
+        mov     al,ah     ; release encoding 88 E0
+        push    ax
+        call    hex_byte
+        mov     ax,word ptr 4[bp]
+        push    ax
+        call    hex_byte
+        pop     bp
+        ret     2
+
+hex_byte_field:
+; Width, justification (r/l) and byte value are passed on the stack.
+        push    bp
+        mov     bp,sp
+        cmp     byte ptr 8[bp],2
+        jc      hex8_done
+        cmp     byte ptr 6[bp],72h
+        jnz     hex8_value
+        mov     byte ptr hex8_pad,1
+
+hex8_left:
+        mov     al,8[bp]
+        sub     al,2
+        cmp     hex8_pad,al
+        ja      hex8_value
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr hex8_pad
+        jnz     hex8_left
+
+hex8_value:
+        push    word ptr 4[bp]
+        call    hex_byte
+        cmp     byte ptr 6[bp],6ch
+        jnz     hex8_done
+        mov     byte ptr hex8_pad,1
+
+hex8_right:
+        mov     al,8[bp]
+        sub     al,2
+        cmp     hex8_pad,al
+        ja      hex8_done
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr hex8_pad
+        jnz     hex8_right
+
+hex8_done:
+        pop     bp
+        ret     6
+
+hex_word_field:
+; Width, justification and word value. Pad to the requested field width.
+        push    bp
+        mov     bp,sp
+        cmp     byte ptr 8[bp],4
+        jc      hex16_done
+        cmp     byte ptr 6[bp],72h
+        jnz     hex16_value
+        mov     byte ptr hex16_pad,1
+
+hex16_left:
+        mov     al,8[bp]
+        sub     al,4
+        cmp     hex16_pad,al
+        ja      hex16_value
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr hex16_pad
+        jnz     hex16_left
+
+hex16_value:
+        push    word ptr 4[bp]
+        call    hex_word
+        cmp     byte ptr 6[bp],6ch
+        jnz     hex16_done
+        mov     byte ptr hex16_pad,1
+
+hex16_right:
+        mov     al,8[bp]
+        sub     al,4
+        cmp     hex16_pad,al
+        ja      hex16_done
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr hex16_pad
+        jnz     hex16_right
+
+hex16_done:
+        pop     bp
+        ret     6
+
+string_field:
+; Write a bounded far string, stripping attribute bits. Pad on the chosen side.
+        push    bp
+        mov     bp,sp
+        mov     al,8[bp]
+        cmp     al,0ch[bp]
+        ja      str_done
+        cmp     byte ptr 0ah[bp],72h
+        jnz     str_value
+        mov     byte ptr string_pos,1
+
+str_left:
+        mov     al,0ch[bp]
+        sub     al,8[bp]
+        cmp     string_pos,al
+        ja      str_value
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr string_pos
+        jnz     str_left
+
+str_value:
+        mov     byte ptr string_pos,1
+
+str_next:
+        mov     al,string_pos
+        cmp     al,8[bp]
+        ja      str_tail
+        les     bx,dword ptr 4[bp]
+        mov     al,es:[bx]
+        and     al,7fh
+        push    ax
+        call    console_output
+        inc     word ptr 4[bp]
+        inc     byte ptr string_pos
+        jnz     str_next
+
+str_tail:
+        cmp     byte ptr 0ah[bp],6ch
+        jnz     str_done
+        mov     byte ptr string_pos,1
+
+str_right:
+        mov     al,0ch[bp]
+        sub     al,8[bp]
+        cmp     string_pos,al
+        ja      str_done
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr string_pos
+        jnz     str_right
+
+str_done:
+        pop     bp
+        ret     0ah
+
+decimal_u8:
+; Convert an unsigned byte to three decimal columns with leading blanks.
+        push    bp
+        mov     bp,sp
+        mov     al,4[bp]
+        mov     decimal_byte,al
+        mov     ah,0
+        mov     cx,64h
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     hundreds,al
+        mov     al,decimal_byte
+        mov     ah,0
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     decimal_byte,dl
+        mov     al,decimal_byte
+        mov     ah,0
+        mov     cx,0ah
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     tens,al
+        mov     al,decimal_byte
+        mov     ah,0
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     units,dl
+        cmp     byte ptr hundreds,0
+        jz      blank_hundreds
+        mov     bl,hundreds
+        mov     bh,0
+        push    word ptr dec_digits[bx]
+        jmps    emit_hundreds
+
+blank_hundreds:
+        mov     al,20h
+        push    ax
+
+emit_hundreds:
+        call    console_output
+        cmp     byte ptr hundreds,0
+        jnz     tens_digit
+        cmp     byte ptr tens,0
+        jnz     tens_digit
+        mov     al,20h
+        push    ax
+        jmps    emit_tens
+
+tens_digit:
+        mov     bl,tens
+        mov     bh,0
+        push    word ptr dec_digits[bx]
+
+emit_tens:
+        call    console_output
+        mov     bl,units
+        mov     bh,0
+        push    word ptr dec_digits[bx]
+        call    console_output
+        pop     bp
+        ret     2
+
+decimal_u16:
+; Split a word into five decimal digits. Suppress zeros before the first digit.
+        push    bp
+        mov     bp,sp
+        mov     ax,word ptr 4[bp]
+        mov     word ptr decimal_work,ax
+        mov     cx,2710h
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     ten_thousands,al
+        mov     ax,word ptr decimal_work
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     word ptr decimal_work,dx
+        mov     ax,dx     ; release encoding 89 D0
+        mov     cx,3e8h
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     thousands,al
+        mov     ax,word ptr decimal_work
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     word ptr decimal_work,dx
+        mov     ax,dx     ; release encoding 89 D0
+        mov     cx,64h
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     hundreds16,al
+        mov     ax,word ptr decimal_work
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     word ptr decimal_work,dx
+        mov     ax,dx     ; release encoding 89 D0
+        mov     cx,0ah
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     tens16,al
+        mov     ax,word ptr decimal_work
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     units16,dl
+        cmp     byte ptr ten_thousands,0
+        jz      blank_10000
+        mov     bl,ten_thousands
+        mov     bh,0
+        push    word ptr dec_digits[bx]
+        call    console_output
+        mov     word ptr decimal_work,0ffh
+        jmps    emit_10000
+
+blank_10000:
+        mov     al,20h
+        push    ax
+        call    console_output
+
+emit_10000:
+        cmp     word ptr decimal_work,0ffh
+        jz      digit_1000
+        cmp     byte ptr thousands,0
+        jz      blank_1000
+
+digit_1000:
+        mov     bl,thousands
+        mov     bh,0
+        push    word ptr dec_digits[bx]
+        call    console_output
+        mov     word ptr decimal_work,0ffh
+        jmps    emit_1000
+
+blank_1000:
+        mov     al,20h
+        push    ax
+        call    console_output
+
+emit_1000:
+        cmp     word ptr decimal_work,0ffh
+        jz      digit_100
+        cmp     byte ptr hundreds16,0
+        jz      blank_100
+
+digit_100:
+        mov     bl,hundreds16
+        mov     bh,0
+        push    word ptr dec_digits[bx]
+        call    console_output
+        mov     word ptr decimal_work,0ffh
+        jmps    emit_100
+
+blank_100:
+        mov     al,20h
+        push    ax
+        call    console_output
+
+emit_100:
+        cmp     word ptr decimal_work,0ffh
+        jz      digit_10
+        cmp     byte ptr tens16,0
+        jz      blank_10
+
+digit_10:
+        mov     bl,tens16
+        mov     bh,0
+        push    word ptr dec_digits[bx]
+        jmps    emit_10
+
+blank_10:
+        mov     al,20h
+        push    ax
+
+emit_10:
+        call    console_output
+        mov     bl,units16
+        mov     bh,0
+        push    word ptr dec_digits[bx]
+        call    console_output
+        pop     bp
+        ret     2
+
+decimal_byte_field:
+; Pad the three-column byte representation.
+        push    bp
+        mov     bp,sp
+        cmp     byte ptr 8[bp],2
+        jc      dec8_done
+        cmp     byte ptr 6[bp],72h
+        jnz     dec8_value
+        mov     byte ptr byte_pad,1
+
+dec8_left:
+        mov     al,8[bp]
+        sub     al,2
+        cmp     byte_pad,al
+        ja      dec8_value
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr byte_pad
+        jnz     dec8_left
+
+dec8_value:
+        push    word ptr 4[bp]
+        call    decimal_u8
+        cmp     byte ptr 6[bp],6ch
+        jnz     dec8_done
+        mov     byte ptr byte_pad,1
+
+dec8_right:
+        mov     al,8[bp]
+        sub     al,2
+        cmp     byte_pad,al
+        ja      dec8_done
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr byte_pad
+        jnz     dec8_right
+
+dec8_done:
+        pop     bp
+        ret     6
+
+decimal_word_field:
+; Pad the five-column word representation.
+        push    bp
+        mov     bp,sp
+        cmp     byte ptr 8[bp],4
+        jc      dec16_done
+        cmp     byte ptr 6[bp],72h
+        jnz     dec16_value
+        mov     byte ptr word_pad,1
+
+dec16_left:
+        mov     al,8[bp]
+        sub     al,4
+        cmp     word_pad,al
+        ja      dec16_value
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr word_pad
+        jnz     dec16_left
+
+dec16_value:
+        push    word ptr 4[bp]
+        call    decimal_u16
+        cmp     byte ptr 6[bp],6ch
+        jnz     dec16_done
+        mov     byte ptr word_pad,1
+
+dec16_right:
+        mov     al,8[bp]
+        sub     al,4
+        cmp     word_pad,al
+        ja      dec16_done
+        mov     al,20h
+        push    ax
+        call    console_output
+        inc     byte ptr word_pad
+        jnz     dec16_right
+
+dec16_done:
+        pop     bp
+        ret     6
+
+print_headings:
+; Print the three header rows for entry, program name, memory and window.
+        push    bp
+        mov     bp,sp
+        call    newline
+        mov     ax,offset hdr_entry
+        push    ax
+        call    print_dollar
+        mov     ax,offset hdr_program
+        push    ax
+        call    print_dollar
+        mov     ax,offset hdr_memory
+        push    ax
+        call    print_dollar
+        mov     ax,offset hdr_window
+        push    ax
+        call    print_dollar
+        call    newline
+        mov     ax,offset hdr_number
+        push    ax
+        call    print_dollar
+        mov     ax,offset hdr_name
+        push    ax
+        call    print_dollar
+        mov     ax,offset hdr_used
+        push    ax
+        call    print_dollar
+        mov     ax,offset hdr_console
+        push    ax
+        call    print_dollar
+        call    newline
+        mov     ax,offset rule_entry
+        push    ax
+        call    print_dollar
+        mov     ax,offset rule_name
+        push    ax
+        call    print_dollar
+        mov     ax,offset rule_used
+        push    ax
+        call    print_dollar
+        mov     ax,offset rule_window
+        push    ax
+        call    print_dollar
+        pop     bp
+        ret     
+
+parse_digits:
+; Uncalled counted-string conversion helper, retained with the formatter library.
+        push    bp
+        mov     bp,sp
+        mov     bx,word ptr 4[bp]
+        mov     al,[bx]
+        mov     parse_pos,al
+        mov     word ptr place_value,1
+        mov     word ptr parsed_value,0
+
+parse_back:
+        mov     al,parse_pos
+        cmp     al,0
+        jna     parse_ok
+        mov     ah,0
+        mov     si,ax     ; release encoding 89 C6
+        mov     bx,word ptr 4[bp]
+        mov     cl,[bx+si]
+        cmp     cl,30h
+        jc      parse_bad
+        cmp     cl,39h
+        ja      parse_bad
+        mov     ch,0
+        mov     ax,cx     ; release encoding 89 C8
+        mul     word ptr place_value
+        add     word ptr parsed_value,ax
+        mov     ax,word ptr place_value
+        mov     cx,0ah
+        mul     cx
+        mov     word ptr place_value,ax
+        dec     byte ptr parse_pos
+        jmps    parse_back
+
+parse_bad:
+        mov     ax,0ffh
+        jmps    parse_done
+
+parse_ok:
+        mov     ax,word ptr parsed_value
+
+parse_done:
+        pop     bp
+        ret     2
+
+snapshot_and_report:
+; Disable interrupts while following live kernel links. Copy data before displaying it.
+        push    bp
+        mov     bp,sp
+        mov     ax,0
+        mov     word ptr free_total,ax
+        cli     
+        les     bx,dword ptr sys_ptr
+        mov     cx,es:word ptr sd_free_list[bx]
+        mov     word ptr md_ptr,cx
+        mov     byte ptr last_free,0ffh
+        cmp     word ptr md_ptr,ax
+        jz      test_free
+; Seed the free-extent array from the first memory descriptor.
+        mov     last_free,al
+        mov     cl,6
+        mul     cl
+        les     bx,dword ptr md_ptr
+        mov     cx,es:word ptr 2[bx]
+        mov     si,ax     ; release encoding 89 C6
+        mov     word ptr free_base[si],cx
+        mov     cx,es:word ptr 4[bx]
+        mov     word ptr free_length[si],cx
+        mov     word ptr free_total,cx
+
+advance_free:
+        mov     ax,es:word ptr [bx]
+        mov     word ptr md_ptr,ax
+
+test_free:
+        cmp     word ptr md_ptr,0
+        mov     al,0ffh
+        jnz     free_present
+        inc     ax
+
+free_present:
+        push    ax
+        cmp     byte ptr last_free,50h
+        mov     al,0ffh
+        jc      free_capacity
+        inc     ax
+
+free_capacity:
+        pop     cx
+        and     al,cl
+        rcr     al,1
+        jnc     begin_owners
+; Merge adjacent extents by comparing base + length with the next base.
+        mov     al,last_free
+        mov     cl,6
+        mul     cl
+        mov     bx,ax     ; release encoding 89 C3
+        mov     cx,word ptr free_base[bx]
+        add     cx,word ptr free_length[bx]
+        mov     word ptr scratch_word,cx
+        les     si,dword ptr md_ptr
+        cmp     cx,es:word ptr 2[si]
+        jnz     begin_extent
+        mov     cx,es:word ptr 4[si]
+        add     word ptr free_length[bx],cx
+        jmps    count_extent
+
+begin_extent:
+        mov     al,last_free
+        inc     al
+        mov     last_free,al
+        mov     cl,6
+        mul     cl
+        les     bx,dword ptr md_ptr
+        mov     cx,es:word ptr 2[bx]
+        mov     si,ax     ; release encoding 89 C6
+        mov     word ptr free_base[si],cx
+        mov     cx,es:word ptr 4[bx]
+        mov     word ptr free_length[si],cx
+
+count_extent:
+        les     bx,dword ptr md_ptr
+        mov     ax,es:word ptr 4[bx]
+        add     word ptr free_total,ax
+        jmps    advance_free
+
+begin_owners:
+; Scan the shared-code list and its memory descriptors for shared code.
+        mov     word ptr shared_free,0
+        les     bx,dword ptr sys_ptr
+        mov     ax,es:word ptr sd_shared_list[bx]
+        mov     word ptr pd_ptr,ax
+        mov     byte ptr owner_index,0ffh
+
+owner_loop:
+        mov     ax,0
+        cmp     word ptr pd_ptr,ax
+        mov     al,0ffh
+        jnz     owner_present
+        inc     ax
+
+owner_present:
+        push    ax
+        cmp     byte ptr owner_index,0ffh
+        mov     al,0ffh
+        jz      owner_initial
+        inc     ax
+
+owner_initial:
+        push    ax
+        cmp     byte ptr owner_index,40h
+        mov     al,0ffh
+        jc      owner_capacity
+        inc     ax
+
+owner_capacity:
+        pop     cx
+        or      al,cl
+        pop     cx
+        and     al,cl
+        rcr     al,1
+        jc      inspect_owner
+        jmp     begin_processes
+
+inspect_owner:
+        les     bx,dword ptr pd_ptr
+        cmp     es:word ptr pd_memory[bx],0
+        jz      owner_flags
+        mov     ax,es:word ptr pd_flags[bx]
+        and     ax,2
+        cmp     ax,2     ; release encoding 83 F8 02
+
+owner_flags:
+        jnz     save_owner
+        jmp     next_owner
+
+save_owner:
+        inc     byte ptr owner_index
+        mov     byte ptr name_pos,0
+
+owner_copy_name:
+        mov     al,name_pos
+        cmp     al,7
+        ja      owner_memory
+        mov     al,owner_index
+        mov     cl,10h
+        mul     cl
+        mov     cl,name_pos
+        mov     ch,0
+        mov     si,cx     ; release encoding 89 CE
+        les     bx,dword ptr pd_ptr
+        mov     dl,es:pd_name[bx+si]
+        mov     bx,ax     ; release encoding 89 C3
+        mov     owner_names[bx+si],dl
+        inc     byte ptr name_pos
+        jnz     owner_copy_name
+
+owner_memory:
+        mov     al,owner_index
+        mov     cl,10h
+        mul     cl
+        mov     cx,word ptr pd_ptr
+        mov     bx,ax     ; release encoding 89 C3
+        mov     word ptr owner_pd[bx],cx
+        mov     cx,0
+        mov     word ptr owner_size[bx],cx
+        les     si,dword ptr pd_ptr
+        mov     dx,es:word ptr pd_memory[si]
+        mov     word ptr owner_ptr,dx
+        les     si,dword ptr owner_ptr
+        mov     dx,es:word ptr 8[si]
+        mov     word ptr md_ptr,dx
+        les     si,dword ptr md_ptr
+        mov     dx,es:word ptr 4[si]
+        mov     word ptr owner_size[bx],dx
+        mov     ax,es:word ptr 2[si]
+        mov     word ptr group_seg,ax
+        mov     word ptr item_seg,ax
+        mov     word ptr group_ptr,cx
+        mov     word ptr item_ptr,5
+        mov     byte ptr shared_only,0ffh
+        mov     group_index,cl
+
+scan_groups:
+; Inspect five-byte group records to decide whether a partition can be counted as free shared code.
+        les     bx,dword ptr group_ptr
+        mov     al,es:[bx]
+        dec     al
+        cmp     group_index,al
+        ja      classify_shared
+        les     bx,dword ptr item_ptr
+        cmp     es:byte ptr 4[bx],0
+        jz      next_group
+        cmp     es:byte ptr 4[bx],1
+        jz      next_group
+        mov     byte ptr shared_only,0
+
+next_group:
+        add     word ptr item_ptr,5
+        inc     byte ptr group_index
+        jnz     scan_groups
+
+classify_shared:
+        cmp     byte ptr shared_only,0ffh
+        jnz     next_owner_mem
+        les     bx,dword ptr md_ptr
+        mov     ax,es:word ptr 4[bx]
+        add     word ptr free_total,ax
+        add     word ptr shared_free,ax
+
+next_owner_mem:
+        les     bx,dword ptr owner_ptr
+        mov     ax,es:word ptr 8[bx]
+
+save_mem_ptr:
+        mov     word ptr scratch_word,ax
+
+walk_owner_mem:
+        les     bx,dword ptr owner_ptr
+        cmp     es:word ptr [bx],0
+        jz      next_owner
+        mov     ax,es:word ptr [bx]
+        mov     word ptr owner_ptr,ax
+        mov     ax,es:word ptr 8[bx]
+        cmp     word ptr scratch_word,ax
+        jz      walk_owner_mem
+        mov     word ptr md_ptr,ax
+        push    ax
+        mov     al,owner_index
+        mov     cl,10h
+        mul     cl
+        les     si,dword ptr md_ptr
+        mov     cx,es:word ptr 4[si]
+        mov     si,ax     ; release encoding 89 C6
+        add     word ptr owner_size[si],cx
+        pop     ax
+        jmps    save_mem_ptr
+
+next_owner:
+        les     bx,dword ptr pd_ptr
+        mov     ax,es:word ptr 2[bx]
+        mov     word ptr pd_ptr,ax
+        jmp     owner_loop
+
+begin_processes:
+; Build the list used for display and selection from the process thread list.
+        mov     byte ptr last_row,0ffh
+        les     bx,dword ptr sys_ptr
+        mov     ax,es:word ptr sd_thread_root[bx]
+
+process_loop:
+        mov     word ptr pd_ptr,ax
+        mov     ax,0
+        cmp     word ptr pd_ptr,ax
+        mov     al,0ffh
+        jnz     process_present
+        inc     ax
+
+process_present:
+        mov     cl,last_row
+        push    ax
+        cmp     cl,0ffh
+        mov     al,0ffh
+        jz      process_initial
+        inc     ax
+
+process_initial:
+        push    ax
+        cmp     cl,40h
+        mov     al,0ffh
+        jc      process_capacity
+        inc     ax
+
+process_capacity:
+        pop     dx
+        or      al,dl
+        pop     dx
+        and     al,dl
+        rcr     al,1
+        jc      inspect_process
+        jmp     unlock_snapshot
+
+inspect_process:
+        les     bx,dword ptr pd_ptr
+        cmp     es:word ptr pd_memory[bx],0
+        jz      process_flags
+        mov     ax,es:word ptr pd_flags[bx]
+        and     ax,2
+        cmp     ax,2     ; release encoding 83 F8 02
+
+process_flags:
+        jnz     save_process
+        jmp     next_process
+
+save_process:
+; Snapshot one 14-byte entry: console, PD offset, paragraph count and eight-character name.
+        inc     cl
+        mov     last_row,cl
+        mov     ax,cx     ; release encoding 89 C8
+        mov     dl,0eh
+        mul     dl
+        mov     cl,es:pd_console[bx]
+        mov     bx,ax     ; release encoding 89 C3
+        mov     row_console[bx],cl
+        mov     byte ptr name_pos,0
+
+copy_row_name:
+        mov     al,name_pos
+        cmp     al,7
+        ja      row_memory
+        mov     al,last_row
+        mov     cl,0eh
+        mul     cl
+        mov     cl,name_pos
+        mov     ch,0
+        mov     si,cx     ; release encoding 89 CE
+        les     bx,dword ptr pd_ptr
+        mov     dl,es:pd_name[bx+si]
+        mov     bx,ax     ; release encoding 89 C3
+        mov     row_name[bx+si],dl
+        inc     byte ptr name_pos
+        jnz     copy_row_name
+
+row_memory:
+        mov     al,last_row
+        mov     cl,0eh
+        mul     cl
+        mov     cx,word ptr pd_ptr
+        mov     bx,ax     ; release encoding 89 C3
+        mov     word ptr row_pd[bx],cx
+        mov     word ptr row_size[bx],0
+        les     si,dword ptr pd_ptr
+        mov     cx,es:word ptr pd_memory[si]
+        mov     word ptr owner_ptr,cx
+        les     si,dword ptr owner_ptr
+        mov     cx,es:word ptr 8[si]
+        mov     word ptr md_ptr,cx
+        les     si,dword ptr md_ptr
+        mov     dx,es:word ptr 4[si]
+        mov     word ptr row_size[bx],dx
+        mov     word ptr scratch_word,cx
+
+walk_row_mem:
+        les     bx,dword ptr owner_ptr
+        cmp     es:word ptr [bx],0
+        jz      next_process
+        mov     ax,es:word ptr [bx]
+        mov     word ptr owner_ptr,ax
+        mov     ax,es:word ptr 8[bx]
+        cmp     word ptr scratch_word,ax
+        jz      walk_row_mem
+        mov     word ptr md_ptr,ax
+        push    ax
+        mov     al,last_row
+        mov     cl,0eh
+        mul     cl
+        les     si,dword ptr md_ptr
+        mov     cx,es:word ptr 4[si]
+        mov     si,ax     ; release encoding 89 C6
+        add     word ptr row_size[si],cx
+        pop     ax
+        mov     word ptr scratch_word,ax
+        jmps    walk_row_mem
+
+next_process:
+        les     bx,dword ptr pd_ptr
+        mov     ax,es:word ptr 2[bx]
+        jmp     process_loop
+
+unlock_snapshot:
+; The snapshot is complete. Enable interrupts before console I/O.
+        sti     
+        call    newline
+        cmp     byte ptr last_row,0ffh
+        jnz     output_rows
+        jmp     output_free
+
+output_rows:
+        mov     byte ptr row_index,0
+
+output_row:
+        mov     al,row_index
+        cmp     al,last_row
+        jna     choose_number
+        jmp     output_free
+
+choose_number:
+; The first entry uses **. Subsequent indices are printed as decimal selection numbers.
+        cmp     al,0
+        jnz     print_number
+        mov     ax,offset current_mark
+        push    ax
+        call    print_dollar
+        jmps    print_row
+
+print_number:
+        mov     al,4
+        push    ax
+        mov     al,72h
+        push    ax
+        push    word ptr row_index
+        call    decimal_byte_field
+        mov     al,2eh
+        push    ax
+        call    console_output
+
+print_row:
+        mov     al,0ch
+        push    ax
+        mov     al,72h
+        push    ax
+        mov     al,8
+        push    ax
+        mov     al,row_index
+        mov     cl,0eh
+        mul     cl
+        mov     bx,ax     ; release encoding 89 C3
+        lea     ax,row_name[bx]
+        push    ds
+        push    ax
+        call    string_field
+        mov     al,row_index
+        mov     cl,0eh
+        mul     cl
+        mov     bx,ax     ; release encoding 89 C3
+        mov     ax,word ptr row_size[bx]
+        mov     si,40h
+        xor     dx,dx     ; release encoding 31 D2
+        div     si
+        mov     word ptr row_size[bx],ax
+        mov     dl,7
+        push    dx
+        mov     dl,72h
+        push    dx
+        push    ax
+        call    decimal_word_field
+        mov     al,4bh
+        push    ax
+        call    console_output
+        mov     al,5
+        push    ax
+        mov     al,72h
+        push    ax
+        mov     al,row_index
+        mov     cl,0eh
+        mul     cl
+        mov     bx,ax     ; release encoding 89 C3
+        mov     al,row_console[bx]
+        inc     al
+        push    ax
+        call    decimal_byte_field
+        call    newline
+        inc     byte ptr row_index
+        jz      output_free
+        jmp     output_row
+
+output_free:
+; Show contiguous free extents, shared code and total free memory (64 paragraphs per KiB).
+        call    newline
+        mov     ax,offset free_heading
+        push    ax
+        call    print_dollar
+        call    newline
+        cmp     byte ptr last_free,0ffh
+        jnz     first_free
+        mov     ax,offset none_text
+        push    ax
+        call    print_dollar
+        jmps    output_totals
+
+first_free:
+        mov     byte ptr row_index,0
+
+print_extent:
+        mov     al,row_index
+        cmp     al,last_free
+        ja      output_totals
+        mov     cl,0dh
+        push    cx
+        mov     cl,72h
+        push    cx
+        mov     cl,6
+        mul     cl
+        mov     bx,ax     ; release encoding 89 C3
+        push    word ptr free_base[bx]
+        call    hex_word_field
+        mov     ax,offset zero_suffix
+        push    ax
+        call    print_dollar
+        mov     al,row_index
+        mov     cl,6
+        mul     cl
+        mov     bx,ax     ; release encoding 89 C3
+        mov     ax,word ptr free_length[bx]
+        mov     cx,40h
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     word ptr scratch_word,ax
+        mov     cl,0ah
+        push    cx
+        mov     cl,72h
+        push    cx
+        push    ax
+        call    decimal_word_field
+        mov     al,4bh
+        push    ax
+        call    console_output
+        call    newline
+        inc     byte ptr row_index
+        jnz     print_extent
+
+output_totals:
+        mov     ax,offset shared_label
+        push    ax
+        call    print_dollar
+        mov     al,5
+        push    ax
+        mov     al,72h
+        push    ax
+        mov     ax,word ptr shared_free
+        mov     cx,40h
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        push    ax
+        call    decimal_word_field
+        mov     al,4bh
+        push    ax
+        call    console_output
+        mov     ax,word ptr free_total
+        mov     cx,40h
+        xor     dx,dx     ; release encoding 31 D2
+        div     cx
+        mov     word ptr free_total,ax
+        mov     ax,offset total_label
+        push    ax
+        call    print_dollar
+        mov     al,4
+        push    ax
+        mov     al,72h
+        push    ax
+        push    word ptr free_total
+        call    decimal_word_field
+        mov     ax,offset kb_text
+        push    ax
+        call    print_dollar
+        call    newline
+        pop     bp
+        ret     
+
+stop_entry:
+; Construct the abort request from the selected snapshot entry, then report BDOS failure.
+        push    bp
+        mov     bp,sp
+        mov     byte ptr abort_pos,0
+
+copy_abort_name:
+        mov     al,abort_pos
+        cmp     al,7
+        ja      set_abort_target
+        mov     al,4[bp]
+        mov     cl,0eh
+        mul     cl
+        mov     cl,abort_pos
+        mov     bx,ax     ; release encoding 89 C3
+        mov     ch,0
+        mov     si,cx     ; release encoding 89 CE
+        mov     al,row_name[bx+si]
+        mov     abort_name[si],al
+        inc     byte ptr abort_pos
+        jnz     copy_abort_name
+
+set_abort_target:
+        mov     al,4[bp]
+        mov     cl,0eh
+        mul     cl
+        mov     bx,ax     ; release encoding 89 C3
+        mov     cl,row_console[bx]
+        mov     abort_console,cl
+        mov     ax,word ptr row_pd[bx]
+        mov     word ptr abort_block,ax
+        lea     ax,abort_block
+        push    ds
+        push    ax
+        call    abort_process
+        mov     word ptr abort_result,ax
+        cmp     word ptr abort_result,0
+        jz      abort_done
+        mov     ax,offset abort_failed
+        push    ax
+        call    print_dollar
+
+abort_done:
+        pop     bp
+        ret     2
+
+        dseg
+; Base page, BDOS register saves, snapshot arrays and PL/M working storage.
+        org     80h
+cmd_tail             rb      1
+input_length         rb      1
+input_text           rb      126
+last_ax              rb      2
+last_bx              rb      2
+last_cx              rb      2
+last_dx              rb      2
+data_patch           db      '     DSEG patch area'
+sys_ptr              rb      2
+sys_seg              rb      6
+pd_ptr               rb      2
+pd_seg               rb      2
+md_ptr               rb      2
+md_seg               rb      2
+owner_ptr            rb      2
+owner_seg            rb      2
+group_ptr            rb      2
+group_seg            rb      2
+item_ptr             rb      2
+item_seg             rb      6
+; Free extents have a six-byte stride. Only base and length are printed.
+free_base            rb      2
+free_length          rb      482
+; Shared-code snapshot, sixteen bytes per entry.
+owner_names          rb      8
+owner_size           rb      2
+owner_pd             rb      1010
+; Process snapshot, fourteen bytes per entry. Index zero is displayed as **.
+row_console          rb      2
+row_pd               rb      2
+row_size             rb      2
+row_name             rb      890
+abort_block          rb      4
+abort_console        rb      2
+abort_name           rb      8
+patch_counter        rb      2
+abort_ptr            rb      2
+decimal_work         rb      2
+place_value          rb      2
+parsed_value         rb      2
+free_total           rb      2
+shared_free          rb      2
+scratch_word         rb      2
+abort_result         rb      2
+os_version           rb      2
+selection            rb      2
+parse_aux            rb      6
+debug_tail           rb      1
+brackets             db      '[]'
+clear_seq            db      2,27,'E'
+        rb      3
+home_seq             db      2,27,'H'
+        rb      3
+owner_index          rb      1
+last_row             rb      1
+hex8_pad             rb      1
+hex16_pad            rb      1
+string_pos           rb      1
+decimal_byte         rb      1
+hundreds             rb      1
+tens                 rb      1
+units                rb      1
+ten_thousands        rb      1
+thousands            rb      1
+hundreds16           rb      1
+tens16               rb      1
+units16              rb      1
+byte_pad             rb      1
+word_pad             rb      1
+parse_pos            rb      1
+last_free            rb      1
+row_index            rb      1
+name_pos             rb      2
+shared_only          rb      1
+group_index          rb      1
+abort_pos            rb      1
+input_pos            rb      1
+stack_reserve        rb      170
+stack_top       rb      0
+dec_digits           db      '0123456789'
+hex_digits           db      '0123456789ABCDEF'
+hdr_entry            db      '  Entry $'
+hdr_program          db      '  Program $'
+hdr_memory           db      '  Memory $'
+hdr_window           db      '  Window$'
+hdr_number           db      '  Number$'
+hdr_name             db      '  Name    $'
+hdr_used             db      '  Used   $'
+hdr_console          db      '  Number $'
+rule_entry           db      '  ------$'
+rule_name            db      '  --------$'
+rule_used            db      '  -------$'
+rule_window          db      '  -------$'
+current_mark         db      '    **$'
+free_heading         db      'Contiguous Blocks of Free Memory$'
+none_text            db      '            None$'
+zero_suffix          db      ':0$'
+shared_label         db      13,10,'Free Shared Code  ==$'
+total_label          db      13,10,'Total Free Memory == $'
+kb_text              db      'K Bytes$'
+abort_failed         db      13,10,'The selected program has not been stopped$'
+bad_version          db      'Requires Concurrent to run$'
+prompt_number        db      13,10,'Enter the Number to delete or RETURN to exit $'
+too_large            db      13,10,'Entry number too large$'
+bad_number           db      13,10,'Invalid Entry number.$'
+        rb      12
+        end

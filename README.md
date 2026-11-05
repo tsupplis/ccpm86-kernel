@@ -219,6 +219,7 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `setup` | Customize IBM PC/XT XIOS settings | Original | Reverse engineered from CCP/M-86 |  |
 | `show` | Display disk space and drive information | — | Recompiled from CCP/M-86 3.1 and adapted, Y2K patched |  |
 | `setdef` | Display/change the per-console command drive list; fixed system fallback | — | New, Source-built `SETDEF.CMD`; local kernel extension |  |
+| `stop` | List processes and request termination | — | Ported from the maintained CDOS reconstruction; standard CCP/M 3.1 services |  |
 | `submit` | Run batch command files | — | Recompiled from CCP/M-86 3.1 and adapted |  |
 | `sysdisk` | Display or change the system drive; TMP built-in and standalone tool | — | TMP built-in + standalone `SYSDISK.CMD` recompiled from CCP/M-86 3.1 and adapted; byte-identical CMD reconstruction |  |
 | `systat` | Inspect processes and system resources | — | Recompiled from CCP/M-86 3.1 and adapted |  |

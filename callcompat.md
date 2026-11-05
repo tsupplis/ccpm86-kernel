@@ -1,6 +1,6 @@
 # CALLCOMPAT — CCP/M-86 3.1 commands
 
-2026-11-05. Source/API review of all 58 executable artifacts in the distribution
+2026-11-05. Source/API review of all 59 executable artifacts in the distribution
 recipe. This is not a cross-version runtime certification.
 
 **3.1**: native CCP/M baseline, including the original IBM PC XIOS and PC-MODE
@@ -63,6 +63,7 @@ a supported path; unavailable optional features do not prevent normal use.
 | SETUP.CMD <!-- commands/setup/setup.cmd --> | 3.1 |  |
 | SHOW.CMD <!-- commands/show/show.cmd --> | Degraded | 3.1 baseline. FAT label reporting is unavailable without FAT support and can miss existing labels with older enumeration. Cross-version behaviour awaits regression. |
 | SID86.CMD <!-- dev/sid86.cmd --> | 3.1 |  |
+| STOP.CMD <!-- commands/stop/stop.cmd --> | 3.1 |  |
 | SUBMIT.CMD <!-- commands/submit/submit.cmd --> | 3.1 |  |
 | SYSDISK.CMD <!-- commands/sysdisk/sysdisk.cmd --> | 3.1 |  |
 | SYSTAT.CMD <!-- commands/systat/systat.cmd --> | 3.1 |  |

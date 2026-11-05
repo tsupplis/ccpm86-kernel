@@ -25,7 +25,7 @@ WINDOW_COMMANDS = ../commands/window/window.cmd ../commands/window/wmenu.cmd
 WINDOW_SAMPLES = ../base/carddeck.sub ../base/clear.sub \
     ../base/glass.sub ../base/wordproc.sub
 
-TOOLS_COMMANDS = ../commands/asm86/asm86.cmd ../commands/ddt86/ddt86.cmd \
+TOOLS_COMMANDS = ../commands/stop/stop.cmd ../commands/asm86/asm86.cmd ../commands/ddt86/ddt86.cmd \
     ../commands/gencmd/gencmd.cmd ../commands/genccpm/genccpm.cmd \
     ../commands/print/print.cmd ../commands/vcmode/vcmode.cmd \
     ../commands/tod/tod.cmd ../commands/era/eraq.cmd \
@@ -40,7 +40,7 @@ EXT_COMMANDS = ../commands/putget/put.cmd ../commands/putget/get.cmd \
 MAINT_COMMANDS = ../commands/dskmaint/dskmaint.cmd ../commands/dskmaint/dform.cmd \
     ../commands/disk/dcopy.cmd ../commands/disk/dcomp.cmd \
     ../commands/hdmaint/hdmaint.cmd ../commands/initdir/initdir.cmd ../commands/tod/tod.cmd \
-    ../commands/config/config.cmd ../commands/function/function.cmd ../commands/setup/setup.cmd ../commands/systat/systat.cmd
+    ../commands/config/config.cmd ../commands/function/function.cmd ../commands/setup/setup.cmd ../commands/systat/systat.cmd ../commands/stop/stop.cmd
 
 # Native and DOS development tools each occupy a data-only disk.
 DEV_COMMANDS = ../dev/rasm86.cmd ../dev/link86.cmd ../dev/lib86.cmd \

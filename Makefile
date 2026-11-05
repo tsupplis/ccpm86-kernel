@@ -134,3 +134,10 @@ check-hercules: all
 	python3 tools/graphics_check.py mda hercules
 	python3 tools/graphics_check.py hgc
 	python3 tools/graphics_check.py mda
+
+.PHONY: check-stop check-stop-live
+check-stop:
+	$(MAKE) -C commands/stop check
+
+check-stop-live:
+	$(MAKE) -C commands/stop check-live

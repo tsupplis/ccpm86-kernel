@@ -1,0 +1,326 @@
+$title('STOP - reconstructed Concurrent process and memory report')
+$compact
+
+stop:
+do;
+
+declare dcl literally 'declare';
+dcl buff (128) byte external;
+
+mon1: procedure (func,info) external;
+  dcl func byte, info address;
+end mon1;
+
+mon3: procedure (func,info) address external;
+  dcl func byte, info address;
+end mon3;
+
+mon4: procedure (func,info) pointer external;
+  dcl func byte, info address;
+end mon4;
+
+dcl sys$pointer pointer,
+    sys$parts structure (offset word, segment word) at (@sys$pointer);
+dcl roots based sys$pointer structure (
+    before$free (45) word, free$head word, between$heads (10) word,
+    shared$head word, thread$head word);
+
+dcl pd$pointer pointer,
+    pd$parts structure (offset word, segment word) at (@pd$pointer);
+dcl pd based pd$pointer structure (
+    unused$0 (2) byte, thread word, unused$1 (2) byte, flags word,
+    name (8) byte, unused$2 (6) byte, memory word, unused$3 (8) byte,
+    console byte);
+
+dcl md$pointer pointer,
+    md$parts structure (offset word, segment word) at (@md$pointer);
+dcl md based md$pointer structure (next word, base word, length word);
+
+dcl owner$pointer pointer,
+    owner$parts structure (offset word, segment word) at (@owner$pointer);
+dcl owner based owner$pointer structure (
+    next word, unused (6) byte, memory word);
+
+dcl group$pointer pointer,
+    group$parts structure (offset word, segment word) at (@group$pointer);
+dcl group$bytes based group$pointer (1) byte;
+
+dcl extents (81) structure (base word, length word, reserved word);
+/* The release also snapshots shared-code owners, although it does not print them. */
+dcl shared$rows (65) structure (
+    name (8) byte, size word, pd word, reserved (4) byte);
+dcl rows (65) structure (
+    console byte, reserved byte, pd word, size word, name (8) byte);
+dcl abort$block structure (
+    pd word, term word, console byte, pad byte, name (8) byte);
+
+dcl (free$count, row$count, owner$count, last$row) byte;
+dcl (free$total, shared$total, previous$md, next$owner) word;
+dcl hex$digits (*) byte data ('0123456789ABCDEF');
+
+put: procedure (char);
+  dcl char byte;
+  call mon1(2,char);
+end put;
+
+print: procedure (address$of$text);
+  dcl address$of$text address;
+  call mon1(9,address$of$text);
+end print;
+
+newline: procedure;
+  call put(13);
+  call put(10);
+end newline;
+
+decimal: procedure (value,width);
+  dcl value word, width byte;
+  dcl digits (5) byte, used byte;
+  width = width + 1; /* The release formatter prints one extra column. */
+  used = 0;
+  do while value >= 10;
+    digits(used) = (value mod 10) + '0';
+    used = used + 1;
+    value = value / 10;
+  end;
+  digits(used) = value + '0';
+  used = used + 1;
+  do while width > used;
+    call put(' ');
+    width = width - 1;
+  end;
+  do while used <> 0;
+    used = used - 1;
+    call put(digits(used));
+  end;
+end decimal;
+
+hex$word: procedure (value);
+  dcl value word;
+  call put(hex$digits(shr(value,12) and 0fh));
+  call put(hex$digits(shr(value,8) and 0fh));
+  call put(hex$digits(shr(value,4) and 0fh));
+  call put(hex$digits(value and 0fh));
+end hex$word;
+
+snapshot: procedure;
+  dcl (i,j,shared$row) word, (shared$only, count$groups) word;
+
+  free$count, row$count, owner$count = 0;
+  free$total, shared$total = 0;
+  pd$parts.segment, md$parts.segment, owner$parts.segment =
+      sys$parts.segment;
+
+  disable;
+  md$parts.offset = roots.free$head;
+  do while (md$parts.offset <> 0) and (free$count < 81);
+    if free$count = 0 then do;
+      extents(0).base = md.base;
+      extents(0).length = md.length;
+      free$count = 1;
+    end;
+    else do;
+      i = free$count - 1;
+      if extents(i).base + extents(i).length = md.base then
+        extents(i).length = extents(i).length + md.length;
+      else do;
+        extents(free$count).base = md.base;
+        extents(free$count).length = md.length;
+        free$count = free$count + 1;
+      end;
+    end;
+    free$total = free$total + md.length;
+    md$parts.offset = md.next;
+  end;
+
+  pd$parts.offset = roots.shared$head;
+  do while (pd$parts.offset <> 0) and (owner$count < 65);
+    if (pd.memory <> 0) and ((pd.flags and 2) <> 2) then do;
+      shared$row = owner$count;
+      owner$count = owner$count + 1;
+      do j = 0 to 7;
+        shared$rows(shared$row).name(j) = pd.name(j);
+      end;
+      shared$rows(shared$row).pd = pd$parts.offset;
+      owner$parts.offset = pd.memory;
+      md$parts.offset = owner.memory;
+      shared$rows(shared$row).size = md.length;
+      group$parts.segment = md.base;
+      group$parts.offset = 0;
+      count$groups = group$bytes(0);
+      if count$groups = 0 then count$groups = 256;
+      shared$only = 1;
+      j = 0;
+      do while j < count$groups;
+        i = j * 5 + 9;
+        if (group$bytes(i) <> 0) and (group$bytes(i) <> 1) then
+          shared$only = 0;
+        j = j + 1;
+      end;
+      if shared$only <> 0 then do;
+        shared$total = shared$total + md.length;
+        free$total = free$total + md.length;
+      end;
+      previous$md = md$parts.offset;
+      do while owner.next <> 0;
+        next$owner = owner.next;
+        md$parts.offset = owner.memory;
+        owner$parts.offset = next$owner;
+        if md$parts.offset <> previous$md then do;
+          shared$rows(shared$row).size = shared$rows(shared$row).size + md.length;
+          previous$md = md$parts.offset;
+        end;
+      end;
+    end;
+    pd$parts.offset = pd.thread;
+  end;
+
+  pd$parts.offset = roots.thread$head;
+  do while (pd$parts.offset <> 0) and (row$count < 65);
+    if (pd.memory <> 0) and ((pd.flags and 2) <> 2) then do;
+      rows(row$count).pd = pd$parts.offset;
+      rows(row$count).console = pd.console;
+      do i = 0 to 7;
+        rows(row$count).name(i) = pd.name(i);
+      end;
+      owner$parts.offset = pd.memory;
+      md$parts.offset = owner.memory;
+      rows(row$count).size = md.length;
+      previous$md = md$parts.offset;
+      do while owner.next <> 0;
+        next$owner = owner.next;
+        md$parts.offset = owner.memory;
+        owner$parts.offset = next$owner;
+        if md$parts.offset <> previous$md then do;
+          rows(row$count).size = rows(row$count).size + md.length;
+          previous$md = md$parts.offset;
+        end;
+      end;
+      row$count = row$count + 1;
+    end;
+    pd$parts.offset = pd.thread;
+  end;
+  enable;
+end snapshot;
+
+headings: procedure;
+  call newline;
+  call print(.('  Entry $'));
+  call print(.('  Program $'));
+  call print(.('  Memory $'));
+  call print(.('  Window$'));
+  call newline;
+  call print(.('  Number$'));
+  call print(.('  Name    $'));
+  call print(.('  Used   $'));
+  call print(.('  Number $'));
+  call newline;
+  call print(.('  ------$'));
+  call print(.('  --------$'));
+  call print(.('  -------$'));
+  call print(.('  -------$'));
+end headings;
+
+report: procedure;
+  dcl (i,j,window) byte;
+  call newline;
+  i = 0;
+  do while i < row$count;
+    if i = 0 then call print(.('    **$'));
+    else do;
+      call decimal(i,4);
+      call put('.');
+    end;
+    call print(.('    $'));
+    do j = 0 to 7;
+      call put(rows(i).name(j) and 7fh);
+    end;
+    call decimal(rows(i).size / 64,7);
+    call put('K');
+    window = rows(i).console + 1;
+    call decimal(window,5);
+    call newline;
+    i = i + 1;
+  end;
+
+  call newline;
+  call print(.('Contiguous Blocks of Free Memory$'));
+  call newline;
+  if free$count = 0 then call print(.('            None$'));
+  else do;
+    i = 0;
+    do while i < free$count;
+      call print(.('         $'));
+      call hex$word(extents(i).base);
+      call print(.(':0$'));
+      call decimal(extents(i).length / 64,10);
+      call put('K');
+      call newline;
+      i = i + 1;
+    end;
+  end;
+  call print(.(13,10,'Free Shared Code  ==$'));
+  call decimal(shared$total / 64,5);
+  call put('K');
+  call print(.(13,10,'Total Free Memory == $'));
+  call decimal(free$total / 64,4);
+  call print(.('K Bytes$'));
+  call newline;
+end report;
+
+plm: procedure public;
+  dcl version word, selection word, (pos, char, i) byte;
+
+  version = mon3(12,0);
+  if (low(version) < 30h) or
+     ((high(version) < 14h) and (high(version) <> 11h)) then do;
+    call print(.('Requires Concurrent to run$'));
+    call mon1(0,0);
+  end;
+  sys$pointer = mon4(154,0);
+  call headings;
+  call snapshot;
+  call report;
+
+  if buff(0) = 0 then do;
+    call print(.(13,10,'Enter the Number to delete or RETURN to exit $'));
+    buff(0) = 126;
+    call mon1(10,.buff(0));
+    if buff(1) <> 0 then do;
+      pos = 2;
+      do while (buff(pos) = ' ') or (buff(pos) = 9);
+        pos = pos + 1;
+      end;
+      selection = 0;
+      last$row = row$count - 1;
+      do while pos <= buff(1) + 1;
+        char = buff(pos);
+        if (char < '0') or (char > '9') then do;
+          call print(.(13,10,'Invalid Entry number.$'));
+          call mon1(143,0);
+        end;
+        selection = selection * 10 + char - '0';
+        if (selection > last$row) or
+           ((row$count = 0) and (selection <> 0)) then do;
+          call print(.(13,10,'Entry number too large$'));
+          call mon1(143,0);
+        end;
+        pos = pos + 1;
+      end;
+      if selection <> 0 then do;
+        abort$block.pd = rows(selection).pd;
+        abort$block.term = 0;
+        abort$block.console = rows(selection).console;
+        abort$block.pad = 0;
+        do i = 0 to 7;
+          abort$block.name(i) = rows(selection).name(i);
+        end;
+        if mon3(157,.abort$block) <> 0 then
+          call print(.(13,10,'The selected program has not been stopped$'));
+      end;
+    end;
+  end;
+  call mon1(143,0);
+end plm;
+
+end stop;

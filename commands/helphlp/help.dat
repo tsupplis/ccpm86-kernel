@@ -1693,6 +1693,25 @@
     SHOW d:       ; SHOW with the optional drive specifier displays
     ; information for the specified drive only.
 
+///1STOP
+    Syntax:
+
+    STOP
+    STOP text
+
+    Explanation:
+
+    Lists processes, their memory use and console numbers, and free memory.
+    Enter a positive entry number to request termination, or Return to exit.
+    The entry marked ** cannot be selected. Protected system processes are
+    excluded; the kernel may refuse to stop a process.
+
+    With a nonempty command tail, STOP displays the report and exits.
+
+    Examples:
+
+    A>STOP
+
 ///1SUBMIT
     Syntax:
 
