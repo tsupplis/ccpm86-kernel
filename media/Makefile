@@ -46,7 +46,7 @@ MAINT_COMMANDS = ../commands/dskmaint/dskmaint.cmd ../commands/dskmaint/dform.cm
 DEV_COMMANDS = ../dev/rasm86.cmd ../dev/link86.cmd ../dev/lib86.cmd \
     ../dev/xref86.cmd ../dev/sid86.cmd ../dev/cbas86.cmd ../dev/crun86.cmd \
     ../dev/pbasic.cmd ../dev/mbasic.cmd ../commands/asm80/asm80.cmd \
-    ../commands/hexcom/hexcom.cmd ../commands/ddt86/gentab.cmd
+    ../commands/hexcom/hexcom.cmd
 
 DOS_COMMANDS = ../dev/exe2bin.exe \
     ../dev/mslib.exe ../dev/mslink.exe ../dev/msmasm.exe ../dev/mbasic.com
