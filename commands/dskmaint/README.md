@@ -52,8 +52,8 @@ and I/O failure.
 
 Both paths write the same E5-filled boot track, with the boot code at zero,
 side flag at 1FFh and loader at 900h. The loader's single differing byte is
-selected for the detected OS. Verification uses BIOS function 4 on CP/M or a
-native XIOS read on CCP/M. Both paths currently target the original IBM PC
+selected for the detected OS. Verification reads back and compares the boot track, then checks the E5
+fill on every remaining track, using separate aligned scratch storage. Both paths currently target the original IBM PC
 40-cylinder, eight-sector, 512-byte formats (160K/320K), on A: or B:.
 
 ## Checks
@@ -68,3 +68,18 @@ optional verification, retries, cancellation, ES/register preservation and
 cleanup. Native cases reject any ROM BIOS access, and exercise foreground,
 open-file, queue-failure and version checks. The harness accesses no host disk.
 Real CP/M/CCP/M and floppy-hardware validation remains outstanding.
+
+## DFORM verification and completion
+
+Verification is enabled by default (`[V]` remains accepted). `[Q]` explicitly
+skips verification and prints an unverified-result warning; V and Q conflict.
+Read-back comparison covers the entire boot track and the E5 fill on all
+other formatted tracks. Failed comparisons use the bounded I/O retry loop.
+Errors identify the operation, cylinder and head. Cancellation or failure
+after a disk operation warns that the disk may be partially formatted.
+
+BDOS 108 is called only after recognizing Concurrent DOS 4.1 (full version
+1441h). CP/M-86 1.1 and CCP/M-86 3.1 do not implement it, so DFORM never calls
+it there. DFORM still rejects CDOS formatting, but returns error status 2 on
+that version. Status definitions are 0 success, 2 error and 3 cancellation;
+older systems retain console diagnostics and their normal termination path.
