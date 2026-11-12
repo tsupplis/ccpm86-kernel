@@ -141,3 +141,9 @@ check-stop:
 
 check-stop-live:
 	$(MAKE) -C commands/stop check-live
+
+# Execute built hard-disk capacity/addressing routines; no physical disks.
+.PHONY: check-hd-capacity
+check-hd-capacity: kernel
+	$(MAKE) -C commands/hdmaint check
+	python3 tools/hd_capacity_check.py

@@ -343,11 +343,46 @@ hdcheckcks:
                         mov     di,offset hdidstring
                         repe    cmpsb
                         pop     es ! pop si
-                        mov     ax,0 ! je hdcheckexit            ;exit here if id matches
+                        jne     hdcheckerror
+                        call    hdcapacity
+                        jmps    hdcheckexit
 hdcheckerror:                                                    ;else error
                         mov     ax,-1
 hdcheckexit:
                         pop     si
+                        ret
+
+ ; GENCCPM reserves vectors/hash tables from HDDPBINIT, not the label.
+; Reject labels exceeding that reservation before marking a drive logged in.
+; Bound byte capacity too: a larger BSH must not evade the address limit.
+hdcapacity:
+                        cmp     HDLBcpmdsm[si],0fffh
+                        ja      hdcapbad
+                        cmp     HDLBcpmdrm[si],07ffh
+                        ja      hdcapbad
+                        cmp     HDLBcpmcks[si],8000h
+                        jne     hdcapbad
+                        mov     cl,HDLBcpmbsh[si]
+                        cmp     cl,3
+                        jb      hdcapbad
+                        cmp     cl,7
+                        ja      hdcapbad
+                        mov     ax,1
+                        shl     ax,cl
+                        mov     bx,HDLBcpmdsm[si]
+                        inc     bx
+                        mul     bx
+; At most 31.5 MiB = 3F000h 128-byte records.
+                        cmp     dx,3
+                        ja      hdcapbad
+                        jb      hdcapgood
+                        cmp     ax,0f000h
+                        ja      hdcapbad
+hdcapgood:
+                        xor     ax,ax
+                        ret
+hdcapbad:
+                        mov     ax,-1
                         ret
 
 ;	correct the hard disk dpb's for concurrent version 2.0
@@ -747,8 +782,8 @@ HDDPBINIT               dw      11h                              ; spt
                         db      05h                              ; bsh  4k blocks
                         db      1Fh                              ; blm      "
                         db      01h                              ; exm
-                        dw      0A20h                            ; dsm  10 meg maximum
-                        dw      03FFh                            ; drm
+                        dw      0FFFh                            ; dsm: 4096 blocks, matches CDOS
+                        dw      07FFh                            ; drm: reserve for expanded directory
                         dw      0FFFFh                           ; al0 and al1
                         dw      8000h                            ; cks  fixed disk
                         dw      01h                              ; off
