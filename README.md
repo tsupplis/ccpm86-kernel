@@ -64,7 +64,7 @@ and verification details, and [distributions](#distributions) for all seven disk
 | Additional tools | ASM80, HEXCOM, DREDIX, DR development chain, Microsoft BASIC 5.50A |
 | Y2K components | SDIR, DATE, SHOW, TOD for CCP/M-86 3.2 through Concurrent DOS 4.1; 3.1 fixes included |
 | Usability and Bug fixes| CP/M Plus usability, known problem fixes (like the failing sysdisk on systems with 2 floppies and a hard disk) ... |
-| Hard Drive Size | The XIOS support CP/M Partitions up to 31.5MB and is forward compatible with CDOS 4.1  ... |
+| Hard Drive Size | The XIOS supports CP/M Partitions up to 31.5MB and is forward compatible with CDOS 4.1  ... |
 
 Alongside PC-MODE, the current version includes:
 - Enhanced SUBMIT
