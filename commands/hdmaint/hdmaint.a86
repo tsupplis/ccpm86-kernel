@@ -3379,7 +3379,9 @@ create_screen	db	1bh,'Y%.Creating CP/M volume on disk ',0ffh
 	dw	offset template_key_caption
 	db	14h,14h,9h,'Stop creation of CP/M volume',0h
 delete_progress	db	1bh,'Y(<Deleting old CP/M volume',0h
-create_progress	db	1bh,'Y(>',0ffh,'+',12h,1bh,'Y(>Creating CP/M volume',0h
+create_progress	db	1bh,'Y(>',0ffh
+	dw	offset clear_line
+	db	1bh,'Y(>Creating CP/M volume',0h
 test_progress	db	1bh,'Y(>Testing cylinder ',0ffh
 	dw	offset template_number3
 	dw	offset create_cylinder
@@ -3396,7 +3398,9 @@ bad_block_progress	db	1bh,'Y*1',0ffh
 	dw	offset create_bad_count
 	db	0h
 enable_progress	db	1bh,'Y(>Enabling CP/M volume',0h
-create_complete	db	1bh,'Y(8',0ffh,'+',12h,1bh,'Y(8Creation of CP/M volume complete',0ffh
+create_complete	db	1bh,'Y(8',0ffh
+	dw	offset clear_line
+	db	1bh,'Y(8Creation of CP/M volume complete',0ffh
 	dw	offset template_key_caption
 	db	14h,14h,9h,'To continue                  ',0h
 create_abort_actions	dw	offset entry
@@ -3760,7 +3764,8 @@ directory_option	db	0ffh
 	dw	offset blink_off
 	db	' directory entries',0h,1bh
 	db	'Y,*CP/M optionally will verify that every write to the hard disk',1bh
-	db	'Y-*is successful by reading the data back.',0ffh,91h,10h
+	db	'Y-*is successful by reading the data back.',0ffh
+	dw	offset print_template
 write_verify_option	db	0ffh
 	dw	offset template_key_caption
 	db	0eh,14h,4h,'CP/M ',0ffh

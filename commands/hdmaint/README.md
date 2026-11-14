@@ -160,3 +160,38 @@ Use `--system cpm` for CP/M, `native` for the native CCP/M kernel, or `cdos`
 with `--root` pointing to the CDOS repository and `--maint` to this formatter.
 The emulator checks cover 17- and 63-sector geometries. This validates native
 CP/M volume access, not CDOS FAT geometry or real-controller compatibility.
+
+## Display-callback regression (issue #22)
+
+Three stale numeric callbacks caused hangs on the CP/M options, creation
+progress and completion screens. They now use `offset print_template` or
+`offset clear_line`. The fix changes four CMD bytes; group sizes and symbol
+addresses remain unchanged. Cylinder handling and MBR policy are unchanged.
+
+`make check` audits 56 display streams (157 callback sites) and executes the
+three affected screens with write verification both enabled and disabled.
+
+For interactive creation under both emulators, from the repository root:
+
+```sh
+python3 tools/hdmaint_live_check.py --emulator qemu --personality pc
+python3 tools/hdmaint_live_check.py --emulator qemu --personality native
+python3 tools/hdmaint_live_check.py --emulator pce --personality pc
+python3 tools/hdmaint_live_check.py --emulator pce --personality native
+```
+
+Requires the built kernel/CMD, cpmtools, and the selected emulator on PATH.
+Each run boots a disposable floppy and 1024/16/63 hard-disk image. Synthetic
+DOS primary/extended entries reserve cylinders 0–129; HDMAINT itself creates
+the 66-cylinder CP/M volume at 130–195. The test checks the options redraw,
+completion and reboot prompt, DPB, label checksum, MBR replacement and foreign
+partition entries, and hashes all sectors outside the new partition (except
+the MBR). It retains images, inputs and screen captures in the printed fixture
+directory. These entries guard boundaries; they are not bootable DOS systems.
+
+For manual review, the key sequence is HDMAINT, F1, F6, F10 (start), F10
+(size), F4 (toggle verify), F10 (create), F9 (continue). Check start 130,
+length 66, end 195 and zero bad blocks. The displayed total-cylinder count
+and three-digit input limit are separate unresolved issues; this callback fix
+does not validate or change them. CP/M-86 and physical hardware testing remain
+separate from these CCP/M runs.

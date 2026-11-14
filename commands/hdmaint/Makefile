@@ -50,6 +50,7 @@ check: $(TOOLS) $(IMAGES)
 	python3 bootcheck.py compare $(REF)
 	cmp hdmtorg.cmd $(REF)
 	python3 check_maintained.py
+	python3 check_templates.py
 	python3 check_capacity.py
 	@echo "PASS: frozen original matches; maintained HDMAINT 1.1N checks passed"
 
