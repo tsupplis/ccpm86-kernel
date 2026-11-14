@@ -1,6 +1,6 @@
-# HDMAINT 1.1N / frozen 1.1 reconstruction
+# HDMAINT 1.2N / frozen 1.1 reconstruction
 
-`hdmaint.a86` is the maintained 1.1N source. `hdmtorg.a86` is now frozen:
+`hdmaint.a86` is the maintained 1.2N source. `hdmtorg.a86` is now frozen:
 its build must continue to reproduce the original 25,088-byte executable.
 Build and verify from the repository root:
 
@@ -77,7 +77,7 @@ CALL, also without raw opcode declarations.
 
 `make check` compares all three boot images and the frozen `hdmtorg.cmd`
 against the reference. The maintained build is checked separately for its
-1.1N banner, CMD group layout, and the maintained embedded boot images. The frozen
+1.2N banner, CMD group layout, and the maintained embedded boot images. The frozen
 source digest is also checked. These checks do not run disk writes in a guest.
 
 ## 1.1N correction
@@ -165,33 +165,70 @@ CP/M volume access, not CDOS FAT geometry or real-controller compatibility.
 
 Three stale numeric callbacks caused hangs on the CP/M options, creation
 progress and completion screens. They now use `offset print_template` or
-`offset clear_line`. The fix changes four CMD bytes; group sizes and symbol
-addresses remain unchanged. Cylinder handling and MBR policy are unchanged.
+`offset clear_line`. The callback-only fix changed four CMD bytes and preserved group sizes and
+symbol addresses. It did not change cylinder handling or MBR policy.
 
 `make check` audits 56 display streams (157 callback sites) and executes the
 three affected screens with write verification both enabled and disabled.
 
-For interactive creation under both emulators, from the repository root:
+For interactive creation, all disk fixtures use **615 cylinders, 4 heads,
+17 sectors/track, 512-byte sectors** (20.42 MiB raw). PCE uses its extended
+BIOS on the 5160/8088 configuration; QEMU uses an IDE disk with CHS translation
+disabled. These are BIOS-level tests, not native XT-controller tests.
+
+| `--layout` | Foreign space | CP/M allocation |
+| --- | --- | --- |
+| `dos-cpm` | 8 MiB FAT16 primary | Remaining ~12.3 MiB; starts at cylinder 242 |
+| `cpm-only` | None | ~20.3 MiB; starts at cylinder 0, excludes the MBR sector |
+| `mixed` (default) | 4 MiB FAT16 primary + 4 MiB extended container | Remaining ~12.3 MiB; starts at cylinder 242 |
+
+The primary contains `DOSKEEP.TXT`; the extended container is a synthetic
+boundary guard. Neither fixture contains a bootable DOS installation.
+QEMU's BIOS reports 614 cylinders, PCE's reports 615; the formatter uses the
+reported limit. Accordingly, the last CP/M cylinder is 613 or 614.
+
+Run each layout with both `--personality pc` and `--personality native`:
 
 ```sh
-python3 tools/hdmaint_live_check.py --emulator qemu --personality pc
-python3 tools/hdmaint_live_check.py --emulator qemu --personality native
-python3 tools/hdmaint_live_check.py --emulator pce --personality pc
-python3 tools/hdmaint_live_check.py --emulator pce --personality native
+python3 tools/hdmaint_live_check.py --emulator pce --personality pc --layout dos-cpm
+python3 tools/hdmaint_live_check.py --emulator qemu --personality pc --layout dos-cpm
 ```
 
-Requires the built kernel/CMD, cpmtools, and the selected emulator on PATH.
-Each run boots a disposable floppy and 1024/16/63 hard-disk image. Synthetic
-DOS primary/extended entries reserve cylinders 0–129; HDMAINT itself creates
-the 66-cylinder CP/M volume at 130–195. The test checks the options redraw,
-completion and reboot prompt, DPB, label checksum, MBR replacement and foreign
-partition entries, and hashes all sectors outside the new partition (except
-the MBR). It retains images, inputs and screen captures in the printed fixture
-directory. These entries guard boundaries; they are not bootable DOS systems.
+Requires the built kernel/CMD, cpmtools, mtools and the selected emulator on
+PATH. HDMAINT creates the partition inside the guest. Tests check explicit
+numeric confirmation, invalid start/size rejection, options redraw, completion
+and reboot prompt, DPB, label checksum, CHS/LBA fields, default MBR replacement,
+foreign entries and DOS file contents. Hashes cover all sectors outside CP/M,
+except the MBR. Images, inputs and screen captures remain in the printed
+fixture directory. `--cylinders N` tests a smaller CP/M allocation.
 
-For manual review, the key sequence is HDMAINT, F1, F6, F10 (start), F10
-(size), F4 (toggle verify), F10 (create), F9 (continue). Check start 130,
-length 66, end 195 and zero bad blocks. The displayed total-cylinder count
-and three-digit input limit are separate unresolved issues; this callback fix
-does not validate or change them. CP/M-86 and physical hardware testing remain
-separate from these CCP/M runs.
+For a fresh manual fixture, add `--prepare-only`. With PCE, enter the printed
+fixture directory and run:
+
+```sh
+pce-ibmpc -c pce.cfg -g vga -t sdl -r
+```
+
+Boot, run HDMAINT, then press F1, F6, F10 (accept start), F10 (accept size),
+F4 (toggle verify), F10 (create), F9 (continue). Check the expected start/end
+above and zero bad blocks. CP/M-86 and physical hardware testing remain separate
+from these CCP/M runs.
+
+## Cylinder display and input
+
+Cylinder totals, boundaries and progress use four digits. Type one to four
+digits and press Enter to update the proposal; press F10 to proceed after
+reviewing it. F10 with digits also updates the proposal; empty F10 accepts it.
+Empty Enter, a fifth digit and invalid characters ring the bell. Numbers no
+longer submit automatically after three digits. Geometry and partition bounds
+are unchanged; bad-block counters use five digits to display the full unsigned count.
+
+`make check` executes 58 numeric display/input, upper-bound and CHS/LBA cases,
+including values 999–1024. Four-digit input is also exercised in the 615/4/17
+guest tests using leading zeroes; a physical cylinder 1000 is deliberately not
+part of this smaller-disk matrix.
+
+New-partition previews retain the cylinders occupied by foreign partitions;
+replacement previews subtract the old CP/M extent before adding the proposal.
+The selected extent pointer is initialized on both paths. Adjacent foreign
+partitions sharing a partial cylinder count that cylinder once.

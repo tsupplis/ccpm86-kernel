@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Drive HDMAINT creation through PCE/QEMU on disposable mixed-partition images.
+"""Drive HDMAINT creation through PCE/QEMU on disposable 615/4/17 disk images.
 
 This is an interactive-formatter test: HDMAINT, not the host, creates CP/M.
-DOS entries are synthetic boundary guards, not bootable DOS installations.
+DOS primaries contain a FAT filesystem and a checked file, not a bootable OS.
+Extended containers are synthetic boundary guards.
 Fixtures and screen dumps are retained for manual review/replay.
 """
 from pathlib import Path
@@ -14,6 +15,9 @@ P.add_argument('--cmd', type=Path)
 P.add_argument('--emulator', choices=['pce','qemu'], required=True)
 P.add_argument('--personality', choices=['pc','native'], default='pc')
 P.add_argument('--expect-hang', choices=['options'])
+P.add_argument('--layout', choices=['mixed', 'dos-cpm', 'cpm-only'], default='mixed')
+P.add_argument('--cylinders', type=int, help='CP/M length; default fills the free extent')
+P.add_argument('--prepare-only', action='store_true', help='Create fresh images/configuration for manual testing without running the emulator')
 A = P.parse_args()
 R = A.root.resolve()
 CMD = (A.cmd or R/'commands/hdmaint/hdmaint.cmd').resolve()
@@ -42,43 +46,72 @@ shutil.copyfile(R/'media/diskdefs', F/'diskdefs')
 run('python3',str(R/'tools/cpm86twist.py'),'untwist',str(R/'media/ccpm86base.img'),'boot.logical.img')
 run('cpmcp','-f','ccpm86-320','boot.logical.img','ccpm.sys','hdmaint.cmd','0:')
 run('python3',str(R/'tools/cpm86twist.py'),'twist','boot.logical.img','boot.img')
-spc=16*63
-size=1024*spc*512
+# All disk-backed scenarios use the agreed native-XT geometry.
+CYLINDERS, HEADS, SPT = 615, 4, 17
+# Expected BIOS reports are test assertions, not formatter behaviour.
+bios_cylinders = CYLINDERS-1 if A.emulator == 'qemu' else CYLINDERS
+spc=HEADS*SPT
+size=CYLINDERS*spc*512
+DOS_SECTORS = 8*1024*1024//512
+first = 0 if A.layout == 'cpm-only' else (SPT+DOS_SECTORS+spc-1)//spc
+maximum_length = bios_cylinders-first
+length = A.cylinders if A.cylinders is not None else maximum_length
+if not 10 <= length <= maximum_length:
+    P.error(f'--cylinders must be between 10 and {maximum_length}')
+# Mixed reserves the same 8 MiB using a 4 MiB primary plus a 4 MiB
+# extended container; its partial-cylinder boundary exercises LBA rounding.
+foreign = [] if A.layout == 'cpm-only' else (
+    [(0,4,SPT,DOS_SECTORS)] if A.layout == 'dos-cpm' else
+    [(0,4,SPT,DOS_SECTORS//2),(1,5,SPT+DOS_SECTORS//2,DOS_SECTORS//2)])
 hard=F/'hard.img'
 with hard.open('wb') as f: f.truncate(size)
 mbr=bytearray(512)
 # Identifiable bootstrap; it is intentionally replaced by the existing default.
 mbr[:446]=bytes([0x5a])*446
-for index,kind,start,length in [(0,6,63,65*spc-63),(1,5,65*spc,65*spc)]:
+for index,kind,entry_start,entry_length in foreign:
     at=446+index*16
     mbr[at]=0x80 if index==0 else 0
     mbr[at+4]=kind
-    for pos,lba in [(at+1,start),(at+5,start+length-1)]:
-        c,rem=divmod(lba,spc);h,s=divmod(rem,63)
+    for pos,lba in [(at+1,entry_start),(at+5,entry_start+entry_length-1)]:
+        c,rem=divmod(lba,spc);h,s=divmod(rem,SPT)
         mbr[pos:pos+3]=bytes([h,s+1|((c>>8)<<6),c&255])
-    struct.pack_into('<II',mbr,at+8,start,length)
+    struct.pack_into('<II',mbr,at+8,entry_start,entry_length)
 mbr[510:]=b'\x55\xaa'
 with hard.open('r+b') as f:
     f.write(mbr)
-    for lba in [63,65*spc,130*spc-1,196*spc,size//512-1]:
+    for lba in [SPT,65*spc,first*spc-1,(first+length)*spc,size//512-1]:
+        if not 0 < lba < size//512: continue
         f.seek(lba*512);f.write(bytes([0xa5])*512)
-start=130*spc*512; end=196*spc*512
-before=(digest_range(hard,512,start),digest_range(hard,end,size))
+# Format the foreign primary and populate a file before taking protection hashes.
+dos_text = b'HDMAINT must preserve this DOS file and the entire DOS partition.\r\n'
+if foreign:
+    dos_sectors = foreign[0][3]
+    with (F/'dos.img').open('wb') as f: f.truncate(dos_sectors*512)
+    run('mformat','-i','dos.img','-T',str(dos_sectors),'-h',str(HEADS),
+        '-s',str(SPT),'-H',str(SPT),'-c','1','-v','KEEPDOS','::')
+    (F/'DOSKEEP.TXT').write_bytes(dos_text)
+    run('mcopy','-i','dos.img','DOSKEEP.TXT','::DOSKEEP.TXT')
+    with (F/'dos.img').open('rb') as src, hard.open('r+b') as dst:
+        assert src.read(512)[54:62] == b'FAT16   ', 'Unexpected DOS filesystem type'
+        src.seek(0);dst.seek(SPT*512);shutil.copyfileobj(src,dst)
+start=first*spc*512; end=(first+length)*spc*512
+before=(digest_range(hard,512,max(512,start)),digest_range(hard,end,size))
 (F/'baseline-mbr.bin').write_bytes(mbr)
 (F/'manifest.json').write_text(json.dumps(dict(emulator=A.emulator,personality=A.personality,
-    geometry=[1024,16,63],hdmaint_sha256=hashlib.sha256(CMD.read_bytes()).hexdigest(),
+    geometry=[CYLINDERS,HEADS,SPT],layout=A.layout,bios_cylinders=bios_cylinders,cylinders=[first,first+length-1],hdmaint_sha256=hashlib.sha256(CMD.read_bytes()).hexdigest(),
     kernel_sha256=hashlib.sha256(kernel.read_bytes()).hexdigest(),protected_hashes=before),indent=2)+'\n')
 
 class Qemu:
     def __init__(self):
-        self.log=(F/'qemu.log').open('wb')
         args=['qemu-system-i386','-machine','pc','-accel','tcg','-m','16',
               '-display','none','-serial','none','-monitor','none','-qmp','stdio',
               '-net','none','-boot','a','-no-fd-bootchk','-no-reboot',
               '-drive','file=boot.img,format=raw,if=floppy,index=0',
               '-drive','file=hard.img,format=raw,if=none,id=hd0',
-              '-device','ide-hd,drive=hd0,cyls=1024,heads=16,secs=63,bios-chs-trans=none']
+              '-device',f'ide-hd,drive=hd0,cyls={CYLINDERS},heads={HEADS},secs={SPT},bios-chs-trans=none']
         (F/'qemu-command.json').write_text(json.dumps(args,indent=2)+'\n')
+        if A.prepare_only: return
+        self.log=(F/'qemu.log').open('wb')
         self.p=subprocess.Popen(args,cwd=F,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,bufsize=0)
         self.receive();self.command('qmp_capabilities')
     def receive(self):
@@ -108,8 +141,9 @@ class Pce:
         cfg=re.sub(r'floppy_disk_drives\s*=\s*\d+','floppy_disk_drives = 2',cfg)
         cfg=re.sub(r'disk\s*\{.*?\}','',cfg,flags=re.S)
         cfg+='\ndisk { drive=0 type="auto" file="boot.img" }\n'
-        cfg+='disk { drive=128 type="image" file="hard.img" c=1024 h=16 s=63 }\n'
+        cfg+=f'disk {{ drive=128 type="image" file="hard.img" c={CYLINDERS} h={HEADS} s={SPT} }}\n'
         (F/'pce.cfg').write_text(cfg)
+        if A.prepare_only: return
         self.log=(F/'pce.log').open('wb')
         self.p=subprocess.Popen(['pce-ibmpc','-c','pce.cfg','-t','null','-g','vga'],cwd=F,stdin=subprocess.PIPE,stdout=self.log,stderr=self.log)
     def send(self,s):self.p.stdin.write((s+'\n').encode());self.p.stdin.flush()
@@ -127,6 +161,9 @@ class Pce:
         self.p.wait(timeout=10);self.log.close()
 
 vm = Qemu() if A.emulator=='qemu' else Pce()
+if A.prepare_only:
+    print(f'Prepared {A.layout}: {CYLINDERS}/{HEADS}/{SPT}; CP/M proposal {first}..{bios_cylinders-1}', flush=True)
+    raise SystemExit(0)
 seq=0
 last=''
 def screen():
@@ -158,8 +195,27 @@ try:
     wait('SELECT FUNCTION','main')
     key('F1');wait('Change or create CP/M partition','partition')
     key('F6');wait('Enter starting cylinder','start')
-    assert '130' in last,last
+    if not A.expect_hang:
+        assert f'of {bios_cylinders:04} cylinders assigned:' in last,last
+        for ch in f'{first+1:04}': key(ch)
+        # Four digits alone must not submit or change the proposal.
+        wait(f'Continue with starting cylinder {first:04}','unconfirmed-start')
+        key('Return');wait(f'Continue with starting cylinder {first+1:04}','confirmed-start')
+        for ch in f'{bios_cylinders:04}': key(ch)
+        key('Return');wait('Enter starting cylinder: ____','rejected-start')
+        assert f'Continue with starting cylinder {first+1:04}' in last,last
+        for ch in f'{first:04}': key(ch)
+        key('Return');wait(f'Continue with starting cylinder {first:04}','restored-start')
     key('F10');wait('Enter partition size','size')
+    assert f'{bios_cylinders:04} of {bios_cylinders:04} cylinders assigned:' in last,last
+    if not A.expect_hang:
+        for ch in str(maximum_length+1): key(ch)
+        key('Return');wait('Enter partition size: ____','rejected-size')
+        assert f'Continue with partition size of {maximum_length:04}' in last,last
+        for ch in str(length-1): key(ch)
+        key('Return');wait(f'Continue with partition size of {length-1:04}','confirmed-size')
+        for ch in str(length): key(ch)
+        key('F10');wait(f'Continue with partition size of {length:04}','confirmed-size-f10')
     key('F10')
     if A.expect_hang=='options':
         try:wait('Accept CP/M options shown','options',15)
@@ -173,6 +229,11 @@ try:
         key('F4');wait('Accept CP/M options shown','options-redraw')
         key('F10')
         wait('Creation of CP/M volume complete','complete',180)
+        assert f'{first:04}-{first+length-1:04}' in last,last
+        assert '00000 bad blocks found' in last,last
+        # The completion title precedes the controls and menu input flush.
+        # Take another guest observation before sending the continuation key.
+        wait('To continue','complete-controls')
         key('F9');wait('Please insert a system diskette','reboot')
         success=True
 finally:
@@ -181,16 +242,26 @@ finally:
 if not A.expect_hang:
     with hard.open('rb') as f:
         after=f.read(512);f.seek(start+1536);label=f.read(512)
-    assert after[446:478]==mbr[446:478], 'Foreign partition entries changed'
+    for index,_,_,_ in foreign:
+        at=446+index*16
+        assert after[at:at+16]==mbr[at:at+16], 'Foreign partition entry changed'
     assert after[510:]==b'\x55\xaa'
     entries=[after[i:i+16] for i in range(446,510,16)]
     cpm=[e for e in entries if e[4]==0xdb]
-    assert len(cpm)==1 and struct.unpack_from('<II',cpm[0],8)==(130*spc,66*spc)
-    assert label[43]==6 and struct.unpack_from('<H',label,46)[0]==0xfbf, 'Unexpected 8 KiB DPB'
+    assert len(cpm)==1 and struct.unpack_from('<II',cpm[0],8)==(first*spc+(first==0),length*spc-(first==0))
+    kib = (length-2)*spc//2
+    shift = 4 if kib <= 1024 else (5 if kib <= 16384 else 6)
+    blocks = (length-2)*spc*512//(128 << shift)
+    assert label[43]==shift and struct.unpack_from('<H',label,46)[0]==blocks-1, 'Unexpected DPB'
+    assert cpm[0][3] | ((cpm[0][2] & 0xc0) << 2) == first
+    assert cpm[0][7] | ((cpm[0][6] & 0xc0) << 2) == first+length-1
+    assert len([e for e in entries if e[4]]) == len(foreign)+1, 'Unexpected partition count'
+    if foreign:
+        assert run('mtype','-i',f'hard.img@@{SPT*512}','::DOSKEEP.TXT').stdout == dos_text, 'DOS file changed'
     assert sum(struct.unpack('<256H',label))&65535==0,'Invalid label checksum'
-    assert before==(digest_range(hard,512,start),digest_range(hard,end,size)), 'Out-of-partition write'
+    assert before==(digest_range(hard,512,max(512,start)),digest_range(hard,end,size)), 'Out-of-partition write'
     raw=CMD.read_bytes();n=int.from_bytes(raw[1:3],'little')*16;data=raw[128+n:]
     assert after[:446]==data[0xefe:0xefe+446], 'Default MBR replacement changed'
-    print('PASS: guest-created 66-cylinder volume at 130; DPB/checksum/MBR and protected regions verified',flush=True)
+    print(f'PASS: guest-created {length}-cylinder volume at {first}; DPB/checksum/MBR and protected regions verified',flush=True)
 assert success
-print(f'PASS: {A.emulator} {A.personality}; fixture retained at {F}',flush=True)
+print(f'PASS: {A.emulator} {A.personality} {A.layout}; fixture retained at {F}',flush=True)

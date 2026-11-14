@@ -1,10 +1,10 @@
 ;-----------------------------------------------------------------------------
-; HDMAINT 1.1N - Hard Disk Maintenance for Concurrent CP/M-86 and CP/M-86.
+; HDMAINT 1.2N - Hard Disk Maintenance for Concurrent CP/M-86 and CP/M-86.
 ; Copyright (C) 1983 Digital Research.
 ;
 ; Reconstructed from base/hdmaint.cmd. hdmtorg.a86 is the invariant copy;
-; hdmaint.a86 is the maintained 1.1N source. Only the frozen invariant build
-; must match the original CMD. 1.1N initializes the CP/M floppy index.
+; hdmaint.a86 is the maintained 1.2N source. Only the frozen invariant build
+; must match the original CMD. 1.2N initializes the CP/M floppy index.
 ; The CP/M and Concurrent repositories currently contain identical originals.
 ;
 ; Accepted systems: CP/M-86 2.2 (0022h) and Concurrent CP/M-86 3.1 (1431h).
@@ -448,16 +448,36 @@ build_free_extents:
 	mov	si,265h
 	mov	di,28h
 	mov	dx,0h
+	xor	bp,bp	; end of already-counted cylinder range
 scan_partition_entry:
 	mov	al,4h[bx+si]
 	or	al,al
 	jz	scan_partition_entry_at_0388
 	call	entry_cylinder_range
 	push	ax
-	sub	ax,cx
+	push	cx
+; Adjacent LBA partitions can share a boundary cylinder. Count it once.
 	inc	ax
-	add	ax,0ch[bx]
+	or	cx,cx
+	jnz	count_partition_range
+	cmp	ax,0eh[bx]
+	jne	count_partition_range
+; A full-disk range (including invalid metadata) supersedes earlier holes.
 	mov	0ch[bx],ax
+	mov	bp,ax
+	jmps	count_partition_done
+count_partition_range:
+	cmp	cx,bp
+	jae	count_partition_start
+	mov	cx,bp
+count_partition_start:
+	cmp	ax,bp
+	jbe	count_partition_done
+	mov	bp,ax
+	sub	ax,cx
+	add	0ch[bx],ax
+count_partition_done:
+	pop	cx
 	pop	ax
 	cmp	byte ptr 4h[bx+si],0dbh
 	jnz	scan_partition_entry_at_0373
@@ -781,9 +801,11 @@ default_partition:
 	shl	ax,1
 	add	ax,offset partition_cylinders
 	mov	current_extent_pointer,ax
+	mov	bx,ax
+	mov	ax,assigned_cylinders
+	mov	other_assigned_cylinders,ax
 	cmp	byte ptr selected_has_cpm,0h
 	jz	default_partition_at_05f8
-	mov	bx,ax
 	mov	ax,2h[bx]
 	sub	ax,[bx]
 	inc	ax
@@ -2281,6 +2303,24 @@ template_number3:
 	ret
 
 ;-----------------------------------------------------------------------------
+; Display callback: fetch a DATA word pointer and print four decimal digits.
+;-----------------------------------------------------------------------------
+template_number4:
+	lodsw
+	mov	bx,ax
+	mov	ax,[bx]
+	call	print_number4
+	ret
+
+; Display a full unsigned word for bad-block counts.
+template_number5:
+	lodsw
+	mov	bx,ax
+	mov	ax,[bx]
+	call	print_number5
+	ret
+
+;-----------------------------------------------------------------------------
 ; Display callback: fetch a DATA byte pointer and print its character.
 ;-----------------------------------------------------------------------------
 template_character:
@@ -2425,10 +2465,17 @@ template_decimal_at_1197:
 	ret
 
 ;-----------------------------------------------------------------------------
-; Print the low three decimal digits, including leading zeroes.
+; Print three, four or five decimal digits, including leading zeroes.
 ;-----------------------------------------------------------------------------
 print_number3:
 	mov	byte ptr decimal_width,3h
+	jmps	print_fixed_number
+print_number4:
+	mov	byte ptr decimal_width,4h
+	jmps	print_fixed_number
+print_number5:
+	mov	byte ptr decimal_width,5h
+print_fixed_number:
 	mov	cx,0h
 print_number3_at_11aa:
 	sub	dx,dx
@@ -2566,18 +2613,21 @@ read_menu_key_at_1273:
 	jmp	read_menu_key
 
 ;-----------------------------------------------------------------------------
-; Read three decimal digits; E before any digits returns FFFFh. The installed
-; F10 definition emits E. Other invalid input rings the bell.
+; Read one to four decimal digits, confirmed by Enter or F10 (E).
+; F10 with no digits returns FFFFh to accept the proposed value.
+; Empty Enter, excess digits and other invalid input ring the bell.
 ;-----------------------------------------------------------------------------
 read_number:
 	call	flush_keys
-	mov	byte ptr digits_left,3h
+	mov	byte ptr digits_left,4h
 	mov	word ptr number_value,0h
 read_number_at_128b:
 	call	read_digit
 	jnc	read_number_at_12a3
-	cmp	byte ptr digits_left,3h
-	jnz	read_number_at_129b
+	cmp	byte ptr digits_left,4h
+	jnz	read_number_done
+	cmp	al,0dh
+	jz	read_number_at_129b
 	mov	ax,0ffffh
 	ret
 read_number_at_129b:
@@ -2585,6 +2635,8 @@ read_number_at_129b:
 	call	console_out
 	jmp	read_number_at_128b
 read_number_at_12a3:
+	cmp	byte ptr digits_left,0h
+	jz	read_number_at_129b
 	push	ax
 	call	console_out
 	mov	al,20h
@@ -2605,11 +2657,15 @@ read_number_at_12a3:
 	add	ax,cx
 	mov	number_value,ax
 	dec	byte ptr digits_left
-	jnz	read_number_at_128b
+	jmp	read_number_at_128b
+read_number_done:
+	mov	ax,number_value
 	ret
 read_digit:
 	call	read_key
 	cmp	al,45h
+	jz	read_digit_at_12ef
+	cmp	al,0dh
 	jz	read_digit_at_12ef
 	cmp	al,30h
 	jc	read_digit_at_12e7
@@ -3305,23 +3361,23 @@ replace_actions	dw	offset entry
 	dw	offset main_menu
 maximum_end_cylinder	dw	offset entry
 start_screen	db	1bh,'Y**If the starting cylinder number shown below is acceptable,',1bh
-	db	'Y+*press F10 to proceed.  Otherwise, enter a starting cylinder',1bh
-	db	'Y,*number.  Remember that a CP/M partition must be at least',1bh
-	db	'Y-*10 cylinders long.',0ffh
+	db	'Y+*press F10 to proceed. Otherwise, type a number and press Enter.',1bh
+	db	'Y,*A CP/M partition must be at least 10 cylinders long.',1bh
+	db	'Y-*After changing the number, press F10 to proceed.',0ffh
 	dw	offset template_key_caption
 	db	14h,14h,0ah,'Continue with starting cylinder ',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset partition_start
 	db	1bh,'Y2=',0ffh
 	dw	offset blink_on
-	db	'Enter starting cylinder: ___',0ffh
+	db	'Enter starting cylinder: ____',0ffh
 	dw	offset blink_off
 	db	0ffh
 	dw	offset cursor_on
 	db	1bh,'Y2V',0h
 maximum_cpm22_cylinders	dw	0h
 size_screen	db	1bh,'Y**If the CP/M partition size shown below is acceptable, press',1bh
-	db	'Y+*F10 to proceed.  Otherwise, enter a new size.  Remember that',1bh
+	db	'Y+*F10 to proceed. Otherwise, type a new size and press Enter.',1bh
 	db	'Y,*the CP/M partition must be at least 10 cylinders long.',0ffh
 	dw	offset blink_on
 	db	1bh,'Y.*Large volumes require the updated kernel on every system.',1bh
@@ -3331,12 +3387,12 @@ size_screen	db	1bh,'Y**If the CP/M partition size shown below is acceptable, pre
 	dw	offset maximum_cpm22_cylinders
 	db	' cylinders.',0ffh
 	dw	offset blink_on
-	db	1bh,'Y2<Enter partition size: ___',0ffh
+	db	1bh,'Y2<Enter partition size: ____',0ffh
 	dw	offset blink_off
 	db	0ffh
 	dw	offset template_key_caption
 	db	14h,14h,0ah,'Continue with partition size of ',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset partition_cylinders_count
 	db	' (',0ffh
 	dw	offset template_decimal
@@ -3370,10 +3426,10 @@ create_screen	db	1bh,'Y%.Creating CP/M volume on disk ',0ffh
 	dw	offset template_character
 	dw	offset selected_letter
 	db	': cylinders ',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset partition_start
 	db	'-',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset partition_end
 	db	0ffh
 	dw	offset template_key_caption
@@ -3383,18 +3439,18 @@ create_progress	db	1bh,'Y(>',0ffh
 	dw	offset clear_line
 	db	1bh,'Y(>Creating CP/M volume',0h
 test_progress	db	1bh,'Y(>Testing cylinder ',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset create_cylinder
 	db	1bh,'Y*1',0ffh
-	dw	offset template_number3
+	dw	offset template_number5
 	dw	offset create_bad_count
 	db	' bad blocks found (will be ignored by CP/M)',0h
 cylinder_progress	db	1bh,'Y(O',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset create_cylinder
 	db	0h
 bad_block_progress	db	1bh,'Y*1',0ffh
-	dw	offset template_number3
+	dw	offset template_number5
 	dw	offset create_bad_count
 	db	0h
 enable_progress	db	1bh,'Y(>Enabling CP/M volume',0h
@@ -3435,7 +3491,7 @@ bad_system_actions	dw	offset entry
 	dw	offset bad_system_cylinder_at_0ab1
 	dw	offset entry
 bad_system_screen	db	1bh,'Y**HDMAINT cannot create a CP/M volume beginning at cylinder ',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset partition_start
 	db	1bh,'Y+*because of a bad block in the CP/M system area.',1bh
 	db	'Y-*You can either stop the creation process or try again with a',1bh
@@ -3504,10 +3560,10 @@ partition_header	db	0ffh
 	dw	offset template_character
 	dw	offset selected_letter
 	db	': ',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset assigned_cylinders
 	db	' of ',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset disk_cylinders
 	db	' cylinders assigned:'
 partition_footer	db	0ffh
@@ -3520,13 +3576,13 @@ partition_footer	db	0ffh
 partition1_line	db	1bh,'Y',0ffh
 	dw	offset template_character
 	dw	offset partition_display_row
-	db	'J',0ffh
-	dw	offset template_number3
+	db	'K',0ffh
+	dw	offset template_number4
 	dw	offset partition_cylinders
 	db	'-',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset partition1_end
-	db	'  ',0ffh
+	db	' ',0ffh
 	dw	offset template_if_not_equal
 	dw	offset partition1_type
 	db	0dbh,'non-CP/M use',0h,0ffh
@@ -3535,7 +3591,7 @@ partition1_line	db	1bh,'Y',0ffh
 	db	0dbh,0ffh
 	dw	offset template_if_equal
 	dw	offset large_volume
-	db	0h,'CP/M        ',0h,0ffh
+	db	0h,'CP/M       ',0h,0ffh
 	dw	offset template_if_not_equal
 	dw	offset editing_size
 	db	0h,1bh,'s',1bh,'r',0h,0ffh
@@ -3544,20 +3600,20 @@ partition1_line	db	1bh,'Y',0ffh
 	db	0h,'CCP/M only  ',0h,1bh,'t',1bh,'u',0h,0ffh
 	dw	offset template_if_equal
 	dw	offset partition_table
-	db	80h,'  (bootable)',0h,0ffh
+	db	80h,' (bootable)',0h,0ffh
 	dw	offset template_if_not_equal
 	dw	offset partition_table
-	db	80h,'            ',0h,0h
+	db	80h,'           ',0h,0h
 partition2_line	db	1bh,'Y',0ffh
 	dw	offset template_character
 	dw	offset partition_display_row
-	db	'J',0ffh
-	dw	offset template_number3
+	db	'K',0ffh
+	dw	offset template_number4
 	dw	offset partition2_start
 	db	'-',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset partition2_end
-	db	'  ',0ffh
+	db	' ',0ffh
 	dw	offset template_if_not_equal
 	dw	offset partition2_type
 	db	0dbh,'non-CP/M use',0h,0ffh
@@ -3566,7 +3622,7 @@ partition2_line	db	1bh,'Y',0ffh
 	db	0dbh,0ffh
 	dw	offset template_if_equal
 	dw	offset large_volume
-	db	0h,'CP/M        ',0h,0ffh
+	db	0h,'CP/M       ',0h,0ffh
 	dw	offset template_if_not_equal
 	dw	offset editing_size
 	db	0h,1bh,'s',1bh,'r',0h,0ffh
@@ -3582,13 +3638,13 @@ partition2_line	db	1bh,'Y',0ffh
 partition3_line	db	1bh,'Y',0ffh
 	dw	offset template_character
 	dw	offset partition_display_row
-	db	'J',0ffh
-	dw	offset template_number3
+	db	'K',0ffh
+	dw	offset template_number4
 	dw	offset partition3_start
 	db	'-',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset partition3_end
-	db	'  ',0ffh
+	db	' ',0ffh
 	dw	offset template_if_not_equal
 	dw	offset partition3_type
 	db	0dbh,'non-CP/M use',0h,0ffh
@@ -3597,7 +3653,7 @@ partition3_line	db	1bh,'Y',0ffh
 	db	0dbh,0ffh
 	dw	offset template_if_equal
 	dw	offset large_volume
-	db	0h,'CP/M        ',0h,0ffh
+	db	0h,'CP/M       ',0h,0ffh
 	dw	offset template_if_not_equal
 	dw	offset editing_size
 	db	0h,1bh,'s',1bh,'r',0h,0ffh
@@ -3613,13 +3669,13 @@ partition3_line	db	1bh,'Y',0ffh
 partition4_line	db	1bh,'Y',0ffh
 	dw	offset template_character
 	dw	offset partition_display_row
-	db	'J',0ffh
-	dw	offset template_number3
+	db	'K',0ffh
+	dw	offset template_number4
 	dw	offset partition4_start
 	db	'-',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset partition4_end
-	db	'  ',0ffh
+	db	' ',0ffh
 	dw	offset template_if_not_equal
 	dw	offset partition4_type
 	db	0dbh,'non-CP/M use',0h,0ffh
@@ -3628,7 +3684,7 @@ partition4_line	db	1bh,'Y',0ffh
 	db	0dbh,0ffh
 	dw	offset template_if_equal
 	dw	offset large_volume
-	db	0h,'CP/M        ',0h,0ffh
+	db	0h,'CP/M       ',0h,0ffh
 	dw	offset template_if_not_equal
 	dw	offset editing_size
 	db	0h,1bh,'s',1bh,'r',0h,0ffh
@@ -3678,27 +3734,27 @@ verify_screen	db	1bh,'Y%2Scanning CP/M volume on disk ',0ffh
 	dw	offset template_character
 	dw	offset selected_letter
 	db	': for bad blocks',1bh,'Y(<',0ffh
-	dw	offset template_number3
+	dw	offset template_number5
 	dw	offset bad_block_count
 	db	' bad blocks known to CP/M and ignored',1bh,'Y)<',0ffh
-	dw	offset template_number3
+	dw	offset template_number5
 	dw	offset verify_bad_count
 	db	' additional bad blocks have been found',1bh,'Y/<Scanning cylinder ',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset verify_cylinder_number
 	db	0ffh
 	dw	offset template_key_caption
 	db	14h,12h,0ah,'Stop verify of CP/M volume',0h
 verify_cylinder_progress	db	1bh,'Y/N',0ffh
-	dw	offset template_number3
+	dw	offset template_number4
 	dw	offset verify_cylinder_number
 	db	0h
 verify_error_progress	db	1bh,'Y)<',0ffh
-	dw	offset template_number3
+	dw	offset template_number5
 	dw	offset verify_bad_count
 	db	0h
 verify_system_error	db	1bh,'Y+<CP/M system area is defective',0h
-verify_complete	db	1bh,'Y/<Verify complete      ',0ffh
+verify_complete	db	1bh,'Y/<Verify complete       ',0ffh
 	dw	offset template_key_caption
 	db	11h,12h,8h,'Verify disk again',0ffh
 	dw	offset template_key_caption
@@ -3908,7 +3964,7 @@ frame_template	db	1bh,'E',0dah,0c4h,0c4h,0c4h,0c4h,0c4h,0c4h,0c4h,0c4h,0c4h,0c4h
 	db	0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh,0cdh
 	db	0b5h,0ffh
 	dw	offset template_position
-	db	1h,5h,'Hard Disk Maintenance for Concurrent CP/M-86 and CP/M-86 version 1.1N '
+	db	1h,5h,'Hard Disk Maintenance for Concurrent CP/M-86 and CP/M-86 version 1.2N '
 	db	1bh,'v',0h
 frame_down_escape	db	0b3h,1bh,'D',1bh,'B',0h
 frame_up_escape	db	0b3h,1bh,'B',0h

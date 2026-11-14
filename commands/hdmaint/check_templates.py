@@ -19,7 +19,7 @@ def check(execute_only=False):
     address = lambda name: names[key(name)]
     roots = sorted(set(re.findall(r'mov\s+si,offset\s+(\w+)\s*\n\s*call\s+print_template', source)))
     callbacks = {address(n): (n, size) for n, size in {
-        'print_template': 0, 'template_number3': 2, 'template_character': 2,
+        'print_template': 0, 'template_number3': 2, 'template_number4': 2, 'template_number5': 2, 'template_character': 2,
         'template_decimal': 2, 'template_position': 2, 'template_key_caption': 3,
         'template_if_equal': 3, 'template_if_not_equal': 3,
         'template_clear_rows': 1, 'blink_on': 0, 'blink_off': 0,
@@ -48,7 +48,7 @@ def check(execute_only=False):
             assert symbolic.get(at) == key(name), f'Non-symbolic callback at DATA {at:04X}h'
             seen.add(at)
             at += 2
-            if name in ('template_number3', 'template_character', 'template_decimal',
+            if name in ('template_number3', 'template_number4', 'template_number5', 'template_character', 'template_decimal',
                         'template_if_equal', 'template_if_not_equal'):
                 pointer = struct.unpack_from('<H', data, at)[0]
                 assert pointer < len(data), f'Invalid DATA pointer at {at:04X}h'
@@ -83,7 +83,9 @@ overflow:
 '''
     cases = [('create_progress', b'Creating CP/M volume'),
              ('create_complete', b'Creation of CP/M volume complete'),
-             ('options_screen', b'verify after writes')]
+             ('options_screen', b'verify after writes'),
+             ('verify_screen', b'Scanning cylinder '),
+             ('verify_complete', b'Verify complete       ')]
     for root, text in cases:
         for verify in (0, 255):
             setup = f'''mov si,{address(root)}

@@ -51,8 +51,9 @@ check: $(TOOLS) $(IMAGES)
 	cmp hdmtorg.cmd $(REF)
 	python3 check_maintained.py
 	python3 check_templates.py
+	python3 check_numbers.py
 	python3 check_capacity.py
-	@echo "PASS: frozen original matches; maintained HDMAINT 1.1N checks passed"
+	@echo "PASS: frozen original matches; maintained HDMAINT 1.2N checks passed"
 
 clean:
 	rm -f *.cmd *.obj *.h86 *.sym *.lst *.prn *.log $(IMAGES) $(INCS)
