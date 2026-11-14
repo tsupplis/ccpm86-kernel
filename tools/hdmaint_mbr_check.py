@@ -132,7 +132,7 @@ class Guest:
             time.sleep(.12)
         else:
             key = {' ':'Space','.':'Period',':':'+Shift Semicolon -Shift','=':'Equal'}.get(key,key)
-            self.send('key '+key+'\nc 200000')
+            self.send('key '+key+'\nc '+('2000' if getattr(self, 'fast_poll', False) else '200000'))
 
     def type(self, text):
         for ch in text:
@@ -145,7 +145,8 @@ class Guest:
         if A.emulator == 'qemu':
             self.hmp(f'pmemsave 0xb8000 4000 "{path}"')
         else:
-            self.send(f'c 2000000\nsave "{path}" bin b800:0000 fa0')
+            cycles = 20000 if getattr(self, 'fast_poll', False) else 2000000
+            self.send(f'c {cycles}\nsave "{path}" bin b800:0000 fa0')
             until = time.monotonic()+30
             while not path.exists() or path.stat().st_size != 4000:
                 assert self.p.poll() is None, 'PCE exited'
@@ -303,16 +304,19 @@ def refresh_suite():
     try:
         g.wait('A>', 'floppy-boot')
         g.type('hdmaint');g.wait('Exit from this program', 'main')
+        g.fast_poll = True
         g.key('F3');g.wait('Scanning cylinder', 'verify-progress')
         g.key('F10');g.wait('Continue verifying CP/M volume', 'verify-paused')
         g.key('F8')
         g.wait(lambda t: 'Continue verifying CP/M volume' not in t and
-               ('Scanning cylinder' in t or 'Verify complete' in t), 'verify-resumed')
+               (('Scanning cylinder' in t and all(line[1:79] == ' '*78 for line in t.splitlines()[16:20]))
+                or 'Verify complete' in t), 'verify-resumed')
         # Completion has its own F8 box; only require blank rows while scanning.
         if 'Scanning cylinder' in g.last:
             assert all(line[1:79] == ' '*78 for line in g.last.splitlines()[16:20]), 'Verify-resume remnant'
         else:
             assert g.last.splitlines()[16][1:79] == ' '*78, 'Verify warning remains'
+        g.fast_poll = False
         g.wait('Verify complete', 'verify-complete',240)
         g.wait('Return to main menu', 'verify-controls')
         g.key('F10');g.wait('Exit from this program', 'verify-main')
