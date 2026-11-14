@@ -19,7 +19,9 @@ class Machine:
         self.count = 0
     def s(self, name): return self.names[key(name)]
     def run(self, entry, setup='', checks='', patches=None, bridge=None):
-        with tempfile.TemporaryDirectory(prefix='hd-capacity-') as td:
+        work = ROOT.parents[1]/'local/hdmaint-tests'
+        work.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='hd-capacity-', dir=work) as td:
             p=Path(td)
             def asm(source):
                 (p/'stub.asm').write_text('bits 16\ncpu 8086\n'+source)

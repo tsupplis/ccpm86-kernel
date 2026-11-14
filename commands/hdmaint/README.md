@@ -168,7 +168,7 @@ progress and completion screens. They now use `offset print_template` or
 `offset clear_line`. The callback-only fix changed four CMD bytes and preserved group sizes and
 symbol addresses. It did not change cylinder handling or MBR policy.
 
-`make check` audits 56 display streams (157 callback sites) and executes the
+`make check` audits the display streams and symbolic callback sites and executes the
 three affected screens with write verification both enabled and disabled.
 
 For interactive creation, all disk fixtures use **615 cylinders, 4 heads,
@@ -199,10 +199,12 @@ PATH. HDMAINT creates the partition inside the guest. Tests check explicit
 numeric confirmation, invalid start/size rejection, options redraw, completion
 and reboot prompt, DPB, label checksum, CHS/LBA fields, default MBR replacement,
 foreign entries and DOS file contents. Hashes cover all sectors outside CP/M,
-except the MBR. Images, inputs and screen captures remain in the printed
-fixture directory. `--cylinders N` tests a smaller CP/M allocation.
+except the MBR. Fixtures live under Git-ignored `local/hdmaint-tests/`.
+Successful runs remove images and retain diagnostics; `--keep-images` retains
+images for replay. Failed runs retain their fixture for diagnosis.
+`--cylinders N` tests a smaller CP/M allocation.
 
-For a fresh manual fixture, add `--prepare-only`. With PCE, enter the printed
+For a fresh manual fixture, add `--prepare-only` (images are retained). With PCE, enter the printed
 fixture directory and run:
 
 ```sh
@@ -232,3 +234,61 @@ New-partition previews retain the cylinders occupied by foreign partitions;
 replacement previews subtract the old CP/M extent before adding the proposal.
 The selected extent pointer is initialized on both paths. Adjacent foreign
 partitions sharing a partial cylinder count that cylinder once.
+
+## MBR boot-code policy
+
+On the partition menu, **F8** toggles **replace** (default) / **preserve**.
+The selected value is highlighted. The choice applies to creating/deleting
+a CP/M partition and changing the bootable partition. Selecting a disk again resets the choice to replace.
+
+Replace installs HDMAINT's bootstrap. Preserve keeps MBR bytes 0–445
+(including any disk signature) and the original partition-entry slots.
+Both modes update the partition table/signature and verify the sector write.
+Neither mode changes the contents of foreign partitions. With an invalid MBR
+signature, HDMAINT still treats the partition table as empty.
+
+To renew the MBR bootstrap after formatting, select **replace**, enter **F4**,
+then press **F10** without cycling the bootable partition with F2. This writes
+the MBR without reformatting the volume. Preservation does not install or
+validate a boot loader.
+
+`make check` executes both policies, all four-entry slot permutations on both
+disks, entry updates, repeated writes and write-error propagation. Add
+`--preserve-mbr` to `tools/hdmaint_live_check.py` to test guest creation while
+retaining a marked bootstrap and foreign entries in deliberately unsorted
+slots. The usual DOS-file and partition-boundary checks also apply.
+
+## Automated MBR actions and hard-disk boots
+
+`tools/hdmaint_mbr_check.py` tests both MBR policies through the guest menus:
+
+| Action | Checks |
+| --- | --- |
+| Create CP/M alongside DOS | Original DOS bootstrap, entry slot and partition data survive |
+| F4, then F10 without F2 | MBR renewal, active selection unchanged, DOS still boots |
+| Select CP/M, then select DOS | Both systems cold-boot and read their test file |
+| Cancel deletion | Entire disk unchanged |
+| Confirm deletion | Only the expected MBR bytes change; DOS still boots |
+
+Every hard-disk boot runs with **no floppy attached**. The test uses the
+615/4/17 disk, an 8 MiB DOS partition and the remaining ~12 MiB for CP/M.
+It installs the built CCP/M kernel and TYPE command into the guest-created
+filesystem. Both `pc` and `native` personalities are supported.
+
+Provide a local raw IBM DOS 3.3 hard-disk image containing one FAT16 primary:
+
+```sh
+python3 tools/hdmaint_mbr_check.py --emulator qemu --personality pc --dos-source /path/to/dos33.img
+python3 tools/hdmaint_mbr_check.py --emulator pce --personality pc --dos-source /path/to/dos33.img
+```
+
+Repeat with `--personality native`. Requires built HDMAINT, TYPE, both kernels,
+cpmtools with the raw-image driver, mtools and the selected emulator. The DOS
+source is read only; its bootstrap/system files are copied into a disposable
+fixture. Its original hash is checked again after testing. No DOS binaries
+are added to the repository.
+
+Fixtures stay inside Git-ignored `local/hdmaint-tests/`. Successful runs remove
+all disk images and copied system binaries, retaining screen captures, hashes
+and `results.json`. Failed runs retain their fixture for diagnosis; remove it
+after investigation. These tests cover CCP/M, not CP/M-86 or real hardware.

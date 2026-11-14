@@ -85,12 +85,18 @@ overflow:
              ('create_complete', b'Creation of CP/M volume complete'),
              ('options_screen', b'verify after writes'),
              ('verify_screen', b'Scanning cylinder '),
-             ('verify_complete', b'Verify complete       ')]
+             ('verify_complete', b'Verify complete       '),
+             ('mbr_policy_screen', b'MBR boot code: ')]
     for root, text in cases:
         for verify in (0, 255):
+            if root == 'mbr_policy_screen':
+                text = b'MBR boot code: '+(
+                    b'replace\x1bu/\x1brpreserve\x1bu' if verify else
+                    b'\x1brreplace\x1bu/preserve\x1bu')
             setup = f'''mov si,{address(root)}
  mov byte [{address('output_enabled')}],255
  mov byte [{address('verify_writes')}],{verify}
+ mov byte [{address('preserve_mbr')}],{verify}
  mov byte [{address('creating_volume')}],255
  mov byte [{address('directory_expanded')}],0
  mov word [{address('directory_entries')}],512

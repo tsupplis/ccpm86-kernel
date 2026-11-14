@@ -4,7 +4,8 @@
 This is an interactive-formatter test: HDMAINT, not the host, creates CP/M.
 DOS primaries contain a FAT filesystem and a checked file, not a bootable OS.
 Extended containers are synthetic boundary guards.
-Fixtures and screen dumps are retained for manual review/replay.
+Project-local fixtures retain diagnostics; successful runs remove disk images
+unless --keep-images or --prepare-only was requested.
 """
 from pathlib import Path
 import argparse, hashlib, json, re, select, shutil, struct, subprocess, tempfile, time
@@ -16,12 +17,16 @@ P.add_argument('--emulator', choices=['pce','qemu'], required=True)
 P.add_argument('--personality', choices=['pc','native'], default='pc')
 P.add_argument('--expect-hang', choices=['options'])
 P.add_argument('--layout', choices=['mixed', 'dos-cpm', 'cpm-only'], default='mixed')
+P.add_argument('--preserve-mbr', action='store_true', help='Select preservation and test original bootstrap/partition slots')
 P.add_argument('--cylinders', type=int, help='CP/M length; default fills the free extent')
+P.add_argument('--keep-images', action='store_true', help='Retain successful automated-run images for manual replay')
 P.add_argument('--prepare-only', action='store_true', help='Create fresh images/configuration for manual testing without running the emulator')
 A = P.parse_args()
 R = A.root.resolve()
 CMD = (A.cmd or R/'commands/hdmaint/hdmaint.cmd').resolve()
-F = Path(tempfile.mkdtemp(prefix='hdmaint-ui-'))
+WORK = R/'local/hdmaint-tests'
+WORK.mkdir(parents=True, exist_ok=True)
+F = Path(tempfile.mkdtemp(prefix='hdmaint-ui-', dir=WORK))
 print('Fixture:', F, flush=True)
 
 def run(*args):
@@ -63,14 +68,17 @@ if not 10 <= length <= maximum_length:
 foreign = [] if A.layout == 'cpm-only' else (
     [(0,4,SPT,DOS_SECTORS)] if A.layout == 'dos-cpm' else
     [(0,4,SPT,DOS_SECTORS//2),(1,5,SPT+DOS_SECTORS//2,DOS_SECTORS//2)])
+# Preserve fixtures deliberately place entries out of order with empty slots.
+if A.preserve_mbr:
+    foreign = [((3,1)[i],kind,start,length) for i,(_,kind,start,length) in enumerate(foreign)]
 hard=F/'hard.img'
 with hard.open('wb') as f: f.truncate(size)
 mbr=bytearray(512)
-# Identifiable bootstrap; it is intentionally replaced by the existing default.
+# Identifiable bootstrap: replaced by default, retained with --preserve-mbr.
 mbr[:446]=bytes([0x5a])*446
 for index,kind,entry_start,entry_length in foreign:
     at=446+index*16
-    mbr[at]=0x80 if index==0 else 0
+    mbr[at]=0x80 if kind==4 else 0
     mbr[at+4]=kind
     for pos,lba in [(at+1,entry_start),(at+5,entry_start+entry_length-1)]:
         c,rem=divmod(lba,spc);h,s=divmod(rem,SPT)
@@ -98,7 +106,7 @@ start=first*spc*512; end=(first+length)*spc*512
 before=(digest_range(hard,512,max(512,start)),digest_range(hard,end,size))
 (F/'baseline-mbr.bin').write_bytes(mbr)
 (F/'manifest.json').write_text(json.dumps(dict(emulator=A.emulator,personality=A.personality,
-    geometry=[CYLINDERS,HEADS,SPT],layout=A.layout,bios_cylinders=bios_cylinders,cylinders=[first,first+length-1],hdmaint_sha256=hashlib.sha256(CMD.read_bytes()).hexdigest(),
+    geometry=[CYLINDERS,HEADS,SPT],layout=A.layout,preserve_mbr=A.preserve_mbr,bios_cylinders=bios_cylinders,cylinders=[first,first+length-1],hdmaint_sha256=hashlib.sha256(CMD.read_bytes()).hexdigest(),
     kernel_sha256=hashlib.sha256(kernel.read_bytes()).hexdigest(),protected_hashes=before),indent=2)+'\n')
 
 class Qemu:
@@ -185,6 +193,21 @@ def wait(text,name,seconds=60):
         time.sleep(.15)
     raise AssertionError(f'{name}: missing {text!r}\n{last}')
 
+def wait_policy(preserve, name):
+    wait('MBR boot code: replace/preserve', name)
+    video = (F/f'screen-{seq:04}.bin').read_bytes()
+    chars = video[0:4000:2]
+    at = chars.index(b'replace/preserve')
+    replacement = video[2*at+1]
+    preservation = video[2*(at+8)+1]
+    # ESC r/u is the same selected-option highlighting used by CP/M options.
+    assert replacement != preservation, 'MBR selection is not highlighted'
+    normal = video[2*(at-2)+1]
+    assert (replacement == normal) == preserve, 'Wrong MBR option highlighted'
+    assert (preservation == normal) != preserve, 'Wrong MBR option highlighted'
+    row = chars[18*80:19*80]
+    assert b'F8' in row and b'MBR boot code:' in row, 'F8 caption misaligned'
+
 def key(name):vm.key(name)
 
 success=False
@@ -194,6 +217,17 @@ try:
     key('Return')
     wait('SELECT FUNCTION','main')
     key('F1');wait('Change or create CP/M partition','partition')
+    if not A.expect_hang:
+        wait_policy(False,'default-policy')
+        # Exercise both toggle directions; leave the requested policy selected.
+        key('F8');wait_policy(True,'preserve-policy')
+        key('F8');wait_policy(False,'replace-policy')
+        # Leaving/re-entering the disk menu must also restore the default.
+        key('F8');wait_policy(True,'preserve-before-exit')
+        key('F10');wait('SELECT FUNCTION','main-again')
+        key('F1');wait_policy(False,'default-policy-again')
+        if A.preserve_mbr:
+            key('F8');wait_policy(True,'selected-preserve-policy')
     key('F6');wait('Enter starting cylinder','start')
     if not A.expect_hang:
         assert f'of {bios_cylinders:04} cylinders assigned:' in last,last
@@ -261,7 +295,12 @@ if not A.expect_hang:
     assert sum(struct.unpack('<256H',label))&65535==0,'Invalid label checksum'
     assert before==(digest_range(hard,512,max(512,start)),digest_range(hard,end,size)), 'Out-of-partition write'
     raw=CMD.read_bytes();n=int.from_bytes(raw[1:3],'little')*16;data=raw[128+n:]
-    assert after[:446]==data[0xefe:0xefe+446], 'Default MBR replacement changed'
+    expected_bootstrap = mbr[:446] if A.preserve_mbr else data[0xefe:0xefe+446]
+    assert after[:446]==expected_bootstrap, 'MBR bootstrap policy not respected'
     print(f'PASS: guest-created {length}-cylinder volume at {first}; DPB/checksum/MBR and protected regions verified',flush=True)
 assert success
-print(f'PASS: {A.emulator} {A.personality} {A.layout}; fixture retained at {F}',flush=True)
+if not A.keep_images:
+    for path in F.iterdir():
+        if path.is_file() and path.suffix.lower() in ('.img','.sys','.cmd'):
+            path.unlink()
+print(f'PASS: {A.emulator} {A.personality} {A.layout}; diagnostics at {F}',flush=True)

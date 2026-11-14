@@ -53,6 +53,7 @@ check: $(TOOLS) $(IMAGES)
 	python3 check_templates.py
 	python3 check_numbers.py
 	python3 check_capacity.py
+	python3 check_mbr.py
 	@echo "PASS: frozen original matches; maintained HDMAINT 1.2N checks passed"
 
 clean:
