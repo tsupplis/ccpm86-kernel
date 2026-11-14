@@ -67,6 +67,7 @@ data: incbin "data.bin"
             result=subprocess.run(['emu2','test.com'],cwd=p,capture_output=True,timeout=10)
             assert result.returncode==0,(entry,setup,checks,result.returncode,result.stdout,result.stderr)
         self.count+=1
+        return result.stdout
 
 def eq(where,value,byte=False):
     return f' cmp {"byte" if byte else "word"} [{where}],{value}\n jne failed\n'

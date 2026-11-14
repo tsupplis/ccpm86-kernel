@@ -1489,7 +1489,8 @@ cycle_boot_partition_at_0b87:
 ; Clear the partition information area before redrawing.
 ;-----------------------------------------------------------------------------
 clear_partition_display:
-	mov	cx,0eh
+	; Include the first key-box row (8), preserving partition rows 4..7.
+	mov	cx,0fh
 	mov	si,offset partition_clear_position
 	call	print_template
 clear_partition_display_at_0b96:
@@ -3572,8 +3573,10 @@ create_abort_screen	db	1bh,'Y/4',0ffh
 	db	11h,14h,7h,'Continue creating CP/M volume',0ffh
 	dw	offset template_key_caption
 	db	14h,14h,9h,'Stop creation of CP/M volume',0h
-create_resume_screen	db	1bh,'Y/4                             ',1bh,'Y14     ',1bh
-	db	'Y24                                          ',1bh,'Y34     ',0h
+; Key boxes begin one column left of their caption position. Clear all six
+; border cells and the full caption row when returning from confirmation.
+create_resume_screen	db	1bh,'Y/4                             ',1bh,'Y13      ',1bh
+	db	'Y23                                           ',1bh,'Y33      ',0h
 bad_system_actions	dw	offset entry
 	dw	offset entry
 	dw	offset entry
@@ -3645,7 +3648,7 @@ boot_screen	db	0ffh
 	db	11h,14h,2h,'Change bootable partition',0ffh
 	dw	offset template_key_caption
 	db	14h,14h,0ah,'Return to main menu',0h
-partition_clear_position	db	1bh,'Y) ',0h
+partition_clear_position	db	1bh,'Y( ',0h
 partition_display_row	db	0h
 partition_blank_position	db	1bh,'B',0h
 partition_header	db	0ffh
@@ -3808,8 +3811,8 @@ verify_abort_screen	db	1bh,'Y02',0ffh
 	db	0ffh
 	dw	offset template_key_caption
 	db	11h,12h,8h,'Continue verifying CP/M volume',0h
-verify_resume_screen	db	1bh,'Y02                            ',1bh,'Y12     ',1bh
-	db	'Y22                                          ',1bh,'Y32     ',0h
+verify_resume_screen	db	1bh,'Y02                            ',1bh,'Y11      ',1bh
+	db	'Y21                                           ',1bh,'Y31      ',0h
 verify_cylinder_number	dw	0h
 verify_block_number	dw	0h
 verify_bad_count	dw	0h

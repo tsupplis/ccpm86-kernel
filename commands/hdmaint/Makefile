@@ -51,6 +51,7 @@ check: $(TOOLS) $(IMAGES)
 	cmp hdmtorg.cmd $(REF)
 	python3 check_maintained.py
 	python3 check_templates.py
+	python3 check_refresh.py
 	python3 check_numbers.py
 	python3 check_capacity.py
 	python3 check_mbr.py

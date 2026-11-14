@@ -20,6 +20,7 @@ P = argparse.ArgumentParser(description=__doc__)
 P.add_argument('--emulator', choices=['pce', 'qemu'], required=True)
 P.add_argument('--personality', choices=['pc', 'native'], default='pc')
 P.add_argument('--dos-source', type=Path, required=True)
+P.add_argument('--refresh-only', action='store_true', help='Test replacement and creation/verification pause-resume screens')
 P.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
 A = P.parse_args()
 R = A.root.resolve()
@@ -260,6 +261,67 @@ def menu_write(name, preserve, target=None, delete=False, cancel=False):
     passed(name+'; exact MBR and whole-disk comparison')
 
 
+
+def refresh_suite():
+    before = hard.read_bytes()
+    g = Guest('refresh-replace-create')
+    try:
+        g.start_hdmaint(True)
+        summary = g.last.splitlines()[4:8]
+        g.key('F6')
+        g.wait('Do not delete existing CP/M volume', 'replacement-warning')
+        assert g.last.splitlines()[8][1:79] == ' '*78, 'Old F2 border remains'
+        assert g.last.splitlines()[4:8] == summary, 'Partition summary was erased'
+        g.key('F9')
+        g.wait('Exit from this program', 'replacement-cancelled')
+        assert hard.read_bytes() == before, 'Cancelling replacement wrote the disk'
+        g.key('F1');g.policy(False)
+        g.key('F8');g.policy(True)
+        g.key('F6');g.wait('Do not delete existing CP/M volume', 'replacement-warning-again')
+        g.key('F7');g.wait('Enter starting cylinder', 'replacement-start')
+        g.key('F10');g.wait('Enter partition size', 'replacement-size')
+        g.key('F10');g.wait('Accept CP/M options shown', 'replacement-options')
+        g.key('F10');g.wait('Testing cylinder', 'replacement-progress',240)
+        g.key('F9');g.wait('Continue creating CP/M volume', 'creation-paused')
+        g.key('F7')
+        g.wait(lambda t: 'Continue creating CP/M volume' not in t and
+               ('Testing cylinder' in t or 'Creation of CP/M volume complete' in t), 'creation-resumed')
+        assert all(line[1:79] == ' '*78 for line in g.last.splitlines()[15:20]), 'Creation-resume remnant'
+        g.wait('Creation of CP/M volume complete', 'replacement-complete',240)
+        g.wait('To continue', 'replacement-controls')
+        g.key('F9');g.wait('Please insert a system diskette', 'replacement-reboot')
+    finally:
+        g.close()
+    after = hard.read_bytes()
+    entry = next(e for e in entries(before[:512]) if e[4] == 0xdb)
+    lba, count = struct.unpack_from('<II',entry,8)
+    assert after[:lba*512] == before[:lba*512], 'Replacement changed MBR or DOS region'
+    assert after[(lba+count)*512:] == before[(lba+count)*512:], 'Replacement escaped its partition'
+    passed('refresh: existing-partition F6, cancel, replace, creation pause/resume; clean screens and protected DOS')
+    before = after
+    g = Guest('refresh-verify')
+    try:
+        g.wait('A>', 'floppy-boot')
+        g.type('hdmaint');g.wait('Exit from this program', 'main')
+        g.key('F3');g.wait('Scanning cylinder', 'verify-progress')
+        g.key('F10');g.wait('Continue verifying CP/M volume', 'verify-paused')
+        g.key('F8')
+        g.wait(lambda t: 'Continue verifying CP/M volume' not in t and
+               ('Scanning cylinder' in t or 'Verify complete' in t), 'verify-resumed')
+        # Completion has its own F8 box; only require blank rows while scanning.
+        if 'Scanning cylinder' in g.last:
+            assert all(line[1:79] == ' '*78 for line in g.last.splitlines()[16:20]), 'Verify-resume remnant'
+        else:
+            assert g.last.splitlines()[16][1:79] == ' '*78, 'Verify warning remains'
+        g.wait('Verify complete', 'verify-complete',240)
+        g.wait('Return to main menu', 'verify-controls')
+        g.key('F10');g.wait('Exit from this program', 'verify-main')
+        g.key('F9');g.wait('A>', 'exit')
+    finally:
+        g.close()
+    assert hard.read_bytes() == before, 'Read-only verify modified the disk'
+    passed('refresh: verification pause/resume; clean screen and entire disk unchanged')
+
 # Use the same agreed geometry, boot floppy and disk configuration as creation tests.
 prep = run('python3', str(R/'tools/hdmaint_live_check.py'),'--emulator',A.emulator,
            '--personality',A.personality,'--layout','dos-cpm','--prepare-only')
@@ -377,21 +439,27 @@ with hard.open('r+b') as f:
     f.seek(base);f.write(filesystem.read_bytes())
 shutil.copyfile(hard,F/'created-both.img')
 
-for preserve in (True, False):
-    mode = 'preserve' if preserve else 'replace'
-    shutil.copyfile(F/'created-both.img',hard)
-    menu_write(mode+'-02-renew-no-cycle',preserve)
-    cold_boot(mode+'-03-dos-after-renewal',True)
-    menu_write(mode+'-04-select-ccpm',preserve,target=0xdb)
-    cold_boot(mode+'-05-ccpm',False)
-    menu_write(mode+'-06-select-dos',preserve,target=4)
-    cold_boot(mode+'-07-dos-after-switch',True)
-    menu_write(mode+'-08-cancel-delete',preserve,delete=True,cancel=True)
-    menu_write(mode+'-09-delete',preserve,delete=True)
-    cold_boot(mode+'-10-dos-after-delete',True)
-    shutil.copyfile(hard,F/(mode+'-final.img'))
+if A.refresh_only:
+    refresh_suite()
+else:
+    for preserve in (True, False):
+        mode = 'preserve' if preserve else 'replace'
+        shutil.copyfile(F/'created-both.img',hard)
+        menu_write(mode+'-02-renew-no-cycle',preserve)
+        cold_boot(mode+'-03-dos-after-renewal',True)
+        menu_write(mode+'-04-select-ccpm',preserve,target=0xdb)
+        cold_boot(mode+'-05-ccpm',False)
+        menu_write(mode+'-06-select-dos',preserve,target=4)
+        cold_boot(mode+'-07-dos-after-switch',True)
+        menu_write(mode+'-08-cancel-delete',preserve,delete=True,cancel=True)
+        menu_write(mode+'-09-delete',preserve,delete=True)
+        cold_boot(mode+'-10-dos-after-delete',True)
+        shutil.copyfile(hard,F/(mode+'-final.img'))
 assert sha(SOURCE.read_bytes()) == source_hash, 'DOS source image changed'
-passed(f'{A.emulator} {A.personality}: both MBR policies, F4 renewal/switching, deletion, DOS and CCP/M hard-disk boots')
+if A.refresh_only:
+    passed(f'{A.emulator} {A.personality}: refresh regression')
+else:
+    passed(f'{A.emulator} {A.personality}: both MBR policies, F4 renewal/switching, deletion, DOS and CCP/M hard-disk boots')
 
 # Keep text evidence and hashes, remove all disposable images/system binaries.
 for path in F.iterdir():

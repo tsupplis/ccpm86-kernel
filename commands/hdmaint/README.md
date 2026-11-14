@@ -292,3 +292,9 @@ Fixtures stay inside Git-ignored `local/hdmaint-tests/`. Successful runs remove
 all disk images and copied system binaries, retaining screen captures, hashes
 and `results.json`. Failed runs retain their fixture for diagnosis; remove it
 after investigation. These tests cover CCP/M, not CP/M-86 or real hardware.
+
+For display-transition regression, add `--refresh-only` to the MBR test. It
+checks F6 on an existing partition, replacement cancellation, and pause/resume
+during creation and verification. Screen checks reject stale key-box borders;
+partition-boundary and read-only verification checks still apply. `make check`
+also executes these display transitions and compares their rendered screens.
