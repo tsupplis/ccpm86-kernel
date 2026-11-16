@@ -32,10 +32,10 @@ TOOLS_COMMANDS = ../commands/stop/stop.cmd ../commands/asm86/asm86.cmd ../comman
     ../commands/chkcpmfs/chkcpmfs.cmd \
     $(WINDOW_COMMANDS) $(WINDOW_SAMPLES)
 
-# Extension disk: console redirection and DREDIX.
+# Extension disk: console redirection, DREDIX and FM.
 EXT_COMMANDS = ../commands/putget/put.cmd ../commands/putget/get.cmd \
     ../commands/putget/rdr.cmd ../commands/dredix/dredix.cmd \
-    ../commands/dredix/help.edx ../commands/dredix/lsn.edx
+    ../commands/dredix/help.edx ../commands/dredix/lsn.edx ../commands/fm/fm.cmd
 
 MAINT_COMMANDS = ../commands/dskmaint/dskmaint.cmd ../commands/dskmaint/dform.cmd \
     ../commands/disk/dcopy.cmd ../commands/disk/dcomp.cmd \

@@ -157,7 +157,7 @@ affected. See `HELP PUT`, `HELP GET` and `HELP RDR`.
 | `ccpm86.img` | Yes | PC-MODE/PCTMP kernel, core commands, ED, full HELP, BATCH, SYSDISK, SETDEF, PIP |
 | `ccpmnative.img` | Yes | Native TMP/XIOS alternative, with the same core commands and shared kernel fixes |
 | `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, CHKCPMFS, WINDOW/WMENU, PRINT, sample SUB files, PIP, TOD |
-| `ccpmext.img` | No | PUT, GET, RDR (console redirection), DREDIX, PIP |
+| `ccpmext.img` | No | PUT, GET, RDR (console redirection), DREDIX, FM, PIP |
 | `ccpmmaint.img` | Yes | PC-MODE kernel, disk maintenance tools, CONFIG, FUNCTION, SETUP, SYSTAT, PIP, TOD |
 | `ccpmdev.img` | No | Native DR development/BASIC tools, Microsoft BASIC CMD, ASM80, HEXCOM, GENTAB |
 | `ccpmdos.img` | No | DOS MASM, LIB, LINK, LINKCMD, LINKEXE, EXE2BIN and Microsoft BASIC COM |
@@ -201,6 +201,7 @@ Format: [cpm86-kernel](../cpm86-kernel/README.md). **3.1** = rebuildable sources
 | `dskmaint` | Format, verify and copy diskettes | Original | Reverse engineered from CCP/M-86 |  |
 | `ed` | Line-oriented text editor | — | Recompiled from CCP/M-86 3.1 and adapted | ✓ |
 | `era` / `eraq` | Erase files, optionally with confirmation | — | Recompiled from CCP/M-86 3.1 and adapted |  |
+| `fm` | Full-screen file manager; CP/M users, file operations and program launch | — | Shared ANSI C implementation with CDOS; runtime capabilities, TMP/PCTMP support |  |
 | `function` | Program function keys | — | Reverse engineered from CCP/M-86 |  |
 | `gencmd` | Convert H86 output into CMD executables | — | Recompiled from CCP/M-86 3.1 and adapted | ✓ |
 | `genccpm` | Generate and configure the system image | — | Recompiled from CCP/M-86 3.1 and adapted; flag-table fix |  |

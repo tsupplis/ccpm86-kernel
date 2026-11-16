@@ -1,0 +1,21 @@
+# Generated host regression executables.
+/viewtest
+/typetest
+/fstest
+/browtest
+/copytest
+/copyfst
+/metatest
+/cfgtest
+/keytest
+/laytest
+/mutatest
+/runtest
+/runostst
+/printtst
+/screentst
+/backtest
+/backostst
+/spawntst
+
+/tests/__pycache__/

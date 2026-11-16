@@ -1,0 +1,12 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+SortIncludes: Never
+AlignAfterOpenBracket: Align
+PointerAlignment: Right
