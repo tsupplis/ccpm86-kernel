@@ -378,7 +378,7 @@
 ///1DATE
     DATE.CMD is the native CP/M command on CCP/M and CDOS. On CDOS,
     DATE.EXE is the separate DOS interface; use an explicit extension to select it.
-    Short years 00..77 mean 2000..2077; 78..99 mean 1978..1999.
+    Short years 00..79 mean 2000..2079; 80..99 mean 1980..1999.
 
     Syntax:
 

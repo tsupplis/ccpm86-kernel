@@ -51,3 +51,4 @@ clean:
 # Structural validation; byte comparisons or runtime checks are separate where available.
 check: all
 	@set -e; for file in $(TOOLS); do $(CMDINFO) $$file; done
+	python3 -B ../../tools/dateshrt.py tod

@@ -56,3 +56,4 @@ clean:
 # Validate the structure of each rebuilt command/component.
 check: all
 	@set -e; for f in $(TOOLS); do $(CMDINFO) $$f; done
+	python3 -B ../../tools/dateshrt.py date

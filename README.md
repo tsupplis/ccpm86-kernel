@@ -364,3 +364,5 @@ components and their interfaces are unchanged.
 flavours from the same sources. `pcmode.lib` retains the PC-MODE and enhanced
 keyboard settings. The build checks fixed system/header offsets and entry
 jumps before publishing either component. See `kernel/con/xios/README.md`.
+
+DATE and TOD interpret two-digit years as 1980–2079 (`00–79`: 20xx; `80–99`: 19xx).

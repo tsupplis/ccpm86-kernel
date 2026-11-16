@@ -4,6 +4,13 @@ Summary of changes in the source-built PC/XT distribution, relative to
 `033212a`. This is not a catalogue of historical Digital Research fixes.
 User-facing commands and key bindings are documented in README.md and HELP.
 
+## DATE/TOD: two-digit cutoff 80
+
+DATE.CMD and TOD.CMD interpret 00–79 as 2000–2079 and 80–99 as
+1980–1999, matching CDOS. The 1978 day-count epoch remains unchanged.
+`tools/dateshrt.py` tests all 100 short years plus leap days against each
+linked command with a private clock. HELP documents the same window.
+
 ## Console and CCP/TMP
 
 - **Line editing:** BDOS Function 10 supports cursor movement, insertion,

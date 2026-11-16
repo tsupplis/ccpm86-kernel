@@ -254,7 +254,8 @@ set$date$time: procedure;
         else i = month$size(month);
     day   = scan$delimiter('/',1,i);
     year  = scan$delimiter('/',0,99);
-    if year<78 then
+    /* Two-digit window: 1980-2079; base$year remains 1978. */
+    if year<80 then
             year=year+100;
     /* ensure that feb 29 is in a leap year */
     if leap$flag and day = 29 and (year and 11b) <> 0 then
