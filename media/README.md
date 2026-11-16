@@ -1,18 +1,22 @@
 # Reproducible 320 KB media
 
 Run `make` here, or `make -C media` from the repository root.
-Root `make dist` copies the six distribution images to the root alongside
+Root `make dist` copies the seven distribution images to the root alongside
 `y2k-dist.zip` and `disks.zip`.
 
 | Image | Bootable | Contents |
 | --- | --- | --- |
-| `ccpm86.img` | Yes | PC-MODE/PCTMP kernel, core commands, ED, full HELP, BATCH, SYSDISK, SETDEF, PIP |
-| `ccpmnative.img` | Yes | Native TMP/XIOS alternative, with the same core commands and shared kernel fixes |
-| `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, CHKCPMFS, WINDOW/WMENU, sample SUB files, PIP, TOD |
-| `ccpmext.img` | No | PUT, GET, RDR (console redirection), DREDIX, FM, PIP |
-| `ccpmmaint.img` | Yes | PC-MODE kernel, disk maintenance tools, CONFIG, FUNCTION, SETUP, SYSTAT, PIP, TOD |
-| `ccpmdev.img` | No | Native DR development/BASIC tools, Microsoft BASIC CMD, ASM80, HEXCOM, GENTAB |
-| `ccpmdos.img` | No | DOS MASM, LIB, LINK, LINKCMD, LINKEXE, EXE2BIN and Microsoft BASIC COM |
+| `ccpm86.img` | Yes | PC-MODE/PCTMP kernel and core commands listed below |
+| `ccpmnative.img` | Yes | Native TMP kernel and the same core commands |
+| `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, CHKCPMFS, WINDOW, WMENU, PRINT, VCMODE, STOP, ERAQ, TOD, PIP; CARDDECK, CLEAR, GLASS and WORDPROC SUB files |
+| `ccpmext.img` | No | FM, DREDIX with HELP.EDX and LSN.EDX, PUT, GET, RDR, PIP |
+| `ccpmmaint.img` | Yes | PC-MODE/PCTMP kernel, DSKMAINT, DFORM, DCOPY, DCOMP, HDMAINT, INITDIR, CONFIG, FUNCTION, SETUP, SYSTAT, STOP, TOD, PIP |
+| `ccpmdev.img` | No | RASM86, LINK86, LIB86, XREF86, SID86, CBAS86, CRUN86, PBASIC, MBASIC.CMD, ASM80, HEXCOM |
+| `ccpmdos.img` | No | MSMASM.EXE, MSLIB.EXE, MSLINK.EXE, EXE2BIN.EXE, MBASIC.COM |
+
+Core commands: BATCH, CHSET, DATE, ED, ERA, HELP with HELP.HLP, PCETIME,
+PIP, REN, SDIR, SET, SETDEF, SHOW, SUBMIT, SYSDISK and TYPE.
+Bootable disks also contain STARTUP.0.
 
 Each image is 327,680 bytes. `PIP.CMD` is PIP4 with the `3.1N` banner.
 `base.img` is the empty physical/CHS filesystem template and original boot

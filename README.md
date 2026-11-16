@@ -49,6 +49,9 @@ and verification details, and [distributions](#distributions) for all seven disk
 <img src="images/ccpm86.png" alt="Concurrent CP/M-86 3.1 running in PCE" width="48%">
 <img src="images/windows.png" alt="Overlapping console windows" width="48%">
 <br><sub>Concurrent CP/M-86 3.1 &nbsp;·&nbsp; Console windows</sub><br>
+<img src="images/fm.png" alt="File Manager" width="48%">
+<img src="images/hdmaint.png" alt="HDMaint" width="48%">
+<br><sub>File Manager &nbsp;·&nbsp; Hard Drive Utility</sub><br>
 <img src="images/setup.png" alt="XIOS configuration menu" width="48%">
 <img src="images/basic.png" alt="Microsoft BASIC 5.50A" width="48%">
 <br><sub>System setup &nbsp;·&nbsp; Microsoft BASIC 5.50A</sub>
@@ -154,13 +157,17 @@ affected. See `HELP PUT`, `HELP GET` and `HELP RDR`.
 
 | Image | Bootable | Contents |
 | --- | --- | --- |
-| `ccpm86.img` | Yes | PC-MODE/PCTMP kernel, core commands, ED, full HELP, BATCH, SYSDISK, SETDEF, PIP |
-| `ccpmnative.img` | Yes | Native TMP/XIOS alternative, with the same core commands and shared kernel fixes |
-| `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, CHKCPMFS, WINDOW/WMENU, PRINT, sample SUB files, PIP, TOD |
-| `ccpmext.img` | No | PUT, GET, RDR (console redirection), DREDIX, FM, PIP |
-| `ccpmmaint.img` | Yes | PC-MODE kernel, disk maintenance tools, CONFIG, FUNCTION, SETUP, SYSTAT, PIP, TOD |
-| `ccpmdev.img` | No | Native DR development/BASIC tools, Microsoft BASIC CMD, ASM80, HEXCOM, GENTAB |
-| `ccpmdos.img` | No | DOS MASM, LIB, LINK, LINKCMD, LINKEXE, EXE2BIN and Microsoft BASIC COM |
+| `ccpm86.img` | Yes | PC-MODE/PCTMP kernel and core commands listed below |
+| `ccpmnative.img` | Yes | Native TMP kernel and the same core commands |
+| `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, CHKCPMFS, WINDOW, WMENU, PRINT, VCMODE, STOP, ERAQ, TOD, PIP; CARDDECK, CLEAR, GLASS and WORDPROC SUB files |
+| `ccpmext.img` | No | FM, DREDIX with HELP.EDX and LSN.EDX, PUT, GET, RDR, PIP |
+| `ccpmmaint.img` | Yes | PC-MODE/PCTMP kernel, DSKMAINT, DFORM, DCOPY, DCOMP, HDMAINT, INITDIR, CONFIG, FUNCTION, SETUP, SYSTAT, STOP, TOD, PIP |
+| `ccpmdev.img` | No | RASM86, LINK86, LIB86, XREF86, SID86, CBAS86, CRUN86, PBASIC, MBASIC.CMD, ASM80, HEXCOM |
+| `ccpmdos.img` | No | MSMASM.EXE, MSLIB.EXE, MSLINK.EXE, EXE2BIN.EXE, MBASIC.COM |
+
+Core commands: BATCH, CHSET, DATE, ED, ERA, HELP with HELP.HLP, PCETIME,
+PIP, REN, SDIR, SET, SETDEF, SHOW, SUBMIT, SYSDISK and TYPE.
+Bootable disks also contain STARTUP.0.
 
 `make dist` places the images above and `disks.zip` containing all seven at the repository root.
 
