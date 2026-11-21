@@ -93,7 +93,7 @@ def main():
                 passed += 1
             print(f'PASS: {fixture}: 5 historical comparisons, 5 DPB-only comparisons')
         # ORG changes placement only, in both full and DPB-only modes.
-        located = (ROOT / 'pcdisks.def').read_bytes()
+        located = (ROOT / 'kernel/con/xios/pcdisks.def').read_bytes()
         for option in OPTIONS + ['$B', '$BC', '$BO', '$BZ', '$BCOZ']:
             work = Path(tmp) / ('org' + option.replace('$', '_'))
             output = run(emu, work, HERE / 'gendef.cmd', located, option)
