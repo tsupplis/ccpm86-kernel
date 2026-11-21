@@ -5,7 +5,9 @@ CPMCP = cpmcp -f $(FORMAT)
 
 .PHONY: all test check check-media check-qemu clean
 .DELETE_ON_ERROR:
-IMAGES = ccpm86.img ccpmtools.img ccpmext.img ccpmdev.img ccpmmaint.img ccpmnative.img ccpmdos.img
+SMALL_IMAGES = ccpm86.img ccpmtools.img ccpmext.img ccpmdev.img ccpmmaint.img ccpmnative.img ccpmdos.img
+LARGE_IMAGES = ccpm86-1440.img ccpmnative-1440.img ccpmdev-1440.img
+IMAGES = $(SMALL_IMAGES) $(LARGE_IMAGES)
 all: boottrack.bin $(IMAGES)
 
 SYSTEM_COMMANDS = ../commands/chset/chset.cmd ../commands/date/date.cmd \
@@ -156,11 +158,108 @@ ccpmtest.img: ../tools/mk320.py ../commands/dskmaint/bootsect.bin ../commands/ds
 	$(TWIST) twist $@.logical.tmp $@
 	$(RM) $@.logical.tmp
 
+# Consolidated high-density payloads. DOS BASIC remains on ccpmdos.img.
+LARGE_COMMANDS = ../commands/chset/chset.cmd ../commands/date/date.cmd ../commands/era/era.cmd \
+    ../commands/help/help.cmd ../commands/helphlp/help.hlp ../commands/ed/ed.cmd \
+    ../commands/ren/ren.cmd ../commands/sdir/sdir.cmd ../commands/set/set.cmd \
+    ../commands/show/show.cmd ../commands/submit/submit.cmd ../commands/type/type.cmd \
+    ../commands/sysdisk/sysdisk.cmd ../commands/setdef/setdef.cmd ../commands/batch/batch.cmd \
+    ../base/pcetime.cmd ../commands/stop/stop.cmd ../commands/asm86/asm86.cmd \
+    ../commands/ddt86/ddt86.cmd ../commands/gencmd/gencmd.cmd ../commands/genccpm/genccpm.cmd \
+    ../commands/print/print.cmd ../commands/vcmode/vcmode.cmd ../commands/tod/tod.cmd \
+    ../commands/era/eraq.cmd ../commands/chkcpmfs/chkcpmfs.cmd ../commands/window/window.cmd \
+    ../commands/window/wmenu.cmd ../base/carddeck.sub ../base/clear.sub \
+    ../base/glass.sub ../base/wordproc.sub ../commands/putget/put.cmd \
+    ../commands/putget/get.cmd ../commands/putget/rdr.cmd ../commands/dredix/dredix.cmd \
+    ../commands/dredix/help.edx ../commands/dredix/lsn.edx ../commands/fm/fm.cmd \
+    ../commands/systat/systat.cmd ../commands/dskmaint/dskmaint.cmd ../commands/dform/dform.cmd \
+    ../commands/disk/dcopy.cmd ../commands/disk/dcomp.cmd ../commands/hdmaint/hdmaint.cmd \
+    ../commands/initdir/initdir.cmd ../commands/config/config.cmd ../commands/function/function.cmd \
+    ../commands/setup/setup.cmd ../dev/rasm86.cmd ../dev/link86.cmd \
+    ../dev/lib86.cmd ../dev/xref86.cmd ../dev/sid86.cmd \
+    ../dev/cbas86.cmd ../dev/crun86.cmd ../dev/pbasic.cmd \
+    ../dev/mbasic.cmd ../commands/asm80/asm80.cmd ../commands/hexcom/hexcom.cmd
+LARGE_DOS_COMMANDS = ../dev/exe2bin.exe ../dev/mslib.exe ../dev/mslink.exe ../dev/msmasm.exe
+
+# Native 1.44MB physical images: libdsk maps head order; no 320K twist.
+ccpm86-1440.img: ../kernel/sysgen/ccpm.sys $(LARGE_COMMANDS) $(LARGE_DOS_COMMANDS) startup.0 ../commands/pip/pip4.cmd ../commands/dskmaint/bootsect.bin ../commands/dskmaint/loader.bin diskdefs Makefile
+	$(PYTHON) -c "import sys; sys.stdout.buffer.write(b'\xe5' * 1474560)" > $@.tmp
+	mkfs.cpm -f cpm86-1440 $@.tmp
+	dd if=../commands/dskmaint/bootsect.bin of=$@.tmp bs=1 conv=notrunc 2>/dev/null
+	printf '\001\220' | dd of=$@.tmp bs=1 seek=510 conv=notrunc 2>/dev/null
+	dd if=../commands/dskmaint/loader.bin of=$@.tmp bs=1 seek=2304 conv=notrunc 2>/dev/null
+	cpmcp -T raw -f cpm86-1440 $@.tmp ../kernel/sysgen/ccpm.sys 0:CCPM.SYS
+	cpmcp -T raw -f cpm86-1440 $@.tmp $(LARGE_COMMANDS) $(LARGE_DOS_COMMANDS) startup.0 0:
+	cpmcp -T raw -f cpm86-1440 $@.tmp ../commands/pip/pip4.cmd 0:PIP.CMD
+	cpmchattr -T raw -f cpm86-1440 $@.tmp s 0:BATCH.CMD
+	cpmls -T raw -F -f cpm86-1440 $@.tmp '0:*.*'
+	mv $@.tmp $@
+
+ccpmnative-1440.img: ../kernel/sysgen/ccpm-native.sys $(LARGE_COMMANDS) startup.0 ../commands/pip/pip4.cmd ../commands/dskmaint/bootsect.bin ../commands/dskmaint/loader.bin diskdefs Makefile
+	$(PYTHON) -c "import sys; sys.stdout.buffer.write(b'\xe5' * 1474560)" > $@.tmp
+	mkfs.cpm -f cpm86-1440 $@.tmp
+	dd if=../commands/dskmaint/bootsect.bin of=$@.tmp bs=1 conv=notrunc 2>/dev/null
+	printf '\001\220' | dd of=$@.tmp bs=1 seek=510 conv=notrunc 2>/dev/null
+	dd if=../commands/dskmaint/loader.bin of=$@.tmp bs=1 seek=2304 conv=notrunc 2>/dev/null
+	cpmcp -T raw -f cpm86-1440 $@.tmp ../kernel/sysgen/ccpm-native.sys 0:CCPM.SYS
+	cpmcp -T raw -f cpm86-1440 $@.tmp $(LARGE_COMMANDS) startup.0 0:
+	cpmcp -T raw -f cpm86-1440 $@.tmp ../commands/pip/pip4.cmd 0:PIP.CMD
+	cpmchattr -T raw -f cpm86-1440 $@.tmp s 0:BATCH.CMD
+	cpmls -T raw -F -f cpm86-1440 $@.tmp '0:*.*'
+	mv $@.tmp $@
+
+
+# Development companion: native and DOS toolchains, deliberately no MBASIC.
+DEV1440_COMMANDS = ../dev/rasm86.cmd ../dev/link86.cmd ../dev/lib86.cmd \
+    ../dev/xref86.cmd ../dev/sid86.cmd ../dev/cbas86.cmd ../dev/crun86.cmd \
+    ../dev/pbasic.cmd ../dev/exe2bin.exe ../dev/mslib.exe ../dev/mslink.exe \
+    ../dev/msmasm.exe ../commands/asm80/asm80.cmd ../commands/asm86/asm86.cmd \
+    ../commands/ddt86/ddt86.cmd ../commands/gencmd/gencmd.cmd \
+    ../commands/hexcom/hexcom.cmd ../commands/genccpm/genccpm.cmd \
+    ../commands/ed/ed.cmd ../commands/submit/submit.cmd
+
+ccpmdev-1440.img: $(DEV1440_COMMANDS) ../commands/pip/pip4.cmd ../commands/dskmaint/bootsect.bin ../commands/dskmaint/loader.bin diskdefs Makefile
+	$(PYTHON) -c "import sys; sys.stdout.buffer.write(b'\xe5' * 1474560)" > $@.tmp
+	mkfs.cpm -f cpm86-1440 $@.tmp
+	dd if=../commands/dskmaint/bootsect.bin of=$@.tmp bs=1 conv=notrunc 2>/dev/null
+	printf '\001\220' | dd of=$@.tmp bs=1 seek=510 conv=notrunc 2>/dev/null
+	dd if=../commands/dskmaint/loader.bin of=$@.tmp bs=1 seek=2304 conv=notrunc 2>/dev/null
+	cpmcp -T raw -f cpm86-1440 $@.tmp $(DEV1440_COMMANDS) 0:
+	cpmcp -T raw -f cpm86-1440 $@.tmp ../commands/pip/pip4.cmd 0:PIP.CMD
+	cpmls -T raw -F -f cpm86-1440 $@.tmp '0:*.*'
+	mv $@.tmp $@
+
+.PHONY: check-large
+check-large: $(LARGE_IMAGES)
+	@set -e; for image in $(LARGE_IMAGES); do \
+	    $(PYTHON) -c "from pathlib import Path; b=Path('$$image').read_bytes(); boot=Path('../commands/dskmaint/bootsect.bin').read_bytes(); loader=Path('../commands/dskmaint/loader.bin').read_bytes(); assert len(b)==1474560 and b[:len(boot)]==boot and b[510:512]==bytes((1,144)) and b[2304:2304+len(loader)]==loader, '$$image: boot/size mismatch'"; \
+	    case $$image in \
+	      ccpmdev-1440.img) sources='$(DEV1440_COMMANDS) ../commands/pip/pip4.cmd' ;; \
+	      ccpm86-1440.img) sources='../kernel/sysgen/ccpm.sys $(LARGE_COMMANDS) $(LARGE_DOS_COMMANDS) startup.0 ../commands/pip/pip4.cmd' ;; \
+	      ccpmnative-1440.img) sources='../kernel/sysgen/ccpm-native.sys $(LARGE_COMMANDS) startup.0 ../commands/pip/pip4.cmd' ;; \
+	    esac; \
+	    for source in $$sources; do \
+	        name=$${source##*/}; \
+	        case $$name in ccpm-native.sys) name=CCPM.SYS ;; pip4.cmd) name=PIP.CMD ;; esac; \
+	        cpmcp -T raw -f cpm86-1440 $$image 0:$$name $$image.file.tmp; \
+	        $(PYTHON) -c "from pathlib import Path; a=Path('$$source').read_bytes(); b=Path('$$image.file.tmp').read_bytes(); assert b[:len(a)]==a and all(c in (0,26) for c in b[len(a):]), '$$image: $$name differs'"; \
+	    done; \
+	    if test $$image = ccpmdev-1440.img; then \
+	        cpmls -T raw -f cpm86-1440 $$image > $$image.list.tmp; \
+	        $(PYTHON) -c "from pathlib import Path; names=Path('$$image.list.tmp').read_text().lower().split(); assert not set(names) & {'mbasic.cmd','mbasic.com','ccpm.sys'}, 'Unexpected MBASIC or kernel'"; \
+	        $(RM) $$image.list.tmp; \
+	    else \
+	        cpmls -T raw -A -f cpm86-1440 $$image 0:batch.cmd | grep -q '^....s.... batch.cmd$$'; \
+	    fi; \
+	    $(RM) $$image.file.tmp; \
+	    echo "$$image: every payload, boot code, marker, loader and size verified"; \
+	done
+
 # Check every packaged file, allowing only CP/M record padding after its bytes.
-check-media: all
+check-media: all check-large
 	$(MAKE) -C ../commands/dskmaint check
 	$(MAKE) -C ../commands/disk check
-	@set -e; for image in $(IMAGES); do \
+	@set -e; for image in $(SMALL_IMAGES); do \
 	    $(TWIST) untwist $$image $$image.verify.tmp; \
 	    case $$image in \
 	      ccpm86.img) sources='../kernel/sysgen/ccpm.sys startup.0 $(SYSTEM_COMMANDS) $(BASE_SYSTEM_COMMANDS)' ;; \

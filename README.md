@@ -43,7 +43,7 @@ EXE loading fixes the same [DOS Plus defect](https://www.seasip.info/Cpm/dosplus
 
 See the [API tables](api.md) for DOS, BIOS and native interrupt coverage.
 See [patch notes](patches.md#pc-mode-and-loader-hardening) for the implementation
-and verification details, and [distributions](#distributions) for all seven disks.
+and verification details, and [distributions](#distributions) for all ten disks.
 
 <p align="center">
 <img src="images/ccpm86.png" alt="Concurrent CP/M-86 3.1 running in PCE" width="48%">
@@ -166,12 +166,23 @@ affected. See `HELP PUT`, `HELP GET` and `HELP RDR`.
 | `ccpmmaint.img` | Yes | PC-MODE/PCTMP kernel, DSKMAINT, DFORM, DCOPY, DCOMP, HDMAINT, INITDIR, CONFIG, FUNCTION, SETUP, STOP, TOD, PIP |
 | `ccpmdev.img` | No | RASM86, LINK86, LIB86, XREF86, SID86, CBAS86, CRUN86, PBASIC, MBASIC.CMD, ASM80, HEXCOM |
 | `ccpmdos.img` | No | MSMASM.EXE, MSLIB.EXE, MSLINK.EXE, EXE2BIN.EXE, MBASIC.COM |
+| `ccpm86-1440.img` | Yes | 1.44MB PC-MODE/PCTMP: consolidated system, maintenance, extensions and native/DOS development tools; DOS MBASIC remains on ccpmdos.img |
+| `ccpmnative-1440.img` | Yes | 1.44MB native TMP: consolidated system, maintenance, extensions and native development tools; no DOS executables |
+| `ccpmdev-1440.img` | No | 1.44MB development companion: native assembler/linker/librarian/debugger and BASIC compiler tools, DOS Microsoft assembler/linker/librarian, source-built development commands and PIP; no MBASIC |
+
+The consolidated 1.44MB images are included in `disks.zip` by root `make dist`.
+They use the native FEAT-compatible CP/M layout (`cpm86-1440` in diskdefs),
+not FAT. Use cpmtools with `-T raw -f cpm86-1440` directly; do not apply
+`cpm86twist.py`. All files are in user 0; system images mark BATCH SYS.
+The development companion is a data disk: boot a system image in A: and
+mount it in B:. DOS tools require PC-MODE on CCP/M or CDOS. Neither
+MBASIC.CMD nor MBASIC.COM is included on the development companion.
 
 Core commands: BATCH, CHSET, DATE, ED, ERA, HELP with HELP.HLP, PCETIME,
 PIP, REN, SDIR, SET, SETDEF, SHOW, SUBMIT, SYSDISK and TYPE.
 Bootable disks also contain STARTUP.0.
 
-`make dist` places the images above and `disks.zip` containing all seven at the repository root.
+`make dist` places the images above and `disks.zip` containing all ten at the repository root.
 
 
 Root `make` builds both kernels in one run: `kernel/sysgen/ccpm.sys` (PC-MODE)
@@ -324,7 +335,7 @@ The boot build requires native `h862bin` from `cpm86-cmdtools` on PATH.
 | `make check-qemu` | Boot, RTC, status, switching, HELP, SDIR, SYSDISK, SETDEF, DREDIX, windows |
 | `make check-paging` | TYPE, SDIR, DIR.RSP and DIR.CMD paging, resume, Ctrl-C and default-off |
 | `make test` | Launch PCE |
-| `make dist` | `y2k-dist.zip`, `disks.zip` and the seven disk images at the repository root |
+| `make dist` | `y2k-dist.zip`, `disks.zip` and the ten disk images at the repository root |
 | `make source-dist` | Sources and reference/vendor inputs; no ignored outputs |
 
 [Source pedigree](http://www.cpm.z80.de) · [License correspondence](LICENSE.md).

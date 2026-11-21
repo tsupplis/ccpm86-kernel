@@ -1,7 +1,7 @@
-# Reproducible 320 KB media
+# Reproducible floppy media
 
 Run `make` here, or `make -C media` from the repository root.
-Root `make dist` copies the seven distribution images to the root alongside
+Root `make dist` copies the ten distribution images to the root alongside
 `y2k-dist.zip` and `disks.zip`.
 
 | Image | Bootable | Contents |
@@ -13,12 +13,24 @@ Root `make dist` copies the seven distribution images to the root alongside
 | `ccpmmaint.img` | Yes | PC-MODE/PCTMP kernel, DSKMAINT, DFORM, DCOPY, DCOMP, HDMAINT, INITDIR, CONFIG, FUNCTION, SETUP, STOP, TOD, PIP |
 | `ccpmdev.img` | No | RASM86, LINK86, LIB86, XREF86, SID86, CBAS86, CRUN86, PBASIC, MBASIC.CMD, ASM80, HEXCOM |
 | `ccpmdos.img` | No | MSMASM.EXE, MSLIB.EXE, MSLINK.EXE, EXE2BIN.EXE, MBASIC.COM |
+| `ccpm86-1440.img` | Yes | 1.44MB PC-MODE/PCTMP: consolidated system, maintenance, extensions and native/DOS development tools; DOS MBASIC remains on ccpmdos.img |
+| `ccpmnative-1440.img` | Yes | 1.44MB native TMP: consolidated system, maintenance, extensions and native development tools; no DOS executables |
+| `ccpmdev-1440.img` | No | 1.44MB development companion: native assembler/linker/librarian/debugger and BASIC compiler tools, DOS Microsoft assembler/linker/librarian, source-built development commands and PIP; no MBASIC |
+
+The consolidated 1.44MB images are included in `disks.zip` by root `make dist`.
+They use the native FEAT-compatible CP/M layout (`cpm86-1440` in diskdefs),
+not FAT. Use cpmtools with `-T raw -f cpm86-1440` directly; do not apply
+`cpm86twist.py`. All files are in user 0; system images mark BATCH SYS.
+The development companion is a data disk: boot a system image in A: and
+mount it in B:. DOS tools require PC-MODE on CCP/M or CDOS. Neither
+MBASIC.CMD nor MBASIC.COM is included on the development companion.
 
 Core commands: BATCH, CHSET, DATE, ED, ERA, HELP with HELP.HLP, PCETIME,
 PIP, REN, SDIR, SET, SETDEF, SHOW, SUBMIT, SYSDISK and TYPE.
 Bootable disks also contain STARTUP.0.
 
-Each image is 327,680 bytes. `PIP.CMD` is PIP4 with the `3.1N` banner.
+The seven original images are 327,680 bytes; the three 1.44MB images
+are 1,474,560 bytes. `PIP.CMD` is PIP4 with the `3.1N` banner.
 Empty filesystems are generated on demand with `mk320.py` and `mkfs.cpm`.
 The boot sources live in `commands/dskmaint`; media recipes consume their
 binaries directly. `media/boottrack.bin` is the generated 4,096-byte reference
@@ -41,11 +53,11 @@ system disks within 320 KB.
 
 | Step | Operation |
 | --- | --- |
-| Sources | Build commands, kernel components and all nine RSPs; run GENCCPM |
+| Sources | Build commands, kernel components and all ten RSPs; run GENCCPM |
 | Boot | Assemble the boot sector and loader; build and verify the complete 4 KB track |
 | Reference check | Require rebuilt SYSDISK and frozen DSKMORG to match their originals byte-for-byte; run dual-OS DFORM checks |
 | Help | Compile `HELP.DAT` into indexed `HELP.HLP` |
-| Template | Copy empty `base.img`, then install the source-built boot track |
+| Filesystem | Generate 320K with `mk320.py`, or 1.44MB with `mkfs.cpm`; install the source-built boot code |
 | Populate | Untwist → cpmtools format `ccpm86-320` → twist back |
 | Verify | Extract and compare every packaged file; compare boot tracks with the source-built track and verify sizes |
 
@@ -60,7 +72,7 @@ Never use cpmtools directly on a physical 320 KB image: head 1 has reversed cyli
 | --- | --- |
 | `make test` / `make check` | Launch PCE |
 | `./ccpm86 vga` | Launch the PCE VGA configuration |
-| `make check-media` | Verify all six distributions and their payloads |
+| `make check-media` | Verify all ten distributions and their payloads |
 | `make check-qemu` | Boot all three system disks; exercise consoles, HELP, SDIR, SYSDISK, SETDEF, DREDIX and windows |
 
 For WINDOW and WMENU, mount `ccpmtools.img` in B: and run `B:WINDOW VIEW`
