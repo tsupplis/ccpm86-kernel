@@ -251,13 +251,13 @@ write_boot_track:
 	rep	stosb
 	xor	di,di
 	mov	si,offset bootsect
-	mov	cx,093h
+	mov	cx,offset bootend-offset bootsect
 	rep	movsb
 	mov	al,byte ptr sides
 	mov	es:byte ptr .01ffh,al
 	mov	di,0900h
 	mov	si,offset loader
-	mov	cx,034eh
+	mov	cx,offset loadend-offset loader
 	rep	movsb
 	mov	cl,byte ptr source_drive
 	mov	byte ptr io_drive,cl
@@ -1284,8 +1284,10 @@ data_087c	db	020h,03ah,01h,00h,082h,08h,05h,018h,02h,02h,088h,08h
 sides	db	00h
 bootsect:
 	include	bootsect.inc
+bootend:
 loader:
 	include	loader.inc
+loadend:
 revision_2	db	00h,020h,044h,041h,054h,045h,020h,04fh,046h,020h,04ch,041h
 	db	'ST CHANGE 26'
 	db	' JAN 84   '

@@ -203,6 +203,26 @@ selflop1:
 ;	exit:	bx = dph pointer or 00h if error reading size
 
 floppysize:
+                        mov     probeunit,cl
+                        xor     si,si
+                        mov     al,cl
+                        mov     si,ax
+                        and     si,00ffh
+                        mov     al,flprates[si]
+                        mov     probeoldrate,al
+                        mov     al,es:udaerrmode
+                        mov     probeerrmode,al
+floppyprobestart:
+                        mov     proberate,2                      ; 250, 500, then 300 Kbit/s
+                        mov     es:udaerrmode,errmodecode
+floppyproberetry:
+                        mov     cl,probeunit
+                        xor     si,si
+                        mov     al,cl
+                        mov     si,ax
+                        and     si,00ffh
+                        mov     al,proberate
+                        mov     flprates[si],al
                         push    bx                               ; save dph pointer
                         mov     al,cl                            ; drive code
                         mov     ah,1                             ; multi-sector count
@@ -215,20 +235,85 @@ floppysize:
                         push    ax                               ; stack dma offset
                         sub     sp,4                             ; skip the far return
                         call    ioread                           ; read the sector
+                        test    al,al
+                        jz      floppyproberesult
+                        cmp     proberate,1                      ; final probe failed?
+                        jne     floppyproberesult
+; Restore the caller's policy before reporting failure. Keep the IOPB on
+; the stack: dodiskerror uses BP for the drive and track in its message.
+                        mov     al,probeerrmode
+                        mov     es:udaerrmode,al
+                        call    dodiskerror
+                        add     sp,14
+                        pop     bx
+                        cmp     al,'R'
+                        je      floppyprobestart                 ; media may have changed
+                        jmp     flopsizebad                      ; Ignore cannot validate unread data
+floppyproberesult:
                         add     sp,14                            ; clear the stack
                         pop     bx                               ; restore dph pointer
-                        test    al,al                            ; if an error comes back
-                        jnz     flopsizebad                      ;   then return zero
+                        test    al,al
+                        jz      floppyprobegood
+                        cmp     proberate,2
+                        jne     floppyprobenext
+                        mov     proberate,0
+                        jmp     floppyproberetry
+floppyprobenext:
+                        mov     proberate,1
+                        jmp     floppyproberetry
+floppyprobegood:
+                        mov     al,probeerrmode
+                        mov     es:udaerrmode,al
+                        call    floppyprofile
+                        or      ax,ax
+                        jz      flopsizebad
+                        mov     .dpb[bx],ax                      ; publish a recognised profile
+                        push    bx
+                        mov     si,ax
+                        mov     al,[si]
+                        mov     raweot,al
+                        mov     flpcylinders,40
+                        cmp     al,8
+                        je      floppyprofilecache
+                        mov     flpcylinders,80
+floppyprofilecache:
+                        xor     bx,bx
+                        mov     bl,probeunit
+                        call    floppycache
+                        pop     bx
+                        ret
 
-                        mov     ax,offset dpbs                   ; assume single sided
-                        cmp     floppytype,01h                   ; if not double sided
-                        jnz     flopsize1                        ;   then skip
-                        mov     ax,offset dpbd                   ; set to double sided
-flopsize1:
-                        mov     .dpb[bx],ax                      ; save dpb offset in dph
+; Boot-sector filesystem profile. SPT is expressed in physical sectors
+; for Concurrent CP/M. Unknown markers are rejected before BDOS login.
+; Entry: localbuffer=sector zero. Exit: AX=DPB address, or zero.
+floppyprofile:
+                        mov     ax,dpb0
+                        cmp     floppytype,0
+                        je      floppyprofiledone
+                        mov     ax,dpb1
+                        cmp     floppytype,1
+                        je      floppyprofiledone
+                        cmp     byte ptr localbuffer+510,1
+                        jne     floppyprofilebad
+                        mov     ax,dpb2
+                        cmp     floppytype,72
+                        je      floppyprofiledone
+                        mov     ax,dpb5
+                        cmp     floppytype,120
+                        je      floppyprofiledone
+                        mov     ax,dpb3
+                        cmp     floppytype,144
+                        je      floppyprofiledone
+floppyprofilebad:
+                        xor     ax,ax
+floppyprofiledone:
                         ret
 
 flopsizebad:
+                        xor     bx,bx
+                        mov     bl,probeunit
+                        mov     al,probeoldrate                  ; failed probes do not replace the profile
+                        mov     flprates[bx],al
                         sub     bx,bx                            ; return bx=00h
                         ret
 
@@ -260,6 +345,14 @@ writeflopdone:
 ;	Floppy Disk track Format entry
 
 formatfloppy:
+                        mov     al,rawformatcount
+                        or      al,al
+                        jnz     formatgeometryready
+                        mov     al,8
+                        mov     flprate,2                        ; legacy media: 250 Kbit/s
+                        mov     flpcylinders,40                  ; legacy format interface
+formatgeometryready:
+                        mov     raweot,al
                         mov     dmamodestorage,dmamodewritefdc
                         mov     fdccommand,fdccmndformat
 
@@ -281,11 +374,53 @@ variableformatdmaready:
                         call    checkdiskop                      ; did it work?
                         cmp     al,'R'                           ; if retry requested
                         jz      formatfloppy                     ;   then loop up
-                        ret                                      ; else return error code
+                        or      al,al
+                        jnz     formatdone
+; Formatting precedes filesystem login. Remember physical geometry for
+; the caller's subsequent boot-track write and verification, leaving the
+; filesystem DPB to be identified from the new boot sector at next login.
+                        xor     bx,bx
+                        mov     bl,drive
+                        call    floppycache
+formatdone:
+                        ret                                      ; return error code
 
 ;	Common code for floppy read and write
 
+; Cache the physical profile after successful login or format. This is
+; independent of the initial maximum-size DPB used by GENCCPM for buffers.
+; Entry: BX=drive (0..3), current geometry valid. Preserves AX and BX.
+floppycache:
+                        push    ax
+                        mov     al,flprate
+                        mov     flprates[bx],al
+                        mov     al,raweot
+                        mov     flpsects[bx],al
+                        mov     al,flpcylinders
+                        mov     flpcyls[bx],al
+                        pop     ax
+                        ret
+
+; Select geometry for each request: another process may have used another
+; drive since selection. Raw maintenance calls explicitly own their profile.
+floppygeometry:
+                        cmp     rawactive,0
+                        jne     floppygeometrydone
+                        push    bx
+                        xor     bx,bx
+                        mov     bl,drive
+                        mov     al,flprates[bx]
+                        mov     flprate,al
+                        mov     al,flpsects[bx]
+                        mov     raweot,al
+                        mov     al,flpcyls[bx]
+                        mov     flpcylinders,al
+                        pop     bx
+floppygeometrydone:
+                        ret
+
 flpio:
+                        call    floppygeometry
 ;note: SECTOR, TRACK is 0 relative
 ;MCNT, SECTORS_PER_TRACK are relative to 1
 
@@ -454,7 +589,20 @@ floppyio:
 ;	The following routine does the read or write operation
 ;	as selected by the global variables.
 
+; AT-compatible controllers select transfer rate through the write-only
+; control register. The original XT controller has no register at 3F7h.
+floppyrate:
+                        push    ax
+                        push    dx
+                        mov     dx,03f7h
+                        mov     al,flprate
+                        out     dx,al
+                        pop     dx
+                        pop     ax
+                        ret
+
 diskinit:
+                        call    floppyrate
                         mov     diskerror,0                      ;clear the global error flag
                         mov     diskongoing,0FFh                 ;flag the motor off counter
                         mov     cl,curdisk
@@ -587,11 +735,13 @@ seek:
                         mov     dacommand,fdccmndseek
                         mov     bl,0                             ;get a head 0
                         mov     ax,curtrk
-                        cmp     al,40                            ;test for off side 1
+                        cmp     al,flpcylinders                  ;test for second side
                         jb      sideok                           ;if single sided then leap
                         mov     bl,1                             ;else get a head 1
                         neg     al                               ;and wrap around the edge
-                        add     al,79                            ;cyl = 79 - track
+                        add     al,flpcylinders
+                        add     al,flpcylinders
+                        dec     al                               ;cyl = 2*cylinders-1-track
 sideok:
                         mov     dahead,bl                        ;set up the head
                         add     bl,bl                            ;multiply by 2
@@ -958,6 +1108,17 @@ fafiller                db      0
 dmamodestorage          db      dmamodereadfdc                   ;current dma mode
 fdccommand              db      fdccmndread                      ;current fdc mode
 curdisk                 db      0ffh
+; Physical profiles are learned on login/format; legacy defaults permit
+; maintenance I/O before login. MXdisk serializes this and probe state.
+flprates                db      2,2,2,2
+flpsects                db      8,8,8,8
+flpcyls                 db      40,40,40,40
+flprate                 db      2
+probeunit               db      0
+proberate               db      2
+probeerrmode            db      0
+probeoldrate            db      2
+flpcylinders            db      40
 curtrk                  dw      0
 cursec                  dw      0
 numsec                  db      1                                ;num sectors to read/write
@@ -1016,7 +1177,7 @@ mdiskstart              dw      0D000h                           ;may be changed
 
 dph0                    dw      0000h,0000h                      ;translate table
                         dw      0000h,0000h                      ;scratch area
-                        dw      dpbs                             ;dsk parm block
+                        dw      dpb3                             ;maximum removable-media workspace
                         dw      0ffffh                           ;check
                         dw      0ffffh                           ;alloc vectors
                         dw      0ffffh                           ;dir buff cntrl	blk
@@ -1025,7 +1186,7 @@ dph0                    dw      0000h,0000h                      ;translate tabl
 
 dph1                    dw      0000h,0000h                      ;translate table
                         dw      0000h,0000h                      ;scratch area
-                        dw      dpbs                             ;dsk parm block
+                        dw      dpb3                             ;maximum removable-media workspace
                         dw      0ffffh                           ;check
                         dw      0ffffh                           ;alloc vectors
                         dw      0ffffh                           ;dir buff cntrl	blk
@@ -1034,7 +1195,7 @@ dph1                    dw      0000h,0000h                      ;translate tabl
 
 dph2                    dw      0000h,0000h                      ;translate table
                         dw      0000h,0000h                      ;scratch area
-                        dw      dpbs                             ;dsk parm block
+                        dw      dpb3                             ;maximum removable-media workspace
                         dw      0ffffh                           ;check
                         dw      0ffffh                           ;alloc vectors
                         dw      0ffffh                           ;dir buff cntrl	blk
@@ -1043,7 +1204,7 @@ dph2                    dw      0000h,0000h                      ;translate tabl
 
 dph3                    dw      0000h,0000h                      ;translate table
                         dw      0000h,0000h                      ;scratch area
-                        dw      dpbs                             ;dsk parm block
+                        dw      dpb3                             ;maximum removable-media workspace
                         dw      0ffffh                           ;check
                         dw      0ffffh                           ;alloc vectors
                         dw      0ffffh                           ;dir buff cntrl	blk
@@ -1061,38 +1222,9 @@ dphmd                   dw      0000h,0000h                      ;translate tabl
 
 ;	single sided floppy parameter block
 
-dpbs                    dw      8                                ;sectors per track
-                        db      3                                ;block shift
-                        db      7                                ;block mask
-                        db      0                                ;extnt mask
-                        dw      155                              ;disk size in 1k blocks
-;less offset track(s)
-                        dw      63                               ;directory max
-                        db      11000000b                        ;alloc0
-                        db      0                                ;alloc1
-                        dw      16                               ;check size
-                        dw      1                                ;offset
-                        db      2                                ;phys sec shift
-                        db      3                                ;phys sec mask
+; Removable-media DPBs are generated from pcdisks.def in devices.a86.
 
-;	double sided floppy parameter block
-
-dpbd                    dw      8                                ;sectors per track
-                        db      4                                ;block shift
-                        db      15                               ;block mask
-                        db      1                                ;extnt mask
-                        dw      157                              ;disk size in 2k blocks
-;less offset track(s)
-                        dw      63                               ;directory max
-                        db      10000000b                        ;alloc0
-                        db      0                                ;alloc1
-                        dw      16                               ;check size
-                        dw      1                                ;offset
-                        db      2                                ;phys sec shift
-                        db      3                                ;phys sec mask
-
-;	memory disk parameter block
-
+; Memory disk parameter block.
 dpbmd                   dw      8                                ;sectors per track
                         db      4                                ;block shift
                         db      15                               ;block mask

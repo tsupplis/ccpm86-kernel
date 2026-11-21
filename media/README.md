@@ -19,9 +19,11 @@ PIP, REN, SDIR, SET, SETDEF, SHOW, SUBMIT, SYSDISK and TYPE.
 Bootable disks also contain STARTUP.0.
 
 Each image is 327,680 bytes. `PIP.CMD` is PIP4 with the `3.1N` banner.
-`base.img` is the empty physical/CHS filesystem template and original boot
-reference; `make clean` leaves it intact. Every generated image receives the
-source-built `../boot/boottrack.bin`, verified byte-for-byte against that reference.
+Empty filesystems are generated on demand with `mk320.py` and `mkfs.cpm`.
+The boot sources live in `commands/dskmaint`; media recipes consume their
+binaries directly. `media/boottrack.bin` is the generated 4,096-byte reference
+used by media checks and CHKCPMFS fixtures. It contains E5 fill, boot code at
+000h, the 320K marker at 1FFh and the shared loader at 900h.
 Native BASIC is supplied as dev/mbasic.cmd; DOS BASIC as dev/mbasic.com.
 
 
@@ -48,7 +50,7 @@ system disks within 320 KB.
 
 Recipes are in the Makefiles. `h862bin` from the companion `cpm86-cmdtools`
 extracts the assembled boot binaries; `../tools/cpm86twist.py` converts floppy track order.
-[Boot sources and track layout](../boot/README.md).
+[Maintained boot sources](../commands/dskmaint/README.md).
 Never use cpmtools directly on a physical 320 KB image: head 1 has reversed cylinder order.
 
 ## Run and verify

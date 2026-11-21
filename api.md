@@ -431,6 +431,15 @@ Packet at DS:DX: byte selector, word CX argument, word DX argument.
 
 ## Native XIOS — floppy maintenance extensions
 
+The existing capability query (CX=0, DX=444Bh, SI=534Bh) remains unchanged.
+For explicit 80-cylinder geometry, query CX=0, DX=444Bh, SI=534Ch and require
+AX=4B44h, DX=0102h. Older kernels do not return this signature. Only after
+that check may functions 29/35/36 receive 9, 15 or 18 in the high byte of
+SECTOR; its low byte remains the zero-based sector. Zero retains the old
+40-cylinder interface. Function 29 requires the count to match the explicit
+profile; transfers must remain within one head.
+
+
 These entries use the existing SYSDAT:28h far-call interface with ES=caller
 UDA. Callers hold MXdisk and protect foreground console/process state.
 

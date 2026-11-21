@@ -4,7 +4,7 @@ DISKSZIP=disks.zip
 DIST_DISKS=ccpm86.img ccpmnative.img ccpmtools.img ccpmext.img ccpmdev.img ccpmmaint.img ccpmdos.img
 SOURCEDIST=$(DISTDIR)/ccpm86-source.tar.gz
 
-.PHONY: all commands kernel boot media check check-qemu check-paging test dist source-dist clean
+.PHONY: all commands kernel media check check-qemu check-paging test dist source-dist clean
 all: media
 
 commands:
@@ -13,21 +13,17 @@ commands:
 kernel: commands
 	$(MAKE) -C kernel all
 
-boot:
-	$(MAKE) -C boot all
-
-media: commands kernel boot
+media: commands kernel
 	$(MAKE) -C media all
 
 .PHONY: chkcpmfs-live-images
-chkcpmfs-live-images: kernel boot
-	$(MAKE) -C media ccpm86.img ccpmtools.img
+chkcpmfs-live-images: kernel
+	$(MAKE) -C media boottrack.bin ccpm86.img ccpmtools.img
 
 check: all
 	$(MAKE) -C commands/disk check
 	python3 tools/disk_xios_unit_check.py
 	python3 tools/graphics_unit_check.py
-	$(MAKE) -C boot check
 	$(MAKE) -C commands/sysdisk check
 	$(MAKE) -C commands/batch check
 	$(MAKE) -C commands/chkcpmfs check-bdos
@@ -74,7 +70,7 @@ $(Y2KDISTZIP): commands/sdir/sdir.cmd commands/tod/tod.cmd \
 	  commands/tod/tod.cmd commands/date/date.cmd commands/show/show.cmd LICENSE.md
 
 clean:
-	@set -e; for d in commands kernel boot media; do $(MAKE) -C $$d clean; done
+	@set -e; for d in commands kernel media; do $(MAKE) -C $$d clean; done
 	rm -rf $(DISTDIR) dist.zip $(Y2KDISTZIP) $(DISKSZIP) $(DIST_DISKS)
 
 .PHONY: check-wmenu

@@ -39,6 +39,8 @@ local/**
 **/*.new
 /commands/dskmaint/*.bin
 /commands/dskmaint/*.inc
+/commands/dform/*.inc
+/commands/dform/tests/__pycache__/
 
 /commands/helphlp/help.hlp
 /kernel/sysgen/ccpm.old
@@ -55,9 +57,9 @@ local/**
 !/dev/*.cmd
 !/media/base.img
 
-# Source-built boot images.
-/boot/*.bin
-/boot/*.tmp
+# Generated media boot track.
+/media/boottrack.bin
+/media/boottrack.bin.tmp
 
 /kernel/sysgen/native/*.old
 /media/*.img.logical.tmp
@@ -65,3 +67,9 @@ local/**
 
 # Independent XIOS assembly work directories
 /kernel/con/.xios/
+
+# GENDEF output; the definition is the maintained source.
+/kernel/con/xios/pcdisks.lib
+
+# GENDEF's frozen comparison input belongs to source control, not media.
+!/commands/gendef/original.cmd

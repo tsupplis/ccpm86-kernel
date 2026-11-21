@@ -1283,9 +1283,9 @@ data_087c	db	020h,03ah,01h,00h,082h,08h,05h,018h,02h,02h,088h,08h
 	db	' Drive  :'
 sides	db	00h
 bootsect:
-	include	bootsect.inc
+	include	bootorg.inc
 loader:
-	include	loader.inc
+	include	loadorg.inc
 revision_2	db	00h,020h,044h,041h,054h,045h,020h,04fh,046h,020h,04ch,041h
 	db	'ST CHANGE 26'
 	db	' JAN 84   '

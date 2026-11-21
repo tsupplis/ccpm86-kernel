@@ -1,12 +1,12 @@
 ; xdiskraw: devices section
 xdata                   dseg    para public 'CODE'
 ;*******************************************************************************
-; Local raw 8/9-sector floppy services, for maintenance tools under MXdisk.
-; Function 35/36: the usual stack IOPB, TRACK=(head<<8)|cylinder, sector 0..8,
-; count 1..9, confined to one head. Function 29: DSKMAINT variable-format
-; IOPB, logical track 0..79, count 8/9, extra gap/fill word at BP+16.
-; Legacy functions 10/11/15 retain eight-sector semantics. The explicit
-; capability query on function 14 must precede any use of the new entries.
+; Raw floppy services under MXdisk. Functions 35/36 take physical CHS in
+; TRACK=(head<<8)|cylinder. Function 29 takes a logical track and gap/fill.
+; SECTOR low byte is zero-based. Its high byte is zero for the historical
+; 40-cylinder, 8/9-sector interface, or 9/15/18 for an 80-cylinder profile.
+; An explicit profile confines a request to one head. The driver consumes
+; the profile byte before passing the IOPB to the normal transfer routines.
 ;*******************************************************************************
 xcode                   cseg    byte public 'CODE'
 iorawread:
@@ -16,48 +16,73 @@ iorawwrite:
                         mov     rawfunction,offset iowrite
 rawdiskentry:
                         mov     bp,sp
+                        call    rawprofile
+                        jc      rawdiskbad
                         cmp     drive,1
                         ja      rawdiskbad
-                        cmp     byte ptr track,40
+                        mov     al,flpcylinders
+                        cmp     byte ptr track,al
                         jae     rawdiskbad
                         cmp     byte ptr track+1,1
                         ja      rawdiskbad
-                        cmp     sector,8
-                        ja      rawdiskbad
+                        xor     ax,ax
+                        mov     al,raweot
+                        cmp     sector,ax
+                        jae     rawdiskbad
                         xor     ax,ax
                         mov     al,mcnt
                         or      al,al
                         jz      rawdiskbad
                         add     ax,sector
-                        cmp     ax,9
+                        xor     dx,dx
+                        mov     dl,raweot
+                        cmp     ax,dx
                         ja      rawdiskbad
                         xor     ax,ax
                         mov     al,byte ptr track
                         cmp     byte ptr track+1,0
                         je      rawdisktrack
                         neg     ax
-                        add     ax,79
+                        xor     dx,dx
+                        mov     dl,flpcylinders
+                        add     ax,dx
+                        add     ax,dx
+                        dec     ax
 rawdisktrack:
                         mov     track,ax
-                        mov     raweot,9
+                        mov     rawactive,1
                         pop     rawreturn
                         call    rawfunction
+                        mov     rawactive,0
                         mov     raweot,8
                         jmp     rawreturn
 rawdiskbad:
+                        mov     raweot,8
+                        mov     flpcylinders,40
                         mov     ax,0401h
                         ret
 
 iovariableformat:
                         mov     bp,sp
+                        call    rawprofile
+                        jc      rawdiskbad
                         cmp     drive,1
                         ja      rawdiskbad
-                        cmp     track,80
+                        xor     ax,ax
+                        mov     al,flpcylinders
+                        shl     ax,1
+                        cmp     track,ax
                         jae     rawdiskbad
                         cmp     mcnt,8
                         jb      rawdiskbad
-                        cmp     mcnt,9
+                        mov     al,raweot
+                        cmp     mcnt,al
                         ja      rawdiskbad
+                        cmp     flpcylinders,40
+                        je      rawformatready
+                        cmp     mcnt,al
+                        jne     rawdiskbad
+rawformatready:
                         mov     al,mcnt
                         mov     rawformatcount,al
                         mov     ax,word ptr 16[bp]
@@ -65,8 +90,43 @@ iovariableformat:
                         pop     rawreturn
                         call    formatfloppy
                         mov     rawformatcount,0
+                        mov     raweot,8
+                        mov     flpcylinders,40
                         jmp     rawreturn
+; Validate before mutating the IOPB. Legacy callers keep their geometry.
+rawprofile:
+                        mov     al,byte ptr sector+1
+                        or      al,al
+                        jz      rawprofilelegacy
+                        cmp     al,9
+                        je      rawprofilelarge
+                        cmp     al,15
+                        je      rawprofilelarge
+                        cmp     al,18
+                        jne     rawprofilebad
+rawprofilelarge:
+                        mov     flprate,2
+                        cmp     al,9
+                        je      rawprofilerateready
+                        mov     flprate,0
+rawprofilerateready:
+                        mov     flpcylinders,80
+                        mov     raweot,al
+                        mov     byte ptr sector+1,0
+                        clc
+                        ret
+rawprofilelegacy:
+                        mov     flprate,2
+                        mov     flpcylinders,40
+                        mov     raweot,9
+                        clc
+                        ret
+rawprofilebad:
+                        stc
+                        ret
+
 xdata                   dseg    para public 'CODE'
+rawactive               db      0
 rawfunction             dw      0
 rawreturn               dw      0
 raweot                  db      8

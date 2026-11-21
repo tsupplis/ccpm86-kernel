@@ -26,7 +26,7 @@ a supported path; unavailable optional features do not prevent normal use.
 | DCOMP.CMD <!-- commands/disk/dcomp.cmd --> | Specific | Vanilla CP/M-86 1.1, specific CCP/M-86 3.1 and specific CDOS 4.1 only. |
 | DCOPY.CMD <!-- commands/disk/dcopy.cmd --> | Specific | Vanilla CP/M-86 1.1, specific CCP/M-86 3.1 and specific CDOS 4.1 only. |
 | DDT86.CMD <!-- commands/ddt86/ddt86.cmd --> | 3.1 |  |
-| DFORM.CMD <!-- commands/dskmaint/dform.cmd --> | Specific | Vanilla CP/M-86 1.1 and specific CCP/M-86 3.1 only. |
+| DFORM.CMD <!-- commands/dform/dform.cmd --> | Specific | Vanilla CP/M-86 1.1 and specific CCP/M-86 3.1 only. |
 | DREDIX.CMD <!-- commands/dredix/dredix.cmd --> | 3.1 |  |
 | DSKMAINT.CMD <!-- commands/dskmaint/dskmaint.cmd --> | 3.1 |  |
 | ED.CMD <!-- commands/ed/ed.cmd --> | Adaptive |  |

@@ -15,4 +15,12 @@ datastart               rb      0
                         include xdiskraw.lib
                         include xhard.lib
 
+; GENDEF uses the same placement names as the CP/M BIOS, with contiguous
+; 17-byte Concurrent DPBs here. No fixed-address ABI field lies in this area.
+xdata                   dseg    para public 'CODE'
+FD160                   equ     (offset $-offset datastart)
+FD320                   equ     FD160+17
+FDTABLES                equ     FD320+17
+                        include pcdisks.lib
+
                         end

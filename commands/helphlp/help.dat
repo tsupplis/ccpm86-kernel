@@ -437,8 +437,9 @@
     Without [8]/[9], validate a FAT12 BPB and probe sector nine. Success
     proves nine; failed probing alone never proves eight. Unknown eight-sector
     media needs [8]. A known BPB contradicting the selection is rejected.
-    Extended CDOS also detects 720K, 1.2M and 1.44M DOS FAT12 BPBs;
-    these use 80 cylinders. No capacity option is needed.
+    CP/M markers detect 720K/1200K/1440K; DOS BPBs detect 720K/1.2M/1.44M.
+    These use 80 cylinders and require a capable driver and hardware.
+    No capacity option is needed; kernel filesystem support is separate.
     [9] does not ignore unreadable sectors. DCOMP checks both geometries.
 
     DCOMP is read-only and reports differences by track and side.
@@ -477,8 +478,9 @@
     Without [8]/[9], validate a FAT12 BPB and probe sector nine. Success
     proves nine; failed probing alone never proves eight. Unknown eight-sector
     media needs [8]. A known BPB contradicting the selection is rejected.
-    Extended CDOS also detects 720K, 1.2M and 1.44M DOS FAT12 BPBs;
-    these use 80 cylinders. No capacity option is needed.
+    CP/M markers detect 720K/1200K/1440K; DOS BPBs detect 720K/1.2M/1.44M.
+    These use 80 cylinders and require a capable driver and hardware.
+    No capacity option is needed; kernel filesystem support is separate.
     [9] does not ignore unreadable sectors. DCOMP checks both geometries.
 
     DCOPY formats all target tracks to source geometry before writing and
@@ -614,27 +616,30 @@
 
     Options:
 
-    1         Single-sided, 160K: 40 cylinders, eight 512-byte sectors.
-    2         Double-sided, 320K: the default if neither 1 nor 2 is given.
+    160       Single-sided, 160K.
+    320       Double-sided, 320K (default).
+    720/1200/1440  Double-sided, 80 cylinders.
     V         Verify every track after formatting and writing the boot track.
-    Without V, no verification pass is performed.
+    Verification is enabled by default. Q skips it; V and Q conflict.
 
     Combine options in one bracket group or use separate groups.
     The closing ] is optional. Drive letters and options are case-insensitive.
-    Conflicting 1/2 options, unknown options and other incorrect arguments
+    Conflicting capacities, unknown options and other incorrect arguments
     display usage and exit. An empty command line also displays usage.
 
     This build supports CP/M-86 1.1 using the IBM PC ROM BIOS and
-    Concurrent CP/M-86 3.1 using native XIOS. Nine-sector 180K/360K formats
-    are not supported. The formatted disk contains DSKMAINT's boot code
+    Concurrent CP/M-86 3.1 using native XIOS. Larger formats require the
+    extended XIOS interface; older kernels support 160K/320K only.
+    Nine-sector 180K/360K formats are not supported. The formatted disk contains DSKMAINT's boot code
     and the loader for the detected OS; copy CPM.SYS or CCPM.SYS to the
     disk with PIP's [R] option to complete a boot disk.
 
     Examples:
 
     A>DFORM A:
-    A>DFORM B:[1V]
-    A>DFORM A: [V
+    A>DFORM B:[160V]
+    A>DFORM A:[720]
+    A>DFORM B:[1440Q]
     A>DFORM A: [1] [V]
     A>DFORM A: [1] [V
 

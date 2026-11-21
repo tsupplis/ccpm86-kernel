@@ -56,10 +56,16 @@ iopointer:
                         jne     diskpointernormal
                         cmp     dx,444bh
                         jne     diskpointernormal
+                        cmp     si,534ch                        ; extended geometry query
+                        je      diskpointerextended
                         cmp     si,534bh
                         jne     diskpointernormal
                         mov     ax,4b44h
                         mov     dx,0101h
+                        ret
+diskpointerextended:
+                        mov     ax,4b44h
+                        mov     dx,0102h
                         ret
 diskpointernormal:
                         mov     bx,cx

@@ -8,6 +8,9 @@ cpu 8086
 %ifndef IGNORE_ERRORS
 %define IGNORE_ERRORS 0
 %endif
+%ifndef EXTENDED
+%define EXTENDED 0
+%endif
 org 100h
 start:
     mov ax,cs
@@ -274,9 +277,13 @@ xios:
 %endif
     cmp byte [ss:bp+14],DRIVE
     jne bad
-    cmp byte [ss:bp+15],8
+    cmp byte [ss:bp+15],SECTORS
     jne bad
+%if SECTORS != 8
+    cmp word [ss:bp+10],SECTORS << 8
+%else
     cmp word [ss:bp+10],0
+%endif
     jne bad
     cmp word [ss:bp+6],0
     jne bad
@@ -285,8 +292,38 @@ xios:
     jnz bad
     mov es,bx
     mov bx,[ss:bp+12]
-    cmp bx,SIDES*40
+%if SECTORS == 8
+    cmp bx,SIDES*CYLINDERS
     jae bad
+%endif
+%if SECTORS != 8
+%if SECTORS == 15
+    cmp word [ss:bp+16],0e554h
+%elif SECTORS == 9
+    cmp word [ss:bp+16],0e550h
+%else
+    cmp word [ss:bp+16],0e56ch
+%endif
+    jne bad
+    cmp al,29
+    je .format
+    ; Raw I/O carries physical CHS; recover logical track for the assertions.
+    cmp bh,1
+    ja bad
+    cmp bl,CYLINDERS
+    jae bad
+    or bh,bh
+    jz .head_zero
+    mov bh,0
+    neg bx
+    add bx,CYLINDERS*2-1
+.head_zero:
+    cmp al,36
+    je .write
+    cmp al,35
+    je .verify
+    jmp bad
+%endif
     cmp al,15
     je .format
     cmp al,11
@@ -297,6 +334,20 @@ xios:
 .equipment:
     cmp cx,0
     jne bad
+    cmp dx,444bh
+    jne .old_equipment
+    cmp si,534ch
+    jne bad
+%if EXTENDED
+    mov ax,4b44h
+    mov dx,0102h
+%if EXTENDED == 2
+    mov dx,0101h
+%endif
+    pop bp
+    retf
+%endif
+.old_equipment:
     mov ax,300h
     jmp .return
 .select:
@@ -305,6 +356,28 @@ xios:
     mov ax,400h
     jmp .return
 .format:
+%if SECTORS != 8
+    ; Variable formatting consumes the caller's CHRN identifiers, unlike
+    ; legacy XIOS. Validate every sector on both sides before success.
+    mov dx,bx
+    cmp dl,CYLINDERS
+    jb .ids_head_zero
+    neg dl
+    add dl,CYLINDERS*2-1
+    mov dh,1
+.ids_head_zero:
+    xor si,si
+    mov cx,SECTORS
+    mov ax,0201h
+.ids:
+    cmp [es:si],dx
+    jne bad
+    cmp [es:si+2],ax
+    jne bad
+    inc al
+    add si,4
+    loop .ids
+%endif
 %if FAIL_OP == 5
     cmp byte [cs:failed_requests],FAIL_LIMIT
     jb .failed
@@ -322,14 +395,14 @@ xios:
 %endif
     cmp bx,0
     jne bad
-    cmp byte [cs:format_count],SIDES*40
+    cmp byte [cs:format_count],SIDES*CYLINDERS
     jne bad
     push ds
     push cs
     pop ds
     mov si,expected_track
     xor di,di
-    mov cx,1000h
+    mov cx,SECTORS*512
     cld
     repe cmpsb
     jne bad
@@ -383,13 +456,13 @@ bios:
     and word [ss:bp+6],0fffeh
     cmp ah,0
     je .success
-    cmp al,8
+    cmp al,SECTORS
     jne bad
     cmp cl,1
     jne bad
     cmp dl,DRIVE
     jne bad
-    cmp ch,40
+    cmp ch,CYLINDERS
     jae bad
     cmp dh,SIDES
     jae bad
@@ -458,7 +531,7 @@ bios:
     jne bad
     inc cl
     add si,4
-    cmp cl,9
+    cmp cl,SECTORS+1
     jne .ids
     pop si
     pop cx
@@ -469,14 +542,14 @@ bios:
     jne bad
     cmp dh,0
     jne bad
-    cmp byte [cs:format_count],SIDES*40
+    cmp byte [cs:format_count],SIDES*CYLINDERS
     jne bad
     push ds
     push cs
     pop ds
     mov si,expected_track
     xor di,di
-    mov cx,1000h
+    mov cx,SECTORS*512
     cld
     repe cmpsb
     jne bad
@@ -510,13 +583,13 @@ fill_verify:
     push cs
     pop ds
     mov si,expected_track
-    mov cx,4096
+    mov cx,SECTORS*512
     cld
     rep movsb
     jmp .filled
 .blank:
     mov ax,0e5e5h
-    mov cx,2048
+    mov cx,SECTORS*256
     cld
     rep stosw
 .filled:
@@ -527,7 +600,7 @@ fill_verify:
     cmp byte [cs:bad_reads],0
     jne .good
 %endif
-    xor byte [es:4095],1
+    xor byte [es:SECTORS*512-1],1
     inc byte [cs:bad_reads]
     jmp .done
 %endif
@@ -542,10 +615,10 @@ fill_verify:
 
 ; The second head runs backwards, exactly as in DSKMAINT.
 check_chs:
-    cmp al,40
+    cmp al,CYLINDERS
     jb .head0
     neg al
-    add al,79
+    add al,CYLINDERS*2-1
     cmp dh,1
     jne bad
     jmp .cylinder
@@ -608,7 +681,7 @@ write_count db 0
 verify_count db 0
 failed_requests db 0
 login_reset db 0
-params db 0cfh,02h,25h,02h,08h,2ah,0ffh,50h,0e5h,19h,04h
+params db 0cfh,02h,25h,02h,SECTORS,2ah,0ffh,50h + (SECTORS == 15)*4 + (SECTORS == 18)*1ch,0e5h,19h,04h
 tail db TAIL
 tail_end:
 expected_track:

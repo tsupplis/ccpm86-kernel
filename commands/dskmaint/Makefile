@@ -9,17 +9,17 @@ LINK86=pcdev_linkcmd
 H862BIN=h862bin
 BIN2ASM=bin2asm
 
-TOOLS=dskmaint.cmd dskmorg.cmd dform.cmd
+TOOLS=dskmaint.cmd dskmorg.cmd
 IMAGES=bootsect.bin loader.bin
 INCS=bootsect.inc loader.inc
 REF=../../base/dskmaint.cmd
 
-.PHONY: all check clean check-dsk check-dform
+.PHONY: all check clean check-dsk
 .DELETE_ON_ERROR:
 all: $(TOOLS) $(IMAGES)
 
 dskmaint.h86: dskmaint.a86 $(INCS) Makefile
-dskmorg.h86: dskmorg.a86 $(INCS) Makefile
+dskmorg.h86: dskmorg.a86 bootorg.inc loadorg.inc Makefile
 
 # GENCMD creates all four historical groups, including the empty EXTRA
 # descriptor and the initialized 256-byte STACK. XFFFF is in paragraphs.
@@ -46,24 +46,16 @@ dskmorg.cmd: dskmorg.h86 Makefile
 	$(BIN2ASM) -m -f $@ $<
 	unix2dos $@
 
-dform.obj: dform.a86 ccpmio.a86 $(INCS) Makefile
-	unix2dos $<
-	rm -f $@
-	@$(RASM86) $< $$ pz sz > dform.log 2>&1; cat dform.log
-	@grep -qE 'Number of errors: +0\.' dform.log || { rm -f $@; exit 1; }
-dform.cmd: dform.obj Makefile
-	$(LINK86) dform '[$$sz,cod[ori[0]],dat[ori[0],max[0]]]'
-	@python3 -c "p='$@';b=open(p,'rb').read();open(p,'wb').write(b[:128+int.from_bytes(b[1:3],'little')*16])"
-	$(CMDINFO) $@
+# Frozen bytes are extracted only for the historical reconstruction.
+bootorg.bin: $(REF)
+	dd if=$(REF) of=$@ bs=1 skip=4554 count=147 2>/dev/null
+loadorg.bin: $(REF)
+	dd if=$(REF) of=$@ bs=1 skip=4701 count=846 2>/dev/null
 
-check: check-dsk check-dform
+check: check-dsk
 check-dsk: dskmaint.cmd dskmorg.cmd $(IMAGES)
-	cmp dskmaint.cmd $(REF)
 	cmp dskmorg.cmd $(REF)
-	@echo 'PASS: CCP/M DSKMAINT matches all groups, headers and padding'
-check-dform: dform.cmd $(IMAGES)
-	python3 ../../tools/dfmtest.py
-
+	@echo 'PASS: CCP/M DSKMORG matches all groups, headers and padding'
 clean:
 	rm -f *.cmd *.obj *.h86 *.lst *.sym *.log *.bin.boot *.mp? *.lnk
-	rm -f $(IMAGES) $(INCS)
+	rm -f $(IMAGES) $(INCS) bootorg.bin loadorg.bin bootorg.inc loadorg.inc

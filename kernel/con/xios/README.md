@@ -28,3 +28,16 @@ factors, and checks abi.json and fixed entry jumps before publishing CON/SYM/MAP
 SYS-DATA fields and fixed XIOS header offsets remain unchanged. Code and data
 share one loaded segment. HARD8087 prevents emulator substitution; the published
 header preserves optional-NDP behaviour because XIOS probes hardware itself.
+
+## Native floppy validation
+
+Floppy DPBs are generated from the local `pcdisks.def` by the build-only tool
+in `commands/gendef`. Its sources and reference binary belong in source
+archives, not on distribution disks. The linked DPBs are byte-checked.
+
+PCE validation covers filesystem I/O and drive switching for 160K, 320K,
+720K, 1200K and 1440K under both personalities. It is not physical-drive
+qualification. In particular, 40-cylinder media in an 80-cylinder drive
+requires double stepping, which this driver does not implement. Do not claim
+that drive/media combination as supported. Physical transfer-rate switching
+and formatting remain unqualified until tested on matching hardware.

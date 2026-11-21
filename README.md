@@ -185,7 +185,7 @@ system disks within 320 KB.
 [Media recipes and emulator usage](media/README.md).
 The full HELP is on the main disk; WINDOW and WMENU are on the tools disk.
 Window layouts: `CARDDECK.SUB`, `CLEAR.SUB`, `GLASS.SUB` and `WORDPROC.SUB`.
-The [source-built boot track](boot/README.md) reproduces all 4,096 bytes of the original.
+The [media build](media/README.md) constructs the boot track from DSKMAINT’s maintained boot sector and loader.
 
 ## Commands
 

@@ -12,7 +12,7 @@ all: $(SNIPPETS)
 
 # Three independent XIOS modules; fixed ABI checked before publication.
 XIOS_SOURCES=$(wildcard xios/*.a86 xios/*.inc xios/*.lib xios/*.json)
-xios.con xiosnat.con: $(XIOS_SOURCES) pcmode.lib ../../tools/build_xios.py
+xios.con xiosnat.con: xios/pcdisks.lib $(XIOS_SOURCES) pcmode.lib ../../tools/build_xios.py
 	python3 ../../tools/build_xios.py $(basename $@)
 	@cmdinfo $@
 
@@ -40,8 +40,18 @@ bdos.con: bdos.obj
 
 clean:
 	rm -rf .xios
+	rm -f xios/pcdisks.lib
 	rm -f *.obj *.h86 *.sym *.lst *.con *.cmd *.loc *.lnk *.lst
 
 
 .PHONY: all clean
 .DELETE_ON_ERROR:
+
+# The shared disk definition remains in 128-byte records; P emits native
+# 512-byte-sector DPBs. GENDEF owns the conversion, not the XIOS builder.
+GENDEF_SOURCES=$(wildcard ../../commands/gendef/*.plm ../../commands/gendef/*.a86 ../../commands/gendef/*.plb ../../commands/gendef/*.lit) ../../commands/gendef/Makefile
+../../commands/gendef/gendef.cmd: $(GENDEF_SOURCES)
+	$(MAKE) -C ../../commands/gendef
+
+xios/pcdisks.lib: xios/pcdisks.def ../../commands/gendef/gendef.cmd Makefile
+	cd xios && emu2 ../../../commands/gendef/gendef.cmd pcdisks '$$BCP'
