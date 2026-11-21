@@ -23,7 +23,9 @@ loader page or data beginning at 0908h. There are no opcode-DB exceptions.
 
 The image shares CODE and DATA. Absolute symbolic aliases deliberately
 prevent ASM86 from inserting CS overrides for code-resident variables.
-The complete-file comparison protects those original addresses. Interior
+The aliases are derived from storage labels after their declarations, as
+required by ASM86; they no longer duplicate fixed layout addresses.
+The complete-file comparison protects the original encodings. Interior
 banner addresses retain aliases without breaking the displayed sentence
 into artificial string fragments. Menu text is grouped on logical lines;
 control bytes and zero terminators remain explicit.

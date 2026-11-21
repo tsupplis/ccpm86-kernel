@@ -117,7 +117,7 @@ advance_setting:
 	xor	bh,bh
 	push	bx
 	shl	bx,1
-	mov	cx,word ptr 482h[bx]
+	mov	cx,word ptr setting_counts[bx]
 	mov	si,word ptr selected_settings
 	mov	al,byte ptr [bx+si]
 	inc	al
@@ -192,10 +192,10 @@ build_port_menus:
 	mov	ax,5h
 	cmp	byte ptr port_present,0ffh
 	jz	loc_0176
-	mov	bx,3afh
+	mov	bx,offset item_03af
 	jmps	loc_0198
 loc_0176:
-	mov	word ptr field_01fd,20bh
+	mov	word ptr field_01fd,offset port_0_caption
 	add	word ptr field_02dc,ax
 	mov	si,offset item_02f2
 	mov	cx,ax
@@ -210,7 +210,7 @@ loc_0176:
 loc_0198:
 	cmp	byte ptr field_01e6,0ffh
 	jnz	loc_01d0
-	mov	word ptr field_01ff,22ch
+	mov	word ptr field_01ff,offset port_1_caption
 	add	word ptr field_02dc,ax
 	mov	cx,ax
 	mov	si,offset item_02fc
@@ -222,8 +222,8 @@ loc_0198:
 	rep	movsb
 	cmp	byte ptr port_present,0ffh
 	jz	loc_01d0
-	mov	word ptr field_04aa,344h
-	mov	word ptr selected_settings,4a0h
+	mov	word ptr field_04aa,offset port_1_value
+	mov	word ptr selected_settings,offset port_1_settings
 loc_01d0:
 	pop	es
 	ret
@@ -241,7 +241,7 @@ detect_ports:
 	mov	byte ptr port_parameters,al
 	inc	byte ptr port_count
 	mov	di,offset item_0374
-	mov	bx,496h
+	mov	bx,offset port_0_settings
 	call	decode_serial
 loc_01f4:
 	mov	dx,offset item_02f0
@@ -254,7 +254,7 @@ loc_01f4:
 	mov	byte ptr field_01e8,al
 	inc	byte ptr port_count
 	mov	di,offset item_038f
-	mov	bx,4a0h
+	mov	bx,offset port_1_settings
 	call	decode_serial
 loc_0216:
 	mov	al,byte ptr port_count
@@ -365,7 +365,7 @@ program_uart:
 	mov	cl,4h
 	shr	al,cl
 	xchg	ax,bx
-	mov	ax,word ptr 4ach[bx]
+	mov	ax,word ptr baud_divisors[bx]
 	mov	dl,0f8h
 	out	dx,al
 	xchg	ah,al
@@ -392,7 +392,7 @@ loc_02d6:
 	dec	byte ptr tail_remaining
 	jmps	loc_02d6
 loc_02ea:
-	mov	word ptr field_01eb,3c3h
+	mov	word ptr field_01eb,offset printer_tokens
 	mov	word ptr field_01ed,si
 loc_02f4:
 	mov	si,word ptr field_01eb
@@ -447,10 +447,10 @@ loc_0356:
 apply_option:
 	push	si
 	mov	si,di
-	mov	bx,1e7h
+	mov	bx,offset port_parameters
 	cmp	byte ptr selected_port,0h
 	jz	loc_036c
-	mov	bx,1e8h
+	mov	bx,offset field_01e8
 loc_036c:
 	lodsw
 	mov	cx,ax
@@ -952,8 +952,10 @@ selected_port	db	0h
 item_01f1	db	0h,0h,0f9h,1h,0dch,2h,0aah,3h,8h,0h,4dh,2h
 field_01fd	db	78h,2h
 field_01ff	db	78h,2h,81h,2h,92h,2h,0a5h,2h,0b3h,2h,0c4h,2h
+port_0_caption:
 	db	6h,0bh,2h,2h,11h,2h,19h,0h
 	db	'Printer 3 / Serial Port 0'
+port_1_caption:
 	db	6h,2fh,2h,2h,32h,2h,19h,0h
 	db	'Printer 4 / Serial Port 1'
 	db	4h,16h,5h,6h,53h,2h,23h,0h
@@ -981,7 +983,9 @@ item_02fc	db	3dh,3h,48h,3h,53h,3h,5eh,3h,69h,3h,7h,13h
 	db	1h,0h,11h,0ch,86h,3h,13h,13h,46h,39h,20h,1h
 	db	0h,14h,0ch,8ch,3h,7h
 	db	'7F2 '
-	db	1h,0h,8h,40h,8fh,3h,0ah
+	db	1h,0h
+port_1_value:
+	db	8h,40h,8fh,3h,0ah
 	db	'7F4 '
 	db	1h,0h,0bh,40h,95h,3h,0dh
 	db	'7F6 '
@@ -1011,7 +1015,9 @@ item_038f	db	4h,0h
 field_03ae	db	0h
 item_03af	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
 item_03b9	db	0bbh,0bdh,0bfh,0c1h,0c3h
-item_03be	db	0bch,0beh,0c0h,0c2h,0c4h,4h,0h
+item_03be	db	0bch,0beh,0c0h,0c2h,0c4h
+printer_tokens:
+	db	4h,0h
 	db	'  P3'
 	dw	offset validate_identifier
 	db	0h

@@ -19,102 +19,7 @@
 ;*****************************************************************************
 
 ; Absolute aliases avoid automatic CS overrides on shared CODE/data.
-; Their values match the original layout; make check guards every address.
-configuration_sector equ 0908h
-memory_segment equ 090ah
-verify_flag equ 090ch
-step_rate equ 090dh
-save_serial_flag equ 0968h
-save_keys_flag equ 096ah
-serial_parameters equ 096ch
-field_096d equ 096dh
-function_key_data equ 0978h
-save_keys equ 0b08h
-save_serial equ 0b09h
-disk_head equ 0b0ah
-disk_chs equ 0b0ch
-hard_disk_chs equ 0b0eh
-xios_gateway equ 0b10h
-item_0b11 equ 0b11h
-system_segment equ 0b12h
-xios_segment equ 0b14h
-process_descriptor equ 0b16h
-console_descriptor equ 0b18h
-console_number equ 0b1ah
-field_0b1c equ 0b1ch
-field_0b1d equ 0b1dh
-bios_disk_gateway equ 0b1eh
-memory_range_1 equ 0b2ah
-memory_range_2 equ 0b2ch
-memory_range_3 equ 0b2eh
-field_0b30 equ 0b30h
-field_0b32 equ 0b32h
-field_0b33 equ 0b33h
-item_0b34 equ 0b34h
-item_0b44 equ 0b44h
-item_0b54 equ 0b54h
-item_0b8c equ 0b8ch
-item_0bc6 equ 0bc6h
-item_0bd5 equ 0bd5h
-item_0bde equ 0bdeh
-item_0bf0 equ 0bf0h
-item_0c0c equ 0c0ch
-item_0c12 equ 0c12h
-item_0c36 equ 0c36h
-item_0c58 equ 0c58h
-page_title equ 0c5fh
-page_choices equ 0c61h
-page_dispatch equ 0c63h
-field_0c65 equ 0c65h
-item_0c71 equ 0c71h
-item_0ca0 equ 0ca0h
-item_0cb9 equ 0cb9h
-item_0cc3 equ 0cc3h
-item_0cdf equ 0cdfh
-item_0cff equ 0cffh
-item_0d13 equ 0d13h
-item_0d14 equ 0d14h
-item_0d1f equ 0d1fh
-item_0d4c equ 0d4ch
-item_0d91 equ 0d91h
-item_0da1 equ 0da1h
-item_0e7c equ 0e7ch
-item_0ec5 equ 0ec5h
-item_0ecb equ 0ecbh
-item_0ed1 equ 0ed1h
-item_0f05 equ 0f05h
-item_102b equ 102bh
-item_104e equ 104eh
-item_1054 equ 1054h
-item_1075 equ 1075h
-item_1079 equ 1079h
-item_1089 equ 1089h
-item_10ab equ 10abh
-item_10ae equ 10aeh
-item_1167 equ 1167h
-item_117e equ 117eh
-item_1185 equ 1185h
-item_11a0 equ 11a0h
-item_12d2 equ 12d2h
-item_1310 equ 1310h
-item_1335 equ 1335h
-item_133e equ 133eh
-item_1347 equ 1347h
-item_1468 equ 1468h
-item_14a1 equ 14a1h
-item_14cb equ 14cbh
-item_14d2 equ 14d2h
-item_1526 equ 1526h
-field_15e1 equ 15e1h
-item_1605 equ 1605h
-item_1625 equ 1625h
-item_1648 equ 1648h
-item_1652 equ 1652h
-field_165c equ 165ch
-field_1660 equ 1660h
-item_1701 equ 1701h
-item_181e equ 181eh
-field_185e equ 185eh
+; Derive offsets from storage labels; make check guards the exact encoding.
 
 	cseg
 	org 0
@@ -201,7 +106,7 @@ check_console:
 	int	0e0h
 	cmp	ax,4h
 	jc	loc_0175
-	mov	dx,176h
+	mov	dx,offset data_0176
 	mov	cl,9h
 	int	0e0h
 	xor	cx,cx
@@ -232,7 +137,7 @@ loc_01bf:
 	jnz	loc_01ca
 	ret
 loc_01ca:
-	mov	dx,1d8h
+	mov	dx,offset data_01d8
 	mov	cx,9h
 	int	0e0h
 	xor	cx,cx
@@ -249,7 +154,7 @@ data_01d8	db	0dh,0ah
 ; -----------------------------------------------------------------------------
 save_menu:
 	mov	si,item_0ca0
-	mov	ax,0db1h
+	mov	ax,save_help
 	call	showhelp
 	mov	si,item_0e7c
 	call	showoptions
@@ -291,7 +196,7 @@ toggle_serial:
 showsaves:
 	mov	dx,item_0c0c
 	mov	cx,2h
-	mov	bx,0b08h
+	mov	bx,save_keys
 	call	reverseon
 
 ; -----------------------------------------------------------------------------
@@ -318,7 +223,7 @@ saveput:
 ; -----------------------------------------------------------------------------
 memory_menu:
 	mov	si,item_0cb9
-	mov	ax,0ed5h
+	mov	ax,memory_help
 	call	showhelp
 	call	showmemory
 	mov	si,item_1089
@@ -420,7 +325,7 @@ puthexbyte:
 ; Translate a nibble through the hexadecimal character table.
 ; -----------------------------------------------------------------------------
 puthexdigit:
-	mov	bx,1079h
+	mov	bx,item_1079
 	xlat	byte ptr [bx]
 	jmp	put_character
 ; -----------------------------------------------------------------------------
@@ -538,7 +443,7 @@ errorbeep:
 ; -----------------------------------------------------------------------------
 verify_menu:
 	mov	si,item_0cdf
-	mov	ax,11b9h
+	mov	ax,verify_help
 	call	showhelp
 	mov	si,item_12d2
 	call	showoptions
@@ -599,7 +504,7 @@ verifyput:
 ; -----------------------------------------------------------------------------
 step_time_menu:
 	mov	si,item_0cc3
-	mov	ax,134bh
+	mov	ax,step_help
 	call	showhelp
 	mov	si,item_1468
 	call	showoptions
@@ -690,7 +595,7 @@ stepunits:
 ; -----------------------------------------------------------------------------
 storage_menu:
 	mov	si,item_0cff
-	mov	ax,14d6h
+	mov	ax,storage_help
 	call	showhelp
 	mov	si,field_15e1
 	call	showoptions
@@ -771,7 +676,7 @@ diskput:
 update_and_exit:
 	call	snapshot_options
 	call	diskparams
-	mov	bx,908h
+	mov	bx,configuration_sector
 	mov	ah,3h
 	call	disk_io
 
@@ -870,7 +775,7 @@ snapshot_keys:
 	pop	es
 	mov	bx,word ptr .console_number
 	add	bx,bx
-	mov	si,word ptr 0b22h[bx]
+	mov	si,word ptr key_table_pointers[bx]
 	mov	di,function_key_data
 	mov	cx,0b4h
 	mov	ds,word ptr .system_segment
@@ -1043,7 +948,7 @@ loadsettings:
 	pop	es
 	mov	dx,80h
 	mov	cx,1h
-	mov	bx,1660h
+	mov	bx,field_1660
 	mov	ax,201h
 	call	disk_io
 	jc	loc_073d
@@ -1077,7 +982,7 @@ loc_073d:
 	jnz	readhard
 	mov	dx,0h
 	mov	cx,2h
-	mov	bx,1660h
+	mov	bx,field_1660
 	mov	ax,201h
 	call	disk_io
 	jc	readhard
@@ -1731,4 +1636,109 @@ item_181e_storage	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
 	db	0h,0h,0h,0h
 field_185e_storage	db	0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h,0h
 	db	0h,0h,0h,0h,0h,0h
+configuration_sector equ offset configuration_sector_storage
+memory_segment equ offset memory_segment_storage
+verify_flag equ offset verify_flag_storage
+step_rate equ offset step_rate_storage
+save_serial_flag equ offset save_serial_flag_storage
+save_keys_flag equ offset save_keys_flag_storage
+serial_parameters equ offset serial_parameters_storage
+field_096d equ offset field_096d_storage
+function_key_data equ offset function_key_data_storage
+save_keys equ offset save_keys_storage
+save_serial equ offset save_serial_storage
+disk_head equ offset disk_head_storage
+disk_chs equ offset disk_chs_storage
+hard_disk_chs equ offset hard_disk_chs_storage
+xios_gateway equ offset xios_gateway_storage
+item_0b11 equ offset item_0b11_storage
+system_segment equ offset system_segment_storage
+xios_segment equ offset xios_segment_storage
+process_descriptor equ offset process_descriptor_storage
+console_descriptor equ offset console_descriptor_storage
+console_number equ offset console_number_storage
+field_0b1c equ offset field_0b1c_storage
+field_0b1d equ offset field_0b1d_storage
+bios_disk_gateway equ offset bios_disk_gateway_storage
+memory_range_1 equ offset memory_range_1_storage
+memory_range_2 equ offset memory_range_2_storage
+memory_range_3 equ offset memory_range_3_storage
+field_0b30 equ offset field_0b30_storage
+field_0b32 equ offset field_0b32_storage
+field_0b33 equ offset field_0b33_storage
+item_0b34 equ offset item_0b34_storage
+item_0b44 equ offset item_0b44_storage
+item_0b54 equ offset item_0b54_storage
+item_0b8c equ offset item_0b8c_storage
+item_0bc6 equ offset item_0bc6_storage
+item_0bd5 equ offset item_0bd5_storage
+item_0bde equ offset item_0bde_storage
+item_0bf0 equ offset item_0bf0_storage
+item_0c36 equ offset item_0c36_storage
+item_0c58 equ offset item_0c58_storage
+page_title equ offset page_title_storage
+page_choices equ offset page_choices_storage
+page_dispatch equ offset page_dispatch_storage
+field_0c65 equ offset field_0c65_storage
+item_0c71 equ offset item_0c71_storage
+item_0ca0 equ offset item_0ca0_storage
+item_0cb9 equ offset item_0cb9_storage
+item_0cc3 equ offset item_0cc3_storage
+item_0cdf equ offset item_0cdf_storage
+item_0cff equ offset item_0cff_storage
+item_0d13 equ offset item_0d13_storage
+item_0d14 equ offset item_0d14_storage
+item_0d1f equ offset item_0d1f_storage
+item_0d4c equ offset item_0d4c_storage
+item_0d91 equ offset item_0d91_storage
+item_0da1 equ offset item_0da1_storage
+item_0e7c equ offset item_0e7c_storage
+item_0ec5 equ offset item_0ec5_storage
+item_0ecb equ offset item_0ecb_storage
+item_0ed1 equ offset item_0ed1_storage
+item_0f05 equ offset item_0f05_storage
+item_102b equ offset item_102b_storage
+item_104e equ offset item_104e_storage
+item_1054 equ offset item_1054_storage
+item_1075 equ offset item_1075_storage
+item_1079 equ offset item_1079_storage
+item_1089 equ offset item_1089_storage
+item_10ab equ offset item_10ab_storage
+item_10ae equ offset item_10ae_storage
+item_1167 equ offset item_1167_storage
+item_117e equ offset item_117e_storage
+item_1185 equ offset item_1185_storage
+item_11a0 equ offset item_11a0_storage
+item_12d2 equ offset item_12d2_storage
+item_1310 equ offset item_1310_storage
+item_1335 equ offset item_1335_storage
+item_133e equ offset item_133e_storage
+item_1347 equ offset item_1347_storage
+item_1468 equ offset item_1468_storage
+item_14a1 equ offset item_14a1_storage
+item_14cb equ offset item_14cb_storage
+item_14d2 equ offset item_14d2_storage
+item_1526 equ offset item_1526_storage
+field_15e1 equ offset field_15e1_storage
+item_1605 equ offset item_1605_storage
+item_1625 equ offset item_1625_storage
+item_1648 equ offset item_1648_storage
+item_1652 equ offset item_1652_storage
+field_165c equ offset field_165c_storage
+field_1660 equ offset field_1660_storage
+item_1701 equ offset item_1701_storage
+item_181e equ offset item_181e_storage
+field_185e equ offset field_185e_storage
+
+; Interior banner offsets retain the original parameter text.
+item_0c0c equ (offset item_0bf0_storage)+28
+item_0c12 equ (offset item_0bf0_storage)+34
+
+; Offsets within the XIOS parameter block and help records.
+key_table_pointers equ (offset bios_disk_gateway_storage)+4
+save_help equ (offset item_0da1_storage)+16
+memory_help equ (offset item_0ed1_storage)+4
+verify_help equ (offset item_11a0_storage)+25
+step_help equ (offset item_1347_storage)+4
+storage_help equ (offset item_14d2_storage)+4
 	end
