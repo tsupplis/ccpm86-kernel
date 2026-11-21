@@ -14,7 +14,7 @@ IMAGES=bootsect.bin loader.bin
 INCS=bootsect.inc loader.inc
 REF=../../base/dskmaint.cmd
 
-.PHONY: all check clean check-dsk
+.PHONY: all check clean check-dsk check-live
 .DELETE_ON_ERROR:
 all: $(TOOLS) $(IMAGES)
 
@@ -23,7 +23,8 @@ dskmorg.h86: dskmorg.a86 bootorg.inc loadorg.inc Makefile
 
 # GENCMD creates all four historical groups, including the empty EXTRA
 # descriptor and the initialized 256-byte STACK. XFFFF is in paragraphs.
-dskmaint.cmd dskmorg.cmd: CMDOPTS=extra[m200 xffff]
+dskmorg.cmd: CMDOPTS=extra[m200 xffff]
+dskmaint.cmd: CMDOPTS=extra[m800 xffff]
 
 dskmaint.cmd: dskmaint.h86 Makefile
 	$(GENCMD) dskmaint '$(CMDOPTS)'
@@ -56,6 +57,9 @@ check: check-dsk
 check-dsk: dskmaint.cmd dskmorg.cmd $(IMAGES)
 	cmp dskmorg.cmd $(REF)
 	@echo 'PASS: CCP/M DSKMORG matches all groups, headers and padding'
+check-live: check
+	python3 -B tests/live.py
+
 clean:
 	rm -f *.cmd *.obj *.h86 *.lst *.sym *.log *.bin.boot *.mp? *.lnk
 	rm -f $(IMAGES) $(INCS) bootorg.bin loadorg.bin bootorg.inc loadorg.inc

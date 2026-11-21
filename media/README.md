@@ -9,8 +9,8 @@ Root `make dist` copies the seven distribution images to the root alongside
 | `ccpm86.img` | Yes | PC-MODE/PCTMP kernel and core commands listed below |
 | `ccpmnative.img` | Yes | Native TMP kernel and the same core commands |
 | `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, CHKCPMFS, WINDOW, WMENU, PRINT, VCMODE, STOP, ERAQ, TOD, PIP; CARDDECK, CLEAR, GLASS and WORDPROC SUB files |
-| `ccpmext.img` | No | FM, DREDIX with HELP.EDX and LSN.EDX, PUT, GET, RDR, PIP |
-| `ccpmmaint.img` | Yes | PC-MODE/PCTMP kernel, DSKMAINT, DFORM, DCOPY, DCOMP, HDMAINT, INITDIR, CONFIG, FUNCTION, SETUP, SYSTAT, STOP, TOD, PIP |
+| `ccpmext.img` | No | FM, DREDIX with HELP.EDX and LSN.EDX, PUT, GET, RDR, SYSTAT, PIP |
+| `ccpmmaint.img` | Yes | PC-MODE/PCTMP kernel, DSKMAINT, DFORM, DCOPY, DCOMP, HDMAINT, INITDIR, CONFIG, FUNCTION, SETUP, STOP, TOD, PIP |
 | `ccpmdev.img` | No | RASM86, LINK86, LIB86, XREF86, SID86, CBAS86, CRUN86, PBASIC, MBASIC.CMD, ASM80, HEXCOM |
 | `ccpmdos.img` | No | MSMASM.EXE, MSLIB.EXE, MSLINK.EXE, EXE2BIN.EXE, MBASIC.COM |
 
@@ -33,7 +33,8 @@ kernel as `CCPM.SYS`, as required by the normal boot loader. Both personalities
 use the same XIOS implementation and shared kernel fixes. Native XIOS disables
 the PC-MODE gateway; this is a source-built alternative, not an archival binary.
 Boot either system disk in A: and use the data disks in B:. DOS programs require
-the PC-MODE system. Configuration utilities live on maintenance to keep both
+the PC-MODE system. DSKMAINT formats, verifies and copies 160K, 320K, 720K, 1200K and 1440K
+CP/M disks through native XIOS. Configuration utilities live on maintenance to keep both
 system disks within 320 KB.
 
 ## Build pipeline
@@ -42,7 +43,7 @@ system disks within 320 KB.
 | --- | --- |
 | Sources | Build commands, kernel components and all nine RSPs; run GENCCPM |
 | Boot | Assemble the boot sector and loader; build and verify the complete 4 KB track |
-| Reference check | Require rebuilt SYSDISK and DSKMAINT to match their originals byte-for-byte; run dual-OS DFORM checks |
+| Reference check | Require rebuilt SYSDISK and frozen DSKMORG to match their originals byte-for-byte; run dual-OS DFORM checks |
 | Help | Compile `HELP.DAT` into indexed `HELP.HLP` |
 | Template | Copy empty `base.img`, then install the source-built boot track |
 | Populate | Untwist → cpmtools format `ccpm86-320` → twist back |

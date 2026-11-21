@@ -1,13 +1,37 @@
 ;*****************************************************************************
 ;
 ;	DSKMAINT - Concurrent CP/M-86 3.1 disk maintenance, version 1.5
-;	Digital Research, 26 January 1984. Byte-exact reconstruction.
+;	Digital Research, 26 January 1984. Maintained native-format edition.
+;	DSKMORG retains the byte-exact historical reconstruction.
 ;
 ;	CODE/DATA, loader-allocated EXTRA and a 256-byte STACK are separate.
 ;	XIOS disk I/O is protected by MXdisk, P_KEEP and console state checks.
 ;	Build and check: make check
 ;
 ;*****************************************************************************
+; Loader base-page and published CCP/M/XIOS structure fields.
+BP_EXTRA_BYTES equ 0ch
+BP_EXTRA_HIGH equ 0eh
+BP_EXTRA_SEG equ 0fh
+BP_STACK_SEG equ 15h
+SYSDAT_XIOS equ 28h
+SYSDAT_CONSOLES equ 54h
+SYSDAT_OPEN_FILES equ 88h
+PROCESS_FLAGS equ 6
+PROCESS_UDA equ 10h
+CONSOLE_FLAGS equ 0eh
+CONSOLE_BYTES equ 2ch
+UDA_ERROR_MODE equ 10h
+DPH_MEDIA_STATE equ 6
+DPH_DPB equ 8
+DPB_BLOCK_MASK equ 3
+DPB_MAX_BLOCK equ 5
+DPB_RESERVED equ 13
+DPB_SECTOR_SHIFT equ 15
+BOOT_MARKER equ 01ffh
+BOOT_HEADS equ 01feh
+BOOT_LOADER equ 0900h
+
 	cseg
 	org	0
 entry:
@@ -19,7 +43,7 @@ entry:
 ;-----------------------------------------------------------------------------
 main:
 	cli
-	mov	ss,word ptr .015h
+	mov	ss,word ptr .BP_STACK_SEG
 	mov	sp,0100h
 	sti
 	mov	ax,ds
@@ -27,12 +51,14 @@ main:
 	mov	word ptr output_segment,ax
 	call	check_version
 	call	get_os_data
+	call	init_buffers
 	call	set_priority
 	call	keep_process
 	call	lock_console
 	jz	console_error
 	call	lock_disk
 	jz	open_file_error
+	call	set_error_mode
 	call	check_console
 	call	draw_frame
 main_menu:
@@ -48,7 +74,9 @@ main_menu:
 ;-----------------------------------------------------------------------------
 exit_program:
 	call	restore_screen
-branch_0087:
+cleanup_exit:
+	call	invalidate_drives
+	call	restore_error_mode
 	call	unlock_disk
 	call	unlock_console
 	call	release_process
@@ -60,7 +88,7 @@ startup_error:
 	call	restore_screen
 	pop	si
 	call	write_buffer
-	jmps	branch_0087
+	jmps	cleanup_exit
 console_error:
 	mov	si,offset msg_background
 	jmps	startup_error
@@ -76,16 +104,16 @@ check_version:
 	int	byte ptr 0e0h
 	and	ah,0fh
 	cmp	ah,04h
-	jz	branch_00bd
+	jz	check_ccpm_version
 	cmp	ah,06h
-	jnz	branch_00c8
-branch_00bd:
+	jnz	wrong_version
+check_ccpm_version:
 	mov	cx,0a3h
 	int	byte ptr 0e0h
 	cmp	ax,01431h
-	jnz	branch_00c8
+	jnz	wrong_version
 	ret
-branch_00c8:
+wrong_version:
 	mov	dx,offset msg_version
 	mov	cx,09h
 	int	byte ptr 0e0h
@@ -93,33 +121,33 @@ branch_00c8:
 	xor	dx,dx
 	int	byte ptr 0e0h
 copy_menu:
-	mov	word ptr action_caption,offset record_04d6
-	mov	word ptr drive_prompt,offset record_043d
+	mov	word ptr action_caption,offset copy_text
+	mov	word ptr drive_prompt,offset source_prompt
 	mov	si,offset drive_menu_record
 	call	drive_menu
-	jz	branch_0116
+	jz	copy_return
 	call	select_source
-	jz	branch_0117
-	mov	word ptr drive_prompt,offset record_0474
+	jz	copy_bad_disk
+	mov	word ptr drive_prompt,offset target_prompt
 	mov	si,offset drive_menu_record
 	call	drive_menu
-	jz	branch_0116
+	jz	copy_return
 	call	select_target
-	jz	branch_0117
+	jz	copy_bad_disk
 	call	compare_dpbs
-	jnz	branch_010c
-	mov	si,offset record_05cd
-	jmps	branch_011a
-branch_010c:
+	jnz	copy_confirm
+	mov	si,offset mismatch_caption
+	jmps	copy_error
+copy_confirm:
 	call	confirm_copy
 	jz	copy_menu
 	call	copy_batches
 	jmps	copy_menu
-branch_0116:
+copy_return:
 	ret
-branch_0117:
+copy_bad_disk:
 	mov	si,offset msg_bad_disk
-branch_011a:
+copy_error:
 	mov	word ptr error_caption,si
 	mov	si,offset error_record
 	call	show_menu
@@ -129,41 +157,41 @@ copy_batches:
 	call	reset_track
 	mov	word ptr io_function,0ah
 	call	prompt_source
-branch_0135:
+copy_next_batch:
 	call	save_batch
 	mov	cl,byte ptr source_drive
 	call	read_batch
-	jz	branch_017e
+	jz	disk_error
 	cmp	al,03h
-	jz	branch_017c
+	jz	copy_done
 	push	ax
 	call	prompt_target
 	call	restore_batch
 	mov	cl,byte ptr target_drive
 	call	write_batch
-	jz	branch_017d
+	jz	copy_failed
 	cmp	al,03h
-	jnz	branch_015d
+	jnz	copy_check_batch
 	pop	ax
-	jmp	branch_017c
-branch_015d:
+	jmp	copy_done
+copy_check_batch:
 	call	restore_batch
 	mov	cl,byte ptr target_drive
 	call	check_batch
-	jz	branch_017d
+	jz	copy_failed
 	inc	word ptr io_track
 	pop	ax
 	cmp	al,02h
-	jz	branch_017c
+	jz	copy_done
 	cmp	al,03h
-	jz	branch_017c
+	jz	copy_done
 	call	prompt_source
-	jmp	branch_0135
-branch_017c:
+	jmp	copy_next_batch
+copy_done:
 	ret
-branch_017d:
+copy_failed:
 	pop	cx
-branch_017e:
+disk_error:
 	mov	si,offset msg_bad_disk
 	mov	word ptr error_caption,si
 	mov	si,offset error_record
@@ -173,76 +201,114 @@ reset_track:
 	mov	word ptr io_track,00h
 	ret
 format_single:
-	mov	word ptr action_caption,offset record_04fb
-	mov	byte ptr sides,00h
-	mov	word ptr format_tracks,028h
-	jmps	format_menu
+	mov	si,offset profile160
+	jmps	choose_format
 format_double:
-	mov	byte ptr sides,01h
-	mov	word ptr action_caption,offset record_0520
-	mov	word ptr format_tracks,050h
+	mov	si,offset profile320
+	jmps	choose_format
+format_720:
+	mov	si,offset profile720
+	jmps	choose_format
+format_1200:
+	mov	si,offset profile1200
+	jmps	choose_format
+format_1440:
+	mov	si,offset profile1440
+choose_format:
+; Profile: caption, logical tracks, sectors, marker, gap/fill.
+	lodsw
+	mov	action_caption,ax
+	lodsw
+	mov	format_tracks,ax
+	lodsb
+	mov	byte ptr sectors_per_track,al
+	lodsb
+	mov	sides,al
+	lodsw
+	mov	format_gap,ax
+	call	select_profile
+	cmp	byte ptr native_io,0
+	je	format_menu
+	xor	cx,cx
+	mov	dx,444bh
+	mov	si,534ch
+	mov	al,14
+	call	xios_call
+	cmp	ax,4b44h
+	jne	unsupported_format
+	cmp	dx,0102h
+	je	format_menu
+unsupported_format:
+	mov	word ptr error_caption,offset unsupported_caption
+	mov	si,offset error_record
+	call	show_menu
+	ret
 format_menu:
-	mov	word ptr drive_prompt,offset record_0406
+	mov	word ptr drive_prompt,offset format_prompt
 	mov	si,offset drive_menu_record
 	call	drive_menu
-	jz	branch_01e4
+	jz	format_return
 	xor	bh,bh
-	mov	bl,0375h[bx]
+	mov	bl,drive_numbers[bx]
 	mov	byte ptr source_drive,bl
 	add	bl,041h
 	mov	byte ptr confirm_drive_letter,bl
 	mov	byte ptr format_drive_letter,bl
 	call	confirm_format
-	jz	branch_01e4
+	jz	format_return
 	call	format_disk
 	jmps	format_menu
-branch_01e4:
+format_return:
 	ret
 
 ;-----------------------------------------------------------------------------
-; XIOS function 15 formats 40/80 tracks; write the boot track, then verify.
+; Legacy function 15 / extended 29 format tracks, then write and verify boot data.
 ;-----------------------------------------------------------------------------
 format_disk:
+	mov	ax,buffer_start
+	mov	io_segment,ax
+	mov	word ptr io_offset,0
 	mov	cx,word ptr format_tracks
 	mov	word ptr io_function,0fh
 	mov	word ptr track_caption,offset formatting_record
 	mov	word ptr io_track,00h
 	mov	al,byte ptr source_drive
 	mov	byte ptr io_drive,al
-branch_0201:
+format_next_track:
 	push	cx
 	call	check_abort
-	jnz	branch_020d
+	jnz	format_track
 	pop	cx
 	inc	al
-	jmp	branch_031e
-branch_020d:
+	jmp	verify_done
+format_track:
 	call	show_track
 	call	xios_request
 	pop	cx
 	or	al,al
-	jnz	branch_0240
+	jnz	format_failed
 	inc	word ptr io_track
-	loop	branch_0201
+	loop	format_next_track
 	mov	word ptr io_track,00h
 	mov	word ptr io_function,0ah
 	call	write_boot_track
 	or	al,al
-	jnz	branch_0240
+	jnz	format_failed
 	mov	ax,word ptr format_tracks
 	dec	ax
 	mov	word ptr last_track,ax
-	mov	byte ptr io_count,08h
+	mov	al,byte ptr sectors_per_track
+	mov	io_count,al
 	jmp	verify_disk
-branch_0240:
-	jmp	branch_017e
+format_failed:
+	jmp	disk_error
 
 ;-----------------------------------------------------------------------------
 ; E5 fill, shared boot code at 0, side flag at 1FFh and shared loader at 900h.
 ;-----------------------------------------------------------------------------
 write_boot_track:
 	push	es
-	mov	ax,word ptr .0fh
+	mov	ax,buffer_start
 	mov	es,ax
 	mov	word ptr io_segment,ax
 	xor	di,di
@@ -254,8 +320,12 @@ write_boot_track:
 	mov	cx,offset bootend-offset bootsect
 	rep	movsb
 	mov	al,byte ptr sides
-	mov	es:byte ptr .01ffh,al
-	mov	di,0900h
+	mov	es:byte ptr .BOOT_MARKER,al
+	cmp	byte ptr native_io,0
+	je	boot_marker_ready
+	mov	es:byte ptr .BOOT_HEADS,1
+boot_marker_ready:
+	mov	di,BOOT_LOADER
 	mov	si,offset loader
 	mov	cx,offset loadend-offset loader
 	rep	movsb
@@ -274,27 +344,27 @@ write_boot_track:
 	pop	es
 	ret
 verify_menu:
-	mov	word ptr action_caption,offset record_04b1
-	mov	word ptr drive_prompt,offset record_03cf
+	mov	word ptr action_caption,offset verify_text
+	mov	word ptr drive_prompt,offset verify_prompt
 	mov	si,offset drive_menu_record
 	call	drive_menu
-	jz	branch_02dd
+	jz	verify_return
 	call	select_source
-	jnz	branch_02ba
-	jmp	branch_031f
-branch_02ba:
+	jnz	verify_start
+	jmp	verify_failed
+verify_start:
 	call	size_buffers
 	call	save_batch
 	mov	word ptr io_track,00h
 	call	clear_window
 	mov	al,byte ptr confirm_drive_letter
-	mov	byte ptr data_087c,al
-	mov	si,offset record_0854
+	mov	byte ptr verify_drive_letter,al
+	mov	si,offset verify_list
 	mov	bx,02h
 	call	draw_record
 	call	verify_disk
 	jmps	verify_menu
-branch_02dd:
+verify_return:
 	ret
 
 ;-----------------------------------------------------------------------------
@@ -309,26 +379,26 @@ verify_disk:
 	mov	cl,byte ptr source_drive
 	mov	byte ptr io_drive,cl
 	call	select_known_disk
-	jz	branch_031f
+	jz	verify_failed
 	mov	si,offset checking_record
 	mov	word ptr track_caption,si
-branch_0300:
+verify_next_track:
 	call	check_abort
-	jz	branch_031e
+	jz	verify_done
 	call	show_track
 	call	xios_request
 	or	al,al
-	jnz	branch_031f
+	jnz	verify_failed
 	mov	ax,word ptr io_track
 	inc	ax
 	cmp	ax,word ptr last_track
-	ja	branch_031e
+	ja	verify_done
 	mov	word ptr io_track,ax
-	jmps	branch_0300
-branch_031e:
+	jmps	verify_next_track
+verify_done:
 	ret
-branch_031f:
-	jmp	branch_017e
+verify_failed:
+	jmp	disk_error
 check_batch:
 	mov	ax,0ah
 	mov	si,offset checking_record
@@ -346,23 +416,23 @@ transfer_batch:
 	mov	word ptr track_caption,si
 	mov	byte ptr io_drive,cl
 	call	select_known_disk
-	jz	branch_0369
-branch_034e:
+	jz	transfer_failed
+transfer_next_track:
 	call	show_track
 	call	xios_request
 	or	al,al
-	jnz	branch_0369
+	jnz	transfer_failed
 	call	check_abort
-	jnz	branch_0363
+	jnz	transfer_advance
 	inc	al
 	mov	al,03h
-	jmps	branch_0368
-branch_0363:
+	jmps	transfer_done
+transfer_advance:
 	call	advance_buffer
-	jz	branch_034e
-branch_0368:
+	jz	transfer_next_track
+transfer_done:
 	ret
-branch_0369:
+transfer_failed:
 	mov	si,offset error_record
 	xor	al,al
 	ret
@@ -371,32 +441,114 @@ branch_0369:
 ; Stack IOPB: drive/count, track, sector, DMA segment, DMA offset. DS=SYSDAT, ES=UDA.
 ;-----------------------------------------------------------------------------
 xios_request:
+	push	bp
+	push	bx
+	push	cx
+	push	dx
+	push	si
+	push	di
 	push	es
 	push	ds
-	mov	es,word ptr uda_segment
-	mov	cl,byte ptr io_drive
-	mov	ch,byte ptr io_count
+	cmp	word ptr io_function,10
+	je	request_readonly
+	mov	bx,1
+	mov	cl,io_drive
+	shl	bx,cl
+	or	changed_drives,bx
+request_readonly:
+	cmp	byte ptr native_io,0
+	je	request_gap
+	cmp	word ptr io_function,15
+	jne	request_gap
+	call	make_ids
+request_gap:
+; Always reserve six words; legacy XIOS consumes only the first five.
+	push	word ptr format_gap
+request_iopb:
+	mov	cl,io_drive
+	mov	ch,io_count
 	push	cx
-	mov	cx,word ptr io_track
+	mov	cx,io_track
+	cmp	byte ptr native_io,0
+	je	request_track
+	cmp	word ptr io_function,15
+	je	request_track
+	call	track_chs
+request_track:
 	push	cx
-	mov	cx,word ptr io_sector
+	mov	cx,io_sector
+	cmp	byte ptr native_io,0
+	je	request_sector
+	mov	ch,byte ptr sectors_per_track
+request_sector:
 	push	cx
-	mov	cx,word ptr io_segment
-	push	cx
-	mov	cx,word ptr io_offset
-	push	cx
-	mov	ax,word ptr io_function
-	mov	ds,word ptr system_segment
-	callf	dword ptr .28h
-	add	sp,0ah
+	push	word ptr io_segment
+	push	word ptr io_offset
+	mov	ax,io_function
+	cmp	byte ptr native_io,0
+	je	request_dispatch
+	cmp	al,15
+	jne	request_raw
+	mov	al,29
+	jmps	request_dispatch
+request_raw:
+	add	al,25
+request_dispatch:
+	mov	es,uda_segment
+	mov	ds,system_segment
+	callf	dword ptr .SYSDAT_XIOS
+	add	sp,12
 	pop	ds
 	pop	es
+	pop	di
+	pop	si
+	pop	dx
+	pop	cx
+	pop	bx
+	pop	bp
+	cld
 	ret
+
+; CX logical track -> CH head, CL cylinder, reversed on side one.
+track_chs:
+	xor	ch,ch
+	cmp	cl,cylinders
+	jb	track_chs_done
+	mov	ch,cylinders
+	add	ch,ch
+	dec	ch
+	sub	ch,cl
+	mov	cl,ch
+	mov	ch,1
+track_chs_done:
+	ret
+
+; Extended XIOS format consumes caller-owned CHRN descriptors.
+make_ids:
+	mov	cx,io_track
+	call	track_chs
+	mov	dx,cx
+	mov	es,io_segment
+	mov	di,io_offset
+	mov	bx,0201h
+	xor	cx,cx
+	mov	cl,byte ptr sectors_per_track
+	mov	io_count,cl
+	cld
+ids_next:
+	mov	ax,dx
+	stosw
+	mov	ax,bx
+	stosw
+	inc	bx
+	loop	ids_next
+	ret
+
 advance_buffer:
 	mov	ax,word ptr io_track
 	inc	ax
 	cmp	ax,word ptr last_track
-	ja	branch_03d9
+	ja	buffer_disk_end
 	mov	bx,ax
 	mov	word ptr io_offset,00h
 	mov	ax,word ptr io_segment
@@ -405,16 +557,16 @@ advance_buffer:
 	mov	ax,word ptr buffer_index
 	inc	ax
 	cmp	ax,word ptr buffer_tracks
-	ja	branch_03d6
+	ja	buffer_batch_end
 	mov	word ptr buffer_index,ax
 	mov	word ptr io_segment,cx
 	mov	word ptr io_track,bx
 	xor	al,al
 	ret
-branch_03d6:
+buffer_batch_end:
 	mov	al,01h
 	ret
-branch_03d9:
+buffer_disk_end:
 	mov	al,02h
 	ret
 save_batch:
@@ -437,50 +589,70 @@ restore_batch:
 ;-----------------------------------------------------------------------------
 size_buffers:
 	mov	bx,offset source_dpb
-	mov	ax,080h
-	mov	cl,0fh[bx]
-	shl	ax,cl
-	mov	cx,[bx]
-	mov	word ptr sectors_per_track,cx
-	mov	byte ptr io_count,cl
-	mul	cx
-	mov	word ptr track_bytes,ax
-	shr	ax,1
-	shr	ax,1
-	shr	ax,1
-	shr	ax,1
-	mov	word ptr track_paras,ax
-	mov	ax,word ptr .0fh
-	mov	word ptr buffer_start,ax
-	mov	ax,word ptr .0ch
-	xor	dx,dx
-	mov	dl,byte ptr .0eh
-	div	word ptr track_bytes
-	dec	ax
-	mov	word ptr buffer_tracks,ax
-	xor	dx,dx
-	xor	cx,cx
-	mov	ax,05h[bx]
+	mov	ax,[bx]
+	mov	sectors_per_track,ax
+	mov	io_count,al
+	call	select_profile
+; Round allocation bytes up to a physical track, add reserved tracks, then
+; convert the track count to its last index (OFF is two on large media).
+	mov	ax,DPB_MAX_BLOCK[bx]
 	inc	ax
-	mov	cl,03h[bx]
-	inc	cl
+	xor	cx,cx
+	mov	cl,DPB_BLOCK_MASK[bx]
+	inc	cx
 	mul	cx
 	push	ax
-	mov	cl,0fh[bx]
-	mov	ax,01h
-	shl	al,cl
-	mov	cx,[bx]
+	mov	ax,[bx]
+	mov	cl,DPB_SECTOR_SHIFT[bx]
+	shl	ax,cl
+	mov	cx,ax
+	pop	ax
+	add	ax,cx
+	dec	ax
 	xor	dx,dx
-	mul	cx
-	pop	cx
-	xchg	ax,cx
 	div	cx
-	mov	word ptr last_track,ax
-	mov	ax,0dh[bx]
-	mov	word ptr io_track,ax
-	mov	ax,00h
-	mov	word ptr io_sector,ax
+	add	ax,DPB_RESERVED[bx]
+	dec	ax
+	mov	last_track,ax
+	mov	word ptr io_sector,0
+	mov	word ptr io_offset,0
 	ret
+
+; Align each track buffer to 16K so even 18-sector DMA stays in one 64K page.
+; EXTRA's 32K minimum guarantees one full slot after alignment. buffer_tracks
+; is the last usable slot index, matching advance_buffer's existing contract.
+init_buffers:
+	mov	bx,word ptr .BP_EXTRA_SEG
+	mov	ax,bx
+	add	ax,03ffh
+	and	ax,0fc00h
+	mov	buffer_start,ax
+	sub	ax,bx
+	mov	cl,4
+	shl	ax,cl
+	mov	bx,ax
+	mov	ax,word ptr .BP_EXTRA_BYTES
+	xor	dx,dx
+	mov	dl,byte ptr .BP_EXTRA_HIGH
+	sub	ax,bx
+	sbb	dx,0
+	mov	bx,04000h
+	div	bx
+	dec	ax
+	mov	buffer_tracks,ax
+	mov	word ptr track_paras,0400h
+	ret
+
+select_profile:
+	mov	byte ptr native_io,0
+	mov	byte ptr cylinders,40
+	cmp	byte ptr sectors_per_track,8
+	je	profile_ready
+	mov	byte ptr native_io,1
+	mov	byte ptr cylinders,80
+profile_ready:
+	ret
+
 select_source:
 	mov	si,offset source_prompt_letter
 	mov	di,offset source_dpb
@@ -492,7 +664,7 @@ select_target:
 	mov	dx,offset target_drive
 select_argument:
 	xor	bh,bh
-	mov	al,0375h[bx]
+	mov	al,drive_numbers[bx]
 	xchg	bx,dx
 	mov	[bx],al
 	mov	ah,al
@@ -506,14 +678,14 @@ copy_dpb:
 	push	di
 	call	select_new_disk
 	pop	di
-	or	ax,ax
-	jz	branch_04b1
+	or	bx,bx
+	jz	dpb_done
 	push	es
 	mov	ax,ds
 	mov	es,ax
 	call	read_dpb
 	pop	es
-branch_04b1:
+dpb_done:
 	ret
 select_new_disk:
 	mov	dl,00h
@@ -528,7 +700,7 @@ select_known_disk:
 read_dpb:
 	push	ds
 	mov	ds,word ptr system_segment
-	mov	si,08h[bx]
+	mov	si,DPH_DPB[bx]
 	mov	cx,011h
 	rep	movsb
 	pop	ds
@@ -539,19 +711,19 @@ confirmation:
 	push	si
 	call	clear_and_menu
 	cmp	al,04eh
-	jz	branch_04ee
+	jz	confirmation_done
 	cmp	al,06eh
-	jz	branch_04ee
+	jz	confirmation_done
 	cmp	al,059h
-	jz	branch_04ec
+	jz	confirmation_yes
 	cmp	al,079h
-	jz	branch_04ec
+	jz	confirmation_yes
 	call	beep
 	pop	si
 	jmps	confirmation
-branch_04ec:
+confirmation_yes:
 	inc	al
-branch_04ee:
+confirmation_done:
 	pop	si
 	pushf
 	mov	ax,0808h
@@ -586,10 +758,10 @@ compare_dpbs:
 	mov	cx,011h
 	repe	cmpsb
 	pop	es
-	jnz	branch_0538
+	jnz	dpb_mismatch
 	inc	al
 	ret
-branch_0538:
+dpb_mismatch:
 	xor	al,al
 	ret
 prompt_source:
@@ -600,19 +772,19 @@ prompt_target:
 prompt_swap:
 	mov	al,byte ptr source_drive
 	cmp	al,byte ptr target_drive
-	jnz	branch_055f
+	jnz	swap_done
 	mov	word ptr swap_prompt,si
 	mov	si,offset swap_record
 	call	show_menu
 	mov	ax,0807h
 	mov	cx,01h
 	call	clear_rows
-branch_055f:
+swap_done:
 	ret
 drive_menu:
 	push	si
 	call	clear_and_menu
-branch_0564:
+drive_choice:
 	pop	si
 	mov	si,06h[si]
 	add	si,02h
@@ -623,7 +795,7 @@ branch_0564:
 redraw_drive_menu:
 	push	si
 	call	show_menu
-	jmps	branch_0564
+	jmps	drive_choice
 
 ;-----------------------------------------------------------------------------
 ; XIOS function 14 supplies the installed drive list.
@@ -638,25 +810,25 @@ enumerate_drives:
 	pop	ds
 	mov	bx,ax
 	inc	bx
-	mov	si,offset record_0549
+	mov	si,offset drive_keys
 	mov	[si],bx
 	inc	si
 	mov	cx,ax
 	push	es
 	mov	dx,ds
 	mov	es,dx
-	mov	di,offset record_054f
+	mov	di,offset available_keys
 	xchg	si,di
 	rep	movsb
 	mov	byte ptr [di],0c4h
 	pop	es
 	shl	ax,1
-	mov	si,offset record_0554
+	mov	si,offset drive_items
 	mov	[si],bx
 	inc	si
 	inc	si
 	add	si,ax
-	mov	ax,05ach
+	mov	ax,offset drive_exit
 	mov	[si],ax
 	ret
 
@@ -668,16 +840,16 @@ xios_call:
 	push	es
 	mov	es,word ptr uda_segment
 	mov	ds,word ptr system_segment
-	callf	dword ptr .28h
+	callf	dword ptr .SYSDAT_XIOS
 	pop	es
 	pop	ds
 	ret
 draw_frame:
 	mov	al,0c4h
 	mov	cx,04eh
-	mov	di,offset record_0cdf
+	mov	di,offset border_line
 	rep	stosb
-	mov	si,offset record_0cca
+	mov	si,offset top_frame
 	mov	bx,00h
 	call	draw_record
 	mov	ax,0102h
@@ -686,30 +858,30 @@ draw_frame:
 	call	draw_side
 	mov	ax,0118h
 	call	position_cursor
-	mov	si,offset record_0cd2
+	mov	si,offset bottom_frame
 	mov	bx,00h
 	call	draw_record
 	mov	si,offset title_record
 	call	draw_caption
 	mov	al,0cdh
-	mov	di,offset record_0d3f
+	mov	di,offset divider_line
 	mov	cx,04eh
 	rep	stosb
-	mov	si,offset record_0d36
+	mov	si,offset divider_caption
 	call	draw_caption
 	ret
 draw_side:
 	mov	word ptr cursor_position,ax
 	call	position_cursor
 	mov	cx,016h
-branch_0613:
+frame_side_row:
 	push	cx
 	mov	dl,0b3h
 	mov	cl,02h
 	call	bdos
 	call	next_row
 	pop	cx
-	loop	branch_0613
+	loop	frame_side_row
 	ret
 clear_and_menu:
 	push	si
@@ -725,28 +897,28 @@ show_menu:
 draw_records:
 	mov	word ptr record_limit,bx
 	xor	bx,bx
-branch_063d:
+draw_next_record:
 	lodsw
 	or	ax,ax
-	jz	branch_064b
+	jz	draw_record_done
 	push	si
 	push	bx
 	mov	si,ax
 	call	draw_record
 	pop	bx
 	pop	si
-branch_064b:
+draw_record_done:
 	cmp	bx,word ptr record_limit
-	jz	branch_0655
+	jz	draw_records_done
 	inc	bx
 	inc	bx
-	jmps	branch_063d
-branch_0655:
+	jmps	draw_next_record
+draw_records_done:
 	ret
 draw_record:
 	lodsw
 	mov	cx,ax
-branch_0659:
+draw_record_item:
 	push	cx
 	push	bx
 	lodsw
@@ -756,7 +928,7 @@ branch_0659:
 	pop	si
 	pop	bx
 	pop	cx
-	loop	branch_0659
+	loop	draw_record_item
 	ret
 draw_table:
 	lodsw
@@ -774,7 +946,7 @@ draw_table:
 	call	position_cursor
 	pop	cx
 	pop	si
-branch_0683:
+draw_table_text:
 	push	cx
 	lodsw
 	mov	si,ax
@@ -783,10 +955,10 @@ branch_0683:
 	call	next_row
 	pop	si
 	pop	cx
-	loop	branch_0683
+	loop	draw_table_text
 	ret
 draw_key_box:
-	mov	di,offset record_0d9a
+	mov	di,offset key_chars
 	mov	cx,03h
 	push	es
 	mov	ax,ds
@@ -794,13 +966,13 @@ draw_key_box:
 	rep	movsb
 	pop	es
 	push	si
-	mov	si,offset record_0d8e
+	mov	si,offset key_top
 	call	write_buffer
 	call	next_row
-	mov	si,offset record_0d96
+	mov	si,offset key_middle
 	call	write_buffer
 	call	next_row
-	mov	si,offset record_0d9e
+	mov	si,offset key_bottom
 	call	write_buffer
 	pop	si
 	ret
@@ -824,17 +996,17 @@ read_menu_key:
 	lodsb
 	mov	word ptr key_count,ax
 	xchg	si,di
-branch_06e0:
+menu_wait_key:
 	push	di
 	push	di
 	call	get_key
 	mov	byte ptr key_value,al
 	mov	cx,word ptr key_count
 	pop	di
-	jcxz	branch_06f3
+	jcxz	menu_key_found
 	repne	scasb
-	jnz	branch_0704
-branch_06f3:
+	jnz	menu_bad_key
+menu_key_found:
 	pop	di
 	mov	ax,word ptr key_count
 	sub	ax,cx
@@ -843,25 +1015,31 @@ branch_06f3:
 	mov	bl,al
 	mov	al,byte ptr key_value
 	ret
-branch_0704:
+menu_bad_key:
 	call	beep
 	pop	di
-	jmps	branch_06e0
+	jmps	menu_wait_key
 clear_window:
-	mov	ax,0804h
+	mov	ax,0204h
 	mov	cx,014h
 clear_rows:
+	push	bx
+	xor	bh,bh
+	mov	bl,80
+	sub	bl,ah
+	mov	word ptr blank_line,bx
+	pop	bx
 	push	cx
 	mov	word ptr cursor_position,ax
 	call	position_cursor
 	pop	cx
-branch_0718:
+clear_next_row:
 	push	cx
-	mov	si,offset record_0da9
+	mov	si,offset blank_line
 	call	write_buffer
 	call	next_row
 	pop	cx
-	loop	branch_0718
+	loop	clear_next_row
 	ret
 next_row:
 	inc	byte ptr cursor_position
@@ -898,7 +1076,7 @@ read_buffer:
 	mov	dx,offset input_offset
 	jmp	bdos
 beep:
-	mov	si,offset record_0da6
+	mov	si,offset bell
 	jmp	write_buffer
 get_key:
 	mov	dl,0fdh
@@ -908,26 +1086,26 @@ decimal:
 	dec	di
 	add	di,cx
 	mov	bx,0ah
-branch_076e:
+decimal_digit:
 	sub	dx,dx
 	div	bx
 	add	dl,030h
 	mov	[di],dl
 	dec	di
 	test	ax,ax
-	jz	branch_077e
-	loop	branch_076e
-branch_077e:
+	jz	decimal_done
+	loop	decimal_digit
+decimal_done:
 	ret
 check_abort:
 	mov	cl,0bh
 	call	bdos
 	or	al,al
-	jz	branch_078e
+	jz	no_abort
 	call	get_key
 	cmp	al,03h
 	ret
-branch_078e:
+no_abort:
 	inc	al
 	ret
 set_priority:
@@ -942,14 +1120,14 @@ keep_process:
 	mov	bx,word ptr process_offset
 	push	ds
 	mov	ds,word ptr system_segment
-	or	word ptr 06h[bx],02h
+	or	word ptr PROCESS_FLAGS[bx],02h
 	pop	ds
 	ret
 release_process:
 	mov	bx,word ptr process_offset
 	push	ds
 	mov	ds,word ptr system_segment
-	and	word ptr 06h[bx],0fffdh
+	and	word ptr PROCESS_FLAGS[bx],0fffdh
 	pop	ds
 	ret
 
@@ -961,13 +1139,13 @@ lock_console:
 	push	ds
 	mov	ds,word ptr system_segment
 	cli
-	cmp	word ptr 0eh[bx],00h
-	jz	branch_07cc
+	cmp	word ptr CONSOLE_FLAGS[bx],00h
+	jz	console_available
 	xor	ax,ax
-	jmps	branch_07d1
-branch_07cc:
-	or	word ptr 0eh[bx],08h
-branch_07d1:
+	jmps	console_lock_done
+console_available:
+	or	word ptr CONSOLE_FLAGS[bx],08h
+console_lock_done:
 	sti
 	pop	ds
 	ret
@@ -975,7 +1153,7 @@ unlock_console:
 	mov	bx,word ptr console_offset
 	push	ds
 	mov	ds,word ptr system_segment
-	and	word ptr 0eh[bx],0fff7h
+	and	word ptr CONSOLE_FLAGS[bx],0fff7h
 	pop	ds
 	ret
 
@@ -985,10 +1163,10 @@ unlock_console:
 lock_disk:
 	push	ds
 	mov	ds,word ptr system_segment
-	mov	ax,word ptr .088h
+	mov	ax,word ptr .SYSDAT_OPEN_FILES
 	or	ax,ax
 	pop	ds
-	jnz	branch_0806
+	jnz	files_open
 	mov	cl,087h
 	mov	dx,offset disk_queue
 	call	bdos
@@ -998,7 +1176,7 @@ lock_disk:
 	xor	al,al
 	inc	al
 	ret
-branch_0806:
+files_open:
 	xor	ax,ax
 	ret
 
@@ -1022,347 +1200,450 @@ get_os_data:
 	mov	cl,09ch
 	call	bdos
 	mov	word ptr process_offset,bx
-	mov	ax,es:010h[bx]
+	mov	ax,es:PROCESS_UDA[bx]
 	mov	word ptr uda_segment,ax
 	mov	cl,099h
 	call	bdos
 	xor	ah,ah
 	mov	byte ptr console_number,al
-	mov	bx,02ch
+	mov	bx,CONSOLE_BYTES
 	mul	bx
-	add	ax,es:word ptr .054h
+	add	ax,es:word ptr .SYSDAT_CONSOLES
 	mov	word ptr console_offset,ax
 	pop	es
 	ret
+; Clear XIOS login state for changed disks while MXdisk is still held.
+; BDOS login is reset only after returning the mutex token.
+invalidate_drives:
+	xor	cx,cx
+invalidate_next:
+	mov	bx,1
+	shl	bx,cl
+	test	changed_drives,bx
+	jz	invalidate_skip
+	push	cx
+	mov	dl,1
+	call	select_disk
+	or	bx,bx
+	jz	invalidate_done
+	push	ds
+	mov	ds,system_segment
+	mov	byte ptr DPH_MEDIA_STATE[bx],0
+	pop	ds
+invalidate_done:
+	pop	cx
+invalidate_skip:
+	inc	cl
+	cmp	cl,4
+	jb	invalidate_next
+	ret
+
+set_error_mode:
+	push	es
+	mov	es,uda_segment
+	mov	al,es:byte ptr .UDA_ERROR_MODE
+	mov	old_error_mode,al
+	mov	es:byte ptr .UDA_ERROR_MODE,0feh
+	mov	byte ptr error_mode_held,1
+	pop	es
+	ret
+restore_error_mode:
+	cmp	byte ptr error_mode_held,0
+	je	error_mode_done
+	push	es
+	mov	es,uda_segment
+	mov	al,old_error_mode
+	mov	es:byte ptr .UDA_ERROR_MODE,al
+	pop	es
+error_mode_done:
+	ret
+
 position_cursor:
-	mov	si,offset record_0e85
+	mov	si,offset cursor_bytes
 	add	ax,01f1fh
 	mov	[si],ax
-	mov	si,offset record_0e81
+	mov	si,offset cursor_sequence
 	jmp	write_buffer
 hide_cursor:
-	mov	si,offset record_0eaa
+	mov	si,offset cursor_hide
 	jmp	write_buffer
 show_cursor:
-	mov	si,offset record_0eae
+	mov	si,offset cursor_show
 	jmp	write_buffer
 set_video:
-	mov	si,offset record_0e9f
+	mov	si,offset video_codes
 	xor	ah,ah
 	add	si,ax
 	mov	al,[si]
-	mov	byte ptr data_0ea9,al
-	mov	si,offset record_0ea6
+	mov	byte ptr video_attribute,al
+	mov	si,offset video_sequence
 	jmp	write_buffer
 restore_screen:
-	mov	si,offset record_0e91
+	mov	si,offset restore_sequence
 	jmp	write_buffer
 check_console:
 	mov	cl,099h
 	call	bdos
 	cmp	ax,04h
-	jc	branch_088e
+	jc	local_console
 	mov	si,offset msg_terminal
 	call	write_buffer
 	xor	cx,cx
 	xor	dx,dx
-	jmp	branch_0087
-branch_088e:
+	jmp	cleanup_exit
+local_console:
 	mov	cl,06dh
 	mov	dx,08eh
 	call	bdos
-	mov	si,offset record_0e87
+	mov	si,offset init_sequence
 	call	write_buffer
 	call	enumerate_drives
 	ret
 
-; ---- DATA: runtime offsets include the loader base page ----
+;-----------------------------------------------------------------------------
+; Symbolic menu records. Positions are one-based: low byte row, high byte column.
+; Text is length-prefixed; no pointer depends on the embedded loader size.
+;-----------------------------------------------------------------------------
 	dseg
 	org	100h
-revision	db	' DATE OF LAS'
-	db	'T CHANGE 26 '
-	db	'JAN 84   '
-msg_version	db	0dh,0ah,054h,068h,069h,073h,020h,044h,053h,04bh,04dh,041h
-	db	'INT requires'
-	db	' Concurrent '
-	db	043h,050h,02fh,04dh,020h,033h,02eh,031h,02eh,0dh,0ah,024h
-menu_handlers	dw	verify_menu,copy_menu,format_single,format_double,exit_program
-title_record	db	02h,0eh,02h,02h,061h,01h,034h,00h,043h,06fh,06eh,063h
-	db	'urrent CP/M '
-	db	'Disk Mainten'
-	db	'ance Program'
-	db	' version 1.5'
-msg_background	db	03eh,00h,0dh,0ah,044h,053h,04bh,04dh,041h,049h,04eh,054h
-	db	' cannot run '
-	db	'in the backg'
-	db	'round or in '
-	db	'buffered mod'
-	db	065h,02eh,0dh,0ah
-msg_open_files	db	048h,00h,0dh,0ah,044h,053h,04bh,04dh,041h,049h,04eh,054h
-	db	' cannot run '
-	db	'while there '
-	db	'are open fil'
-	db	'es on any of'
-	db	' the drives.'
-	db	0dh,0ah
-main_menu_record	db	00h,00h,029h,02h,065h,02h,04ah,03h,02h,00h,02fh,02h
-	db	040h,02h,05h,023h,02h,02h,035h,02h,09h,00h,04dh,061h
-	db	069h,06eh,020h,04dh,065h,06eh,075h,07h,019h,05h,06h,046h
-	db	02h,01dh,00h,053h,020h,045h,020h,04ch,020h,045h,020h,043h
-	db	' T   F U N C'
-	db	020h,054h,020h,049h,020h,04fh,020h,04eh,05h,00h,071h,02h
-	db	07ch,02h,087h,02h,092h,02h,09dh,02h,09h,01ah,046h,031h
-	db	020h,01h,00h,0ah,020h,0a8h,02h,0ch,01ah,046h,033h,020h
-	db	01h,00h,0dh,020h,0c0h,02h,0fh,01ah,046h,035h,020h,01h
-	db	00h,010h,020h,0e8h,02h,012h,01ah,046h,037h,020h,01h,00h
-	db	013h,020h,0dh,03h,015h,01ah,046h,039h,020h,01h,00h,016h
-	db	020h,032h,03h,016h,00h,020h,02dh,02dh,010h,020h,056h,065h
-	db	'rify a diske'
-	db	074h,074h,065h,026h,00h,020h,02dh,02dh,010h,020h,043h,06fh
-	db	'py from one '
-	db	'Diskette to '
-	db	061h,06eh,06fh,074h,068h,065h,072h,023h,00h,020h,02dh,02dh
-	db	010h,020h,046h,06fh,072h,06dh,061h,074h,020h,061h,020h,053h
-	db	'ingle Sided '
-	db	044h,069h,073h,06bh,065h,074h,074h,065h,023h,00h,020h,02dh
-	db	02dh,010h,020h,046h,06fh,072h,06dh,061h,074h,020h,061h,020h
-	db	'Double Sided'
-	db	020h,044h,069h,073h,06bh,065h,074h,074h,065h,016h,00h,020h
-	db	02dh,02dh,010h,020h,045h,078h,069h,074h,020h,074h,068h,069h
-	db	073h,020h,070h,072h,06fh,067h,072h,061h,06dh,01h,00h,04eh
-	db	03h,05h,0bbh,0bdh,0bfh,0c1h,0c3h,020h,044h,041h,054h,045h
-	db	' OF LAST CHA'
-	db	'NGE 26 JAN 8'
-	db	'4   '
-drive_numbers	db	00h,01h,02h,03h
-source_dpb	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h
-target_dpb	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h
-track_bytes	db	00h,00h
-track_paras	db	00h,00h
-buffer_tracks	db	00h,00h
-last_track	db	00h,00h
-sectors_per_track	db	00h,00h
-buffer_index	db	00h,00h
-buffer_start	db	00h,00h
-saved_track	db	00h,00h
-source_drive	db	00h
-target_drive	db	00h
-io_function	db	00h,00h
-io_drive	db	00h
-format_tracks	db	00h,00h
-io_count	db	00h
-io_track	db	00h,00h
-io_sector	db	00h,00h
-io_offset	db	00h,00h
-io_segment	db	00h,00h
-drive_menu_record	db	00h,00h,0c3h,03h,054h,05h,045h,05h,02h,00h,0abh,04h
-	db	0c9h,03h,07h,0dh,05h,06h
-drive_prompt	db	00h,00h
-record_03cf	db	035h,00h,020h,020h,053h,020h,045h,020h,04ch,020h,045h,020h
-	db	'C T   D I S '
-	db	'K E T T E   '
-	db	'T O   V E R '
-	db	'I F Y  '
-record_0406	db	035h,00h,020h,020h,053h,020h,045h,020h,04ch,020h,045h,020h
-	db	'C T   D I S '
-	db	'K E T T E   '
-	db	'T O   F O R '
-	db	'M A T  '
-record_043d	db	035h,00h,020h,020h,020h,020h,020h,053h,020h,045h,020h,04ch
-	db	' E C T   S O'
-	db	' U R C E   D'
-	db	' I S K E T T'
-	db	' E     '
-record_0474	db	035h,00h,053h,020h,045h,020h,04ch,020h,045h,020h,043h,020h
-	db	'T   D E S T '
-	db	'I N A T I O '
-	db	'N   D I S K '
-	db	045h,020h,054h,020h,054h,020h,045h,05h,016h,02h,02h
-action_caption	db	00h,00h
-record_04b1	db	023h,00h,020h,020h,020h,020h,020h,020h,020h,020h,020h,056h
-	db	'erify a Disk'
-	db	'ette        '
-	db	' '
-record_04d6	db	023h,00h,043h,06fh,070h,079h,020h,066h,072h,06fh,06dh,020h
-	db	'one Diskette'
-	db	' to another '
-	db	' '
-record_04fb	db	023h,00h,020h,020h,046h,06fh,072h,06dh,061h,074h,020h,061h
-	db	' Single Side'
-	db	'd Diskette  '
-	db	' '
-record_0520	db	023h,00h,020h,020h,046h,06fh,072h,06dh,061h,074h,020h,061h
-	db	' Double Side'
-	db	'd Diskette  '
-	db	020h,01h,00h,049h,05h
-record_0549	db	00h,00h,00h,00h,00h,00h
-record_054f	db	0bch,0beh,0c0h,0c2h,0c4h
-record_0554	db	05h,00h,060h,05h,073h,05h,086h,05h,099h,05h,0ach,05h
-	db	09h,01ah,046h,032h,020h,01h,00h,0ah,020h,06bh,05h,06h
-	db	00h,02dh,02dh,010h,020h,041h,03ah,0ch,01ah,046h,034h,020h
-	db	01h,00h,0dh,020h,07eh,05h,06h,00h,02dh,02dh,010h,020h
-	db	042h,03ah,0fh,01ah,046h,036h,020h,01h,00h,010h,020h,091h
-	db	05h,06h,00h,02dh,02dh,010h,020h,043h,03ah,012h,01ah,046h
-	db	038h,020h,01h,00h,013h,020h,0a4h,05h,06h,00h,02dh,02dh
-	db	010h,020h,044h,03ah,015h,01ah,046h,031h,030h,01h,00h,016h
-	db	020h,0b7h,05h,014h,00h,02dh,02dh,010h,045h,078h,069h,074h
-	db	' to main men'
-	db	'u'
-record_05cd	db	04h,0bh,03h,04h,0d3h,05h,039h,00h,053h,06fh,075h,072h
-	db	'ce and desti'
-	db	'nation diske'
-	db	'ttes are not'
-	db	' of the same'
-	db	' type'
-error_record	db	00h,00h,016h,06h,00h,00h,0ebh,07h,02h,00h
-error_caption	db	01ch,06h,036h,06h
-msg_bad_disk	db	04h,01fh,03h,04h,022h,06h,012h,00h,020h,042h,020h,041h
-	db	' D    D I S '
-	db	04bh,020h,08h,018h,03h,04h,03ch,06h,01fh,00h,050h,072h
-	db	'ess any key '
-	db	'to return to'
-	db	' Menu'
-copy_confirm_record	db	00h,00h,06dh,06h,00h,00h,0ebh,07h
-format_confirm_record	db	00h,00h,077h,06h,00h,00h,0ebh,07h,04h,00h,07fh,06h
-	db	0ach,06h,0d9h,06h,021h,07h,03h,00h,052h,07h,0d9h,06h
-	db	021h,07h,05h,015h,02h,02h,085h,06h,025h,00h,043h,06fh
-	db	'pying from t'
-	db	'he Diskette '
-	db	'in Drive '
-source_prompt_letter	db	020h,03ah,06h,015h,02h,02h,0b2h,06h,025h,00h,020h,020h
-	db	'        to t'
-	db	'he Diskette '
-	db	'in Drive '
-target_prompt_letter	db	020h,03ah,08h,08h,02h,02h,0dfh,06h,040h,00h,054h,068h
-	db	'is operation'
-	db	' will destro'
-	db	'y any data o'
-	db	'n the Disket'
-	db	'te in Drive '
-confirm_drive_letter	db	020h,03ah,0ah,013h,02h,02h,027h,07h,029h,00h,049h,073h
-	db	' this what y'
-	db	'ou want to d'
-	db	06fh,020h,028h,059h,020h,06fh,072h,020h,04eh,029h,01bh,073h
-	db	03fh,01bh,074h,06h,016h,02h,02h,058h,07h,023h,00h,046h
-	db	'ormatting th'
-	db	'e Diskette i'
-	db	'n Drive '
+menu_handlers	dw	verify_menu,copy_menu,format_single,format_double
+	dw	format_720,format_1200,format_1440,exit_program
+title_record	dw	0e02h,0202h,title_text
+title_text	dw	offset title_text_end-offset title_text-2
+	db	'Concurrent CP/M Disk Maintenance Program version 1.5N'
+title_text_end:
+msg_version	db	13,10,'DSKMAINT requires Concurrent CP/M 3.1.',13,10,'$'
+msg_background	dw	offset msg_background_end-offset msg_background-2
+	db	13,10,'DSKMAINT cannot run in background or buffered mode.',13,10
+msg_background_end:
+msg_open_files	dw	offset msg_open_files_end-offset msg_open_files-2
+	db	13,10,'DSKMAINT cannot run while files are open.',13,10
+msg_open_files_end:
+msg_terminal	dw	offset msg_terminal_end-offset msg_terminal-2
+	db	13,10,'This utility requires a local virtual console.',13,10
+msg_terminal_end:
+main_menu_record	dw	0,main_captions,main_items,main_key_list
+main_captions	dw	2,main_caption,select_caption
+main_caption	dw	2305h,0202h,main_text
+main_text	dw	offset main_text_end-offset main_text-2
+	db	'Main Menu'
+main_text_end:
+select_caption	dw	2107h,0605h,select_text
+select_text	dw	offset select_text_end-offset select_text-2
+	db	'SELECT FUNCTION'
+select_text_end:
+main_items	dw	8,item_verify,item_copy,item_160,item_320,item_720,item_1200,item_1440,item_exit
+item_verify	dw	1509h
+	db	'F1 '
+	dw	1,1d0ah,verify_text
+item_copy	dw	150ch
+	db	'F3 '
+	dw	1,1d0dh,copy_text
+item_160	dw	050fh
+	db	'F4 '
+	dw	1,0d10h,format160_text
+item_320	dw	1e0fh
+	db	'F5 '
+	dw	1,2610h,format320_text
+item_720	dw	370fh
+	db	'F6 '
+	dw	1,3f10h,format720_text
+item_1200	dw	0512h
+	db	'F7 '
+	dw	1,0d13h,format1200_text
+item_1440	dw	1e12h
+	db	'F8 '
+	dw	1,2613h,format1440_text
+item_exit	dw	1515h
+	db	'F9 '
+	dw	1,1d16h,exit_text
+main_key_list	dw	1,main_keys
+main_keys	db	8,0bbh,0bdh,0beh,0bfh,0c0h,0c1h,0c2h,0c3h
+verify_text	dw	offset verify_text_end-offset verify_text-2
+	db	'Verify a Diskette'
+verify_text_end:
+copy_text	dw	offset copy_text_end-offset copy_text-2
+	db	'Copy from one Diskette to another'
+copy_text_end:
+exit_text	dw	offset exit_text_end-offset exit_text-2
+	db	'Exit this Program'
+exit_text_end:
+format160_text	dw	offset format160_text_end-offset format160_text-2
+	db	'Format 160K'
+format160_text_end:
+format320_text	dw	offset format320_text_end-offset format320_text-2
+	db	'Format 320K'
+format320_text_end:
+format720_text	dw	offset format720_text_end-offset format720_text-2
+	db	'Format 720K'
+format720_text_end:
+format1200_text	dw	offset format1200_text_end-offset format1200_text-2
+	db	'Format 1200K'
+format1200_text_end:
+format1440_text	dw	offset format1440_text_end-offset format1440_text-2
+	db	'Format 1440K'
+format1440_text_end:
+drive_numbers	db	0,1,2,3
+source_dpb	rs	17
+target_dpb	rs	17
+track_bytes	dw	0
+track_paras	dw	0
+buffer_tracks	dw	0
+last_track	dw	0
+sectors_per_track	dw	0
+buffer_index	dw	0
+buffer_start	dw	0
+saved_track	dw	0
+io_function	dw	0
+format_tracks	dw	0
+io_track	dw	0
+io_sector	dw	0
+io_offset	dw	0
+io_segment	dw	0
+source_drive	db	0
+target_drive	db	0
+io_drive	db	0
+io_count	db	0
+sides	db	0
+cylinders	db	0
+native_io	db	0
+changed_drives	dw	0
+old_error_mode	db	0
+format_gap	dw	0e550h
+error_mode_held	db	0
+profile160	dw	format160_text,40
+	db	8,0
+	dw	0e550h
+profile320	dw	format320_text,80
+	db	8,1
+	dw	0e550h
+profile720	dw	format720_text,160
+	db	9,72
+	dw	0e550h
+profile1200	dw	format1200_text,160
+	db	15,120
+	dw	0e554h
+profile1440	dw	format1440_text,160
+	db	18,144
+	dw	0e56ch
+drive_menu_record	dw	0,drive_captions,drive_items,drive_key_list
+drive_captions	dw	2,action_record,prompt_record
+action_record	dw	1605h,0202h,0
+action_caption	equ	action_record+4
+prompt_record	dw	0d07h,0605h,0
+drive_prompt	equ	prompt_record+4
+verify_prompt	dw	offset verify_prompt_end-offset verify_prompt-2
+	db	'SELECT DISKETTE TO VERIFY'
+verify_prompt_end:
+format_prompt	dw	offset format_prompt_end-offset format_prompt-2
+	db	'SELECT DISKETTE TO FORMAT'
+format_prompt_end:
+source_prompt	dw	offset source_prompt_end-offset source_prompt-2
+	db	'SELECT SOURCE DISKETTE'
+source_prompt_end:
+target_prompt	dw	offset target_prompt_end-offset target_prompt-2
+	db	'SELECT DESTINATION DISKETTE'
+target_prompt_end:
+drive_key_list	dw	1,drive_keys
+drive_keys	db	0,0,0,0,0,0
+available_keys	db	0bch,0beh,0c0h,0c2h,0c4h
+drive_items	dw	5,drive_a,drive_b,drive_c,drive_d,drive_exit
+drive_a	dw	1a09h
+	db	'F2 '
+	dw	1,220ah,drive_a_text
+drive_a_text	dw	offset drive_a_text_end-offset drive_a_text-2
+	db	'A:'
+drive_a_text_end:
+drive_b	dw	1a0ch
+	db	'F4 '
+	dw	1,220dh,drive_b_text
+drive_b_text	dw	offset drive_b_text_end-offset drive_b_text-2
+	db	'B:'
+drive_b_text_end:
+drive_c	dw	1a0fh
+	db	'F6 '
+	dw	1,2210h,drive_c_text
+drive_c_text	dw	offset drive_c_text_end-offset drive_c_text-2
+	db	'C:'
+drive_c_text_end:
+drive_d	dw	1a12h
+	db	'F8 '
+	dw	1,2213h,drive_d_text
+drive_d_text	dw	offset drive_d_text_end-offset drive_d_text-2
+	db	'D:'
+drive_d_text_end:
+drive_exit	dw	1a15h
+	db	'F10'
+	dw	1,2216h,drive_exit_text
+drive_exit_text	dw	offset drive_exit_text_end-offset drive_exit_text-2
+	db	'Exit to main menu'
+drive_exit_text_end:
+mismatch_caption	dw	0b04h,0403h,mismatch_text
+mismatch_text	dw	offset mismatch_text_end-offset mismatch_text-2
+	db	'Source and destination diskettes are not of the same type'
+mismatch_text_end:
+error_record	dw	0,error_captions,0,any_key_list
+error_captions	dw	2
+error_caption	dw	msg_bad_disk,error_hint
+msg_bad_disk	dw	1f04h,0403h,bad_disk_text
+bad_disk_text	dw	offset bad_disk_text_end-offset bad_disk_text-2
+	db	'BAD DISK'
+bad_disk_text_end:
+error_hint	dw	1808h,0403h,error_hint_text
+error_hint_text	dw	offset error_hint_text_end-offset error_hint_text-2
+	db	'Press any key to return to Menu'
+error_hint_text_end:
+unsupported_caption	dw	0a04h,0403h,unsupported_text
+unsupported_text	dw	offset unsupported_text_end-offset unsupported_text-2
+	db	'This format requires extended native XIOS support'
+unsupported_text_end:
+copy_confirm_record	dw	0,copy_confirm_captions,0,any_key_list
+format_confirm_record	dw	0,format_confirm_captions,0,any_key_list
+copy_confirm_captions	dw	4,source_caption,target_caption,destroy_caption,question_caption
+format_confirm_captions	dw	3,format_caption,destroy_caption,question_caption
+source_caption	dw	1505h,0202h,source_text
+target_caption	dw	1506h,0202h,target_text
+destroy_caption	dw	0808h,0202h,destroy_text
+question_caption	dw	130ah,0202h,question_text
+format_caption	dw	1606h,0202h,format_text
+source_text	dw	offset source_text_end-offset source_text-2
+	db	'Copying from the Diskette in Drive '
+source_prompt_letter	db	' :'
+source_text_end:
+target_text	dw	offset target_text_end-offset target_text-2
+	db	'          to the Diskette in Drive '
+target_prompt_letter	db	' :'
+target_text_end:
+destroy_text	dw	offset destroy_text_end-offset destroy_text-2
+	db	'This operation will destroy any data on the Diskette in Drive '
+confirm_drive_letter	db	' :'
+destroy_text_end:
+format_text	dw	offset format_text_end-offset format_text-2
+	db	'Formatting the Diskette in Drive '
 format_drive_letter	db	' :'
-swap_record	db	00h,00h,085h,07h,00h,00h,0ebh,07h,01h,00h,089h,07h
-	db	07h,012h,05h,06h
-swap_prompt	db	00h,00h
-insert_target	db	02ch,00h,049h,04eh,053h,045h,052h,054h,020h,044h,045h,053h
-	db	'TINATION DIS'
-	db	'KETTE AND TY'
-	db	'PE ANY KEY'
-insert_source	db	02ch,00h,020h,020h,049h,04eh,053h,045h,052h,054h,020h,053h
-	db	'OURCE DISKET'
-	db	'TE AND TYPE '
-	db	041h,04eh,059h,020h,04bh,045h,059h,020h,020h,020h,01h,00h
-	db	0efh,07h,00h
-track_record	db	02h,00h,0f6h,07h,0fch,07h,0ah,01dh,02h,02h
-track_caption	db	00h,00h,0ah,02eh,02h,02h,02h,08h,04h,00h
+format_text_end:
+question_text	dw	offset question_text_end-offset question_text-2
+	db	'Is this what you want to do (Y or N)?'
+question_text_end:
+swap_record	dw	0,swap_captions,0,any_key_list
+swap_captions	dw	1,swap_caption
+swap_caption	dw	1207h,0605h,0
+swap_prompt	equ	swap_caption+4
+insert_target	dw	offset insert_target_end-offset insert_target-2
+	db	'INSERT DESTINATION DISKETTE AND TYPE ANY KEY'
+insert_target_end:
+insert_source	dw	offset insert_source_end-offset insert_source-2
+	db	'INSERT SOURCE DISKETTE AND TYPE ANY KEY'
+insert_source_end:
+any_key_list	dw	1,any_key
+any_key	db	0
+track_record	dw	2,track_action,track_number
+track_action	dw	1d0ah,0202h,0
+track_caption	equ	track_action+4
+track_number	dw	2e0ah,0202h,track_value
+track_value	dw	4
 track_digits	db	'    '
-reading_record	db	011h,00h,020h,052h,065h,061h,064h,069h,06eh,067h,020h,074h
-	db	'rack   '
-writing_record	db	011h,00h,020h,057h,072h,069h,074h,069h,06eh,067h,020h,074h
-	db	'rack   '
-checking_record	db	011h,00h,020h,043h,068h,065h,063h,06bh,069h,06eh,067h,020h
-	db	' track '
-formatting_record	db	011h,00h,046h,06fh,072h,06dh,061h,074h,074h,069h,06eh,067h
-	db	' track '
-record_0854	db	01h,00h,058h,08h,05h,019h,02h,02h,05eh,08h,01eh,00h
-	db	'Verifying Di'
-	db	'skette in Dr'
-	db	'ive '
-data_087c	db	020h,03ah,01h,00h,082h,08h,05h,018h,02h,02h,088h,08h
-	db	01fh,00h,046h,06fh,072h,06dh,061h,074h,074h,069h,06eh,067h
-	db	' Diskette in'
-	db	' Drive  :'
-sides	db	00h
+reading_record	dw	offset reading_record_end-offset reading_record-2
+	db	'Reading track    '
+reading_record_end:
+writing_record	dw	offset writing_record_end-offset writing_record-2
+	db	'Writing track    '
+writing_record_end:
+checking_record	dw	offset checking_record_end-offset checking_record-2
+	db	'Checking track   '
+checking_record_end:
+formatting_record	dw	offset formatting_record_end-offset formatting_record-2
+	db	'Formatting track '
+formatting_record_end:
+verify_list	dw	1,verify_caption
+verify_caption	dw	1905h,0202h,verify_message
+verify_message	dw	offset verify_message_end-offset verify_message-2
+	db	'Verifying Diskette in Drive '
+verify_drive_letter	db	' :'
+verify_message_end:
 bootsect:
 	include	bootsect.inc
 bootend:
 loader:
 	include	loader.inc
 loadend:
-revision_2	db	00h,020h,044h,041h,054h,045h,020h,04fh,046h,020h,04ch,041h
-	db	'ST CHANGE 26'
-	db	' JAN 84   '
-cursor_position	db	00h,00h
-video_mode	db	00h
-record_limit	db	00h,00h
-key_index	db	00h
-key_value	db	00h
-key_count	db	00h,00h
+cursor_position	dw	0
+record_limit	dw	0
+key_count	dw	0
+output_offset	dw	0
+output_segment	dw	0
+output_length	dw	0
+input_offset	dw	0
+input_segment	dw	0
+input_length	dw	0
+process_offset	dw	0
+system_segment	dw	0
+console_offset	dw	0
+uda_segment	dw	0
+video_mode	db	0
+key_index	db	0
+key_value	db	0
+console_number	db	0
 draw_handlers	dw	write_buffer,draw_caption,draw_table,read_menu_key
-output_offset	db	00h,00h
-output_segment	db	00h,00h
-output_length	db	00h,00h
-input_offset	db	00h,00h,00h,00h
-input_length	db	00h,00h
-record_0cca	db	03h,00h,0dah,0ch,0ddh,0ch,02dh,0dh
-record_0cd2	db	03h,00h,030h,0dh,0ddh,0ch,033h,0dh,01h,00h,0dah,04eh
-	db	00h
-record_0cdf	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,01h,00h,0bfh,01h,00h,0c0h
-	db	01h,00h,0d9h
-record_0d36	db	03h,01h,02h,02h,03ch,0dh,050h,00h,0c6h
-record_0d3f	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h,0b5h
-record_0d8e	db	06h,00h,0dah,0c4h,0c4h,0c4h,0c4h,0bfh
-record_0d96	db	06h,00h,0b3h,020h
-record_0d9a	db	020h,020h,020h,0b3h
-record_0d9e	db	06h,00h,0c0h,0c4h,0c4h,0c4h,0c4h,0d9h
-record_0da6	db	01h,00h,07h
-record_0da9	db	042h,00h,020h,020h,020h,020h,020h,020h,020h,020h,020h,020h
-	db	'            '
-	db	'            '
-	db	'            '
-	db	'            '
-	db	020h,020h,020h,020h,020h,020h,020h,020h,00h,020h,044h,041h
-	db	'TE OF LAST C'
-	db	'HANGE 26 JAN'
-	db	' 84   '
-process_offset	db	00h,00h
-system_segment	db	00h,00h
-console_offset	db	00h,00h
-uda_segment	db	00h,00h
-console_number	db	00h
-disk_queue	db	00h,00h,00h,00h,00h,00h,00h,00h
-queue_name	db	'MXdisk   DAT'
-	db	'E OF LAST CH'
-	db	'ANGE 26 JAN '
-	db	'84   '
-msg_terminal	db	036h,00h,0dh,0ah,054h,068h,069h,073h,020h,075h,074h,069h
-	db	'lity cannot '
-	db	'be used from'
-	db	' a user term'
-	db	069h,06eh,061h,06ch,02eh,0dh,0ah,0ah
-record_0e81	db	04h,00h,01bh,059h
-record_0e85	db	00h,00h
-record_0e87	db	08h,00h,01bh,077h,01bh,036h,01bh,066h,01bh,045h
-record_0e91	db	0ch,00h,01bh,045h,01bh,071h,01bh,074h,01bh,037h,01bh,065h
-	db	01bh,076h
-record_0e9f	db	'sttpqru'
-record_0ea6	db	02h,00h,01bh
-data_0ea9	db	' '
-record_0eaa	db	02h,00h,01bh,065h
-record_0eae	db	02h,00h,01bh,066h,00h,00h,00h,00h,00h,00h,00h,00h
-	db	00h,00h,00h,00h,00h,00h
-
+top_frame	dw	3,top_left,horizontal,top_right
+bottom_frame	dw	3,bottom_left,horizontal,bottom_right
+top_left	dw	offset top_left_end-offset top_left-2
+	db	0dah
+top_left_end:
+top_right	dw	offset top_right_end-offset top_right-2
+	db	0bfh
+top_right_end:
+bottom_left	dw	offset bottom_left_end-offset bottom_left-2
+	db	0c0h
+bottom_left_end:
+bottom_right	dw	offset bottom_right_end-offset bottom_right-2
+	db	0d9h
+bottom_right_end:
+horizontal	dw	78
+border_line	rs	78
+divider_caption	dw	0103h,0202h,divider_text
+divider_text	dw	80
+	db	0c6h
+divider_line	rs	78
+	db	0b5h
+key_top	dw	offset key_top_end-offset key_top-2
+	db	0dah,0c4h,0c4h,0c4h,0c4h,0bfh
+key_top_end:
+key_middle	dw	6
+	db	0b3h,20h
+key_chars	db	'   '
+	db	0b3h
+key_bottom	dw	offset key_bottom_end-offset key_bottom-2
+	db	0c0h,0c4h,0c4h,0c4h,0c4h,0d9h
+key_bottom_end:
+bell	dw	offset bell_end-offset bell-2
+	db	7
+bell_end:
+blank_line	dw	offset blank_line_end-offset blank_line-2
+	db	'                                                                              '
+blank_line_end:
+disk_queue	dw	0,0,0,0
+	db	'MXdisk  '
+	dw	0,0,0
+cursor_sequence	dw	4
+	db	1bh,59h
+cursor_bytes	dw	0
+init_sequence	dw	offset init_sequence_end-offset init_sequence-2
+	db	1bh,77h,1bh,36h,1bh,66h,1bh,45h
+init_sequence_end:
+restore_sequence	dw	offset restore_sequence_end-offset restore_sequence-2
+	db	1bh,45h,1bh,71h,1bh,74h,1bh,37h,1bh,65h,1bh,76h
+restore_sequence_end:
+video_codes	db	'sttpqru'
+video_sequence	dw	2
+	db	1bh
+video_attribute	db	' '
+cursor_hide	dw	offset cursor_hide_end-offset cursor_hide-2
+	db	1bh,65h
+cursor_hide_end:
+cursor_show	dw	offset cursor_show_end-offset cursor_show-2
+	db	1bh,66h
+cursor_show_end:
 	eseg
 	org	0
 	sseg
@@ -1383,4 +1664,5 @@ record_0eae	db	02h,00h,01bh,066h,00h,00h,00h,00h,00h,00h,00h,00h
 	db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 	db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 	db	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
 	end

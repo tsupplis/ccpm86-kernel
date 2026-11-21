@@ -705,16 +705,16 @@
     diskettes,  copying  one  diskette's  contents  to  another,  and
     verifying the integrity of the data on diskettes.
 
-    Single and Double-Sided Diskettes:
+    F1 verifies; F3 copies; F9 exits. Formatting choices are:
 
-    DSKMAINT can only  copy  between  two diskettes of the same type:
-    between two  single-sided  diskettes  or between two double-sided
-    diskettes.  Look at the  box of  diskettes  or at the label on an
-    individual diskette to determine if it is single or double-sided.
+    F4  160K       F5  320K       F6  720K
+    F7  1200K      F8  1440K
 
-    To make a double-sided copy  of a single-sided diskette, format a
-    double-sided diskette, then use PIP to copy files between the two
-    diskettes.
+    720K, 1200K and 1440K require extended native XIOS support.
+    Formatting destroys existing data and asks for confirmation.
+    The shared boot sector and loader are written, then every track
+    is verified. Copy requires source and target of the same format.
+    Use PIP to transfer files between different formats.
 
     Before you invoke  DSKMAINT, be sure your current virtual console
     is in Dynamic mode.  You can  set the console to  Dynamic mode by

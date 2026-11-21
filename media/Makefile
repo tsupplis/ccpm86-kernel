@@ -32,15 +32,16 @@ TOOLS_COMMANDS = ../commands/stop/stop.cmd ../commands/asm86/asm86.cmd ../comman
     ../commands/chkcpmfs/chkcpmfs.cmd \
     $(WINDOW_COMMANDS) $(WINDOW_SAMPLES)
 
-# Extension disk: console redirection, DREDIX and FM.
+# Extension disk: console redirection, DREDIX, FM and system status.
 EXT_COMMANDS = ../commands/putget/put.cmd ../commands/putget/get.cmd \
     ../commands/putget/rdr.cmd ../commands/dredix/dredix.cmd \
-    ../commands/dredix/help.edx ../commands/dredix/lsn.edx ../commands/fm/fm.cmd
+    ../commands/dredix/help.edx ../commands/dredix/lsn.edx ../commands/fm/fm.cmd \
+    ../commands/systat/systat.cmd
 
 MAINT_COMMANDS = ../commands/dskmaint/dskmaint.cmd ../commands/dform/dform.cmd \
     ../commands/disk/dcopy.cmd ../commands/disk/dcomp.cmd \
     ../commands/hdmaint/hdmaint.cmd ../commands/initdir/initdir.cmd ../commands/tod/tod.cmd \
-    ../commands/config/config.cmd ../commands/function/function.cmd ../commands/setup/setup.cmd ../commands/systat/systat.cmd ../commands/stop/stop.cmd
+    ../commands/config/config.cmd ../commands/function/function.cmd ../commands/setup/setup.cmd ../commands/stop/stop.cmd
 
 # Native and DOS development tools each occupy a data-only disk.
 DEV_COMMANDS = ../dev/rasm86.cmd ../dev/link86.cmd ../dev/lib86.cmd \

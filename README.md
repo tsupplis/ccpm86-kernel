@@ -53,8 +53,10 @@ and verification details, and [distributions](#distributions) for all seven disk
 <img src="images/hdmaint.png" alt="HDMaint" width="48%">
 <br><sub>File Manager &nbsp;·&nbsp; Hard Drive Utility</sub><br>
 <img src="images/setup.png" alt="XIOS configuration menu" width="48%">
-<img src="images/basic.png" alt="Microsoft BASIC 5.50A" width="48%">
-<br><sub>System setup &nbsp;·&nbsp; Microsoft BASIC 5.50A</sub>
+<img src="images/dskmaint.png" alt="Disk Maintenance" width="48%">
+<br><sub>System setup &nbsp;·&nbsp; Disk Maintenance</sub>
+<br><img src="images/basic.png" alt="Microsoft BASIC 5.50A" width="48%">
+<br><sub> Microsoft BASIC 5.50A</sub>
 <br><img src="images/rose.png" alt="Rose screenshot" width="48%">
 <br><sub>Rose</sub>
 </p>
@@ -67,7 +69,7 @@ and verification details, and [distributions](#distributions) for all seven disk
 | Additional tools | ASM80, HEXCOM, DREDIX, DR development chain, Microsoft BASIC 5.50A |
 | Y2K components | SDIR, DATE, SHOW, TOD for CCP/M-86 3.2 through Concurrent DOS 4.1; 3.1 fixes included |
 | Usability and Bug fixes| CP/M Plus usability, known problem fixes (like the failing sysdisk on systems with 2 floppies and a hard disk) ... |
-| Hard Drive Size | The XIOS supports CP/M Partitions up to 31.5MB and is forward compatible with CDOS 4.1  ... |
+| Storage | The XIOS supports native **720K/1.2M/1.44M**  (compatible with 144FEAT2, no need for specific bootloader),and also supports CP/M Partitions up to 31.5MB and is forward compatible with CDOS 4.1  ... |
 
 Alongside PC-MODE, the current version includes:
 - Enhanced SUBMIT
@@ -160,8 +162,8 @@ affected. See `HELP PUT`, `HELP GET` and `HELP RDR`.
 | `ccpm86.img` | Yes | PC-MODE/PCTMP kernel and core commands listed below |
 | `ccpmnative.img` | Yes | Native TMP kernel and the same core commands |
 | `ccpmtools.img` | No | ASM86, DDT86, GENCMD, GENCCPM, CHKCPMFS, WINDOW, WMENU, PRINT, VCMODE, STOP, ERAQ, TOD, PIP; CARDDECK, CLEAR, GLASS and WORDPROC SUB files |
-| `ccpmext.img` | No | FM, DREDIX with HELP.EDX and LSN.EDX, PUT, GET, RDR, PIP |
-| `ccpmmaint.img` | Yes | PC-MODE/PCTMP kernel, DSKMAINT, DFORM, DCOPY, DCOMP, HDMAINT, INITDIR, CONFIG, FUNCTION, SETUP, SYSTAT, STOP, TOD, PIP |
+| `ccpmext.img` | No | FM, DREDIX with HELP.EDX and LSN.EDX, PUT, GET, RDR, SYSTAT, PIP |
+| `ccpmmaint.img` | Yes | PC-MODE/PCTMP kernel, DSKMAINT, DFORM, DCOPY, DCOMP, HDMAINT, INITDIR, CONFIG, FUNCTION, SETUP, STOP, TOD, PIP |
 | `ccpmdev.img` | No | RASM86, LINK86, LIB86, XREF86, SID86, CBAS86, CRUN86, PBASIC, MBASIC.CMD, ASM80, HEXCOM |
 | `ccpmdos.img` | No | MSMASM.EXE, MSLIB.EXE, MSLINK.EXE, EXE2BIN.EXE, MBASIC.COM |
 
@@ -186,6 +188,7 @@ system disks within 320 KB.
 The full HELP is on the main disk; WINDOW and WMENU are on the tools disk.
 Window layouts: `CARDDECK.SUB`, `CLEAR.SUB`, `GLASS.SUB` and `WORDPROC.SUB`.
 The [media build](media/README.md) constructs the boot track from DSKMAINT’s maintained boot sector and loader.
+DSKMAINT supports native 160K, 320K, 720K, 1200K and 1440K formatting, copy and verification on both PCTMP and TMP.
 
 ## Commands
 
