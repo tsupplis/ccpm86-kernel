@@ -224,8 +224,7 @@
 
     CTRL-Q    restarts screen scrolling after a CTRL-S.
 
-    CTRL-R    retypes the characters to the left of the cursor  on  a
-    new line.
+    CTRL-R    retypes the current input line on a new line.
 
     CTRL-S    stops screen scrolling.
 
@@ -235,6 +234,23 @@
 
     CTRL-Z    string separator for PIP and ED; terminates console input
     when console is used as a source device with PIP.
+
+    ///2LINEEDIT
+    Buffered console input (BDOS Function 10):
+
+    Left / CTRL-A       Move one character left.
+    Right / CTRL-F      Move one character right.
+    Home / End          Go to the beginning / end.
+    CTRL-B              Toggle between beginning and end.
+    Up / CTRL-W         Recall the last line if empty; otherwise go to end.
+    Backspace / Rubout  Delete left of the cursor.
+    Delete / CTRL-G     Delete at the cursor.
+    CTRL-K / CTRL-X     Delete to the right / left of the cursor.
+    CTRL-U / CTRL-R     Cancel the line / retype it on a new line.
+
+    Return accepts the whole line from any cursor position. Recall keeps
+    one nonempty line per console. Applications using raw input retain
+    their own key bindings.
 
 ///1COMMANDS
     Type ? at the shell prompt for a compact list of common commands.
@@ -691,34 +707,29 @@
     extension is provided here.
 
 ///1DSKMAINT
-    DSKMAINT.CMD is on the bootable maintenance disk (ccpmmaint.img),
-    alongside HDMAINT and INITDIR.
-
     Syntax:
 
     DSKMAINT
 
     Explanation:
 
-    DSKMAINT is a  multi-function  menu-driven command  that performs
-    these diskette maintenance operations: formatting new or reusable
-    diskettes,  copying  one  diskette's  contents  to  another,  and
-    verifying the integrity of the data on diskettes.
+    Format, copy and verify CP/M diskettes. Supported capacities are
+    160K, 320K, 720K, 1200K and 1440K.
 
-    F1 verifies; F3 copies; F9 exits. Formatting choices are:
+    F1        Verify a diskette.
+    F3        Copy a diskette.
+    F4/F5     Format 160K/320K.
+    F6/F7/F8  Format 720K/1200K/1440K.
+    F9        Exit.
 
-    F4  160K       F5  320K       F6  720K
-    F7  1200K      F8  1440K
+    Formatting destroys existing data and requires confirmation. It writes
+    the shared boot sector and loader, then verifies every track.
+    Copy requires source and target of the same format. Use PIP to transfer
+    files between different formats.
 
     720K, 1200K and 1440K require extended native XIOS support.
-    Formatting destroys existing data and asks for confirmation.
-    The shared boot sector and loader are written, then every track
-    is verified. Copy requires source and target of the same format.
-    Use PIP to transfer files between different formats.
-
-    Before you invoke  DSKMAINT, be sure your current virtual console
-    is in Dynamic mode.  You can  set the console to  Dynamic mode by
-    using the VCMODE command.
+    Use a local console in Dynamic mode (VCMODE DYNAMIC).
+    DSKMAINT is on the bootable maintenance disk, ccpmmaint.img.
 
 ///1DYNAMIC
     You can switch the current (foreground) virtual console into  the
@@ -990,6 +1001,18 @@
     *    wildcard: replaces all or part of a filename and/or filetype.
     ?    wildcard: replaces any single character
     in the same position of a filename and/or filetype.
+
+///1FM
+    Syntax:
+
+    FM
+
+    Explanation:
+
+    Starts the file manager. Use its on-screen menus to select drives,
+    CP/M user areas and files, then choose a file operation.
+    FM is on ccpmext.img. DOS directories and Backup/Restore are disabled
+    on CCP/M; both PCTMP and TMP PC consoles are supported.
 
 ///1FUNCTION
     Syntax:
@@ -1317,7 +1340,7 @@
 ///1PRINT
     Syntax:
 
-    PRINT filename{[options]}{,filename{[options],...}
+    PRINT filename{[options]}{,filename{[options]}...}
 
     Explanation:
 
