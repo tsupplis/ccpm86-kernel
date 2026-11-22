@@ -80,6 +80,7 @@ newpfk:
                         jz      pfknormal
                         cmp     al,10 ! je pfkhome
                         cmp     al,11 ! je pfkup
+                        cmp     al,16 ! je pfkdown
                         cmp     al,13 ! je pfkleft
                         cmp     al,14 ! je pfkright
                         cmp     al,15 ! je pfkend
@@ -97,6 +98,7 @@ pfkvalid:                                                        ;   then ignore
 
 ; AH=1 distinguishes editor Home/End from literal high-bit characters.
 ; PIN passes these tagged data events through without treating them as switches.
+pfkdown:                jmp     coninwait                      ; Ignore Down during editing.
 pfkhome:                mov     ax,0180h ! ret
 pfkend:                 mov     ax,0181h ! ret
 pfkup:                  mov     ax,0117h ! ret                   ; exactly ^W, including its end-of-line meaning

@@ -106,9 +106,12 @@ def check_editor(type_command, hmp, wait_for, shortcut):
             return ''.join(lines).endswith(expanded)
         return wait_for(matches)
 
+    key('down')
+    current('')
     type_command(';abcd')
     key('ctrl-a')
     key('ctrl-a')
+    key('down')
     type_command('x')
     current(';abxcd')
     key('ctrl-f')
